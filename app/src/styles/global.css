@@ -1,0 +1,200 @@
+@import './tokens.css';
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  background: var(--color-cream);
+  color: var(--color-ink);
+  line-height: 1.6;
+}
+
+img {
+  max-width: 100%;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+/* ---- アプリシェル ---- */
+
+.app-shell {
+  max-width: var(--shell-max-width);
+  min-height: 100dvh;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- 共通ヘッダー ---- */
+
+.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-white);
+  border-bottom: var(--line-soft);
+}
+
+.app-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+
+.brand {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  line-height: 1.2;
+}
+
+.brand-sub {
+  margin-left: 2px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0;
+  color: var(--color-muted);
+}
+
+.demo-badge {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--color-ink);
+  background: var(--color-mint);
+  border-radius: var(--radius-pill);
+}
+
+/* ---- デモ用ロール切替 ---- */
+
+.role-switcher {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  background: var(--color-cream);
+  border-radius: var(--radius-pill);
+}
+
+.role-switcher-button {
+  min-height: var(--tap-target);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-pill);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.role-switcher-button[aria-pressed='true'] {
+  background: var(--color-ink);
+  color: var(--color-white);
+  font-weight: 700;
+  box-shadow: var(--shadow-soft);
+}
+
+/* ---- メイン領域 ---- */
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-5) var(--space-4);
+}
+
+/* 下部ナビ表示中は、ナビに隠れない余白を確保する */
+.app-main--with-nav {
+  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+}
+
+.page-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.placeholder-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-4);
+  background: var(--color-white);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-soft);
+}
+
+.placeholder-chip {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+  background: var(--color-cream);
+  border-radius: var(--radius-pill);
+}
+
+.placeholder-text {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+/* ---- 新入生側の下部ナビ（外枠） ---- */
+
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--shell-max-width);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: var(--space-1) var(--space-2) calc(var(--space-1) + env(safe-area-inset-bottom));
+  background: var(--color-white);
+  border-top: var(--line-soft);
+}
+
+.bottom-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: calc(var(--tap-target) + 8px);
+  padding: var(--space-2) var(--space-1) var(--space-1);
+  border: none;
+  background: none;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+
+.bottom-nav-item[aria-current='page'] {
+  color: var(--color-ink);
+  font-weight: 700;
+}
+
+.bottom-nav-item[aria-current='page'] .bottom-nav-icon {
+  color: var(--color-coral);
+}
