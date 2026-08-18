@@ -1,0 +1,28 @@
+/* docs(implementation_plan.md) のブランドカラーを唯一の色定義として使う */
+:root {
+  --color-ink: #17212b;
+  --color-coral: #ff6b5e;
+  --color-mint: #dff6e8;
+  --color-cream: #fff8f0;
+  --color-white: #ffffff;
+  --color-muted: #66727d;
+
+  --font-family:
+    system-ui, -apple-system, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',
+    'Noto Sans JP', 'Yu Gothic UI', sans-serif;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+
+  --radius-m: 16px;
+  --radius-pill: 999px;
+
+  --tap-target: 44px;
+  --shell-max-width: 430px;
+
+  --shadow-soft: 0 2px 10px rgba(23, 33, 43, 0.08);
+  --line-soft: 1px solid rgba(23, 33, 43, 0.08);
+}
