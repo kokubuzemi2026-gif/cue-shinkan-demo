@@ -285,6 +285,16 @@ describe('calculateMatch: reasonsの生成規則', () => {
     expect(feeOver.reasons.some((reason) => reason.includes('予算内'))).toBe(false)
   })
 
+  it('少し経験あり×経験者向けは部分適合5点になり、経験の理由文は生成されない', () => {
+    const result = calculateMatch(
+      makeStudent({ experience: 'some' }),
+      makeOffer({ beginnerFriendly: false }),
+    )
+    expect(result.score).toBe(95) // 経験のみ部分適合5点（100 - 5）
+    expect(result.eligible).toBe(true)
+    expect(result.reasons.some((reason) => reason.includes('経験'))).toBe(false)
+  })
+
   it('経験の理由文は「未経験×歓迎」「経験者×経験者向け」のみで生成される', () => {
     const someLevel = calculateMatch(makeStudent({ experience: 'some' }), makeOffer())
     expect(someLevel.reasons.some((reason) => reason.includes('経験'))).toBe(false)
