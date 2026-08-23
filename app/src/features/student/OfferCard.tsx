@@ -44,6 +44,10 @@ export function OfferCard({ item, onOpen }: OfferCardProps) {
           )}
         </span>
       )}
+      {/* タップ可能であることの視覚的手掛かり。名前はaria-labelが担うため読み上げ対象外にする */}
+      <span className="offer-open-hint" aria-hidden="true">
+        詳しく見る →
+      </span>
     </button>
   )
 }

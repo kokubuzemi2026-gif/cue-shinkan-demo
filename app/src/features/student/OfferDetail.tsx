@@ -138,17 +138,28 @@ export function OfferDetail({ item, onBack, onRespond }: OfferDetailProps) {
         <div aria-live="polite">
           {choice === 'interested' && (
             <div className="response-panel response-panel--interested" role="status">
-              <p className="response-panel-title">「行ってみたい」を保存しました。</p>
-              <p>
-                参加方法: {offer.dateText}に「{offer.place}
-                」へ。持ち物や当日の変更は、団体の公式窓口で確認できます。
-              </p>
-              <p>
-                団体公式窓口: {club.contact.label} {club.contact.handle}
-                （デモ用の架空アカウントです）
-              </p>
+              <p className="response-panel-title">「行ってみたい」を保存しました</p>
+              <div className="panel-block">
+                <h3 className="panel-subheading">参加方法</h3>
+                <dl className="panel-facts">
+                  <div className="panel-fact">
+                    <dt>日時</dt>
+                    <dd>{offer.dateText}</dd>
+                  </div>
+                  <div className="panel-fact">
+                    <dt>場所</dt>
+                    <dd>{offer.place}</dd>
+                  </div>
+                </dl>
+              </div>
+              <div className="panel-block">
+                <h3 className="panel-subheading">団体公式窓口</h3>
+                <p className="panel-contact-label">{club.contact.label}</p>
+                <p className="panel-contact-handle">{club.contact.handle}</p>
+                <p className="panel-contact-note">デモ用の架空アカウントです</p>
+              </div>
               <ul className="response-panel-notes">
-                <li>あなたの名前や連絡先は、団体に渡っていません</li>
+                <li>名前や連絡先は団体に渡りません</li>
                 <li>これは入会の確約ではありません</li>
               </ul>
             </div>

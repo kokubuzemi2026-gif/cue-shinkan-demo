@@ -118,11 +118,11 @@ export function StudentInbox({ preference, savePreference, onNavigateHome }: Stu
           </button>
         </div>
       )}
-      <p aria-live="polite" className="inbox-status-line">
-        {!view.paused && resumeNoticeFor !== null && resumeNoticeFor === preference && (
-          <span className="status-notice">オファーの受信を再開しました</span>
-        )}
-      </p>
+      {!view.paused && resumeNoticeFor !== null && resumeNoticeFor === preference && (
+        <p role="status" className="inbox-resume-notice">
+          オファーの受信を再開しました
+        </p>
+      )}
 
       {view.items.length === 0 ? (
         <section className="placeholder-card" aria-label="オファーなし">
@@ -136,9 +136,10 @@ export function StudentInbox({ preference, savePreference, onNavigateHome }: Stu
         </section>
       ) : (
         <>
-          <p className="inbox-lead">
-            あなたが受け取ると決めた条件に合う団体からだけ届いています。
-          </p>
+          {/* 停止バナー表示中は同趣旨の説明が重複するため、受信中のみ表示する */}
+          {!view.paused && (
+            <p className="inbox-lead">興味パスポートで選んだ条件に合う案内だけが届いています。</p>
+          )}
           <ul className="offer-list">
             {view.items.map((item) => (
               <li key={item.offer.id}>
