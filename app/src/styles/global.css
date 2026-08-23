@@ -1,4 +1,5 @@
 @import './tokens.css';
+@import './passport.css';
 
 *,
 *::before,
@@ -124,7 +125,18 @@ button {
 
 /* 下部ナビ表示中は、ナビに隠れない余白を確保する */
 .app-main--with-nav {
-  padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  padding-bottom: calc(var(--bottom-nav-height) + 20px + env(safe-area-inset-bottom));
+}
+
+/* ホームタブはhiddenで保持する（App.tsx参照）。表示中はapp-mainと同じ縦リズムで並べる */
+.student-tab-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.student-tab-panel[hidden] {
+  display: none;
 }
 
 .page-title {
@@ -169,6 +181,8 @@ button {
   transform: translateX(-50%);
   width: 100%;
   max-width: var(--shell-max-width);
+  /* wizard footerのsticky位置（--bottom-nav-height）と実高さを一致させる */
+  min-height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom));
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   padding: var(--space-1) var(--space-2) calc(var(--space-1) + env(safe-area-inset-bottom));
@@ -188,6 +202,17 @@ button {
   font-size: 11px;
   font-weight: 600;
   color: var(--color-muted);
+}
+
+.bottom-nav-item {
+  cursor: pointer;
+}
+
+.bottom-nav-item:focus-visible,
+.role-switcher-button:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: -2px;
+  border-radius: 8px;
 }
 
 .bottom-nav-item[aria-current='page'] {
