@@ -135,7 +135,8 @@ export function OfferDetail({ item, onBack, onRespond }: OfferDetailProps) {
           どの返答でも、あなたの名前や連絡先が団体に伝わることはありません。今回は見送っても、団体に個人単位で通知されることはありません。
         </p>
 
-        <div aria-live="polite">
+        {/* 確認パネル自体がrole="status"のライブリージオン。入れ子を避けるため外側にaria-liveは置かない */}
+        <div>
           {choice === 'interested' && (
             <div className="response-panel response-panel--interested" role="status">
               <p className="response-panel-title">「行ってみたい」を保存しました</p>
@@ -179,9 +180,11 @@ export function OfferDetail({ item, onBack, onRespond }: OfferDetailProps) {
         </div>
       </section>
 
-      <div className="detail-report" aria-live="polite">
+      <div className="detail-report">
         {reported ? (
-          <p className="report-done">通報を受け付けました（デモのため実際の送信は行われません）</p>
+          <p role="status" className="report-done">
+            通報を受け付けました（デモのため実際の送信は行われません）
+          </p>
         ) : (
           <button type="button" className="button button-ghost" onClick={() => setReported(true)}>
             この案内に問題がある場合は通報

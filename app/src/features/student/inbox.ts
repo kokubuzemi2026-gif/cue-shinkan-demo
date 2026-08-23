@@ -75,6 +75,13 @@ export function buildInboxView(
   return { items, paused: student.reception.paused }
 }
 
+// 詳細表示中のオファーが表示集合から消えたかどうか（選択破棄の判定）。
+// 条件変更で非適合になった詳細を保持し続けると、条件を戻したときに
+// 古い詳細が勝手に再表示されるため、消えた時点で選択を破棄する
+export function isSelectionStale(selectedOfferId: string | null, items: InboxItem[]): boolean {
+  return selectedOfferId !== null && !items.some((item) => item.offer.id === selectedOfferId)
+}
+
 // 既読の記録。すでに記録済みなら同一配列参照を返し、呼び出し側は保存をスキップできる。
 // readAtは初回開封時刻を保持する（開くたびに上書きしない）
 export function markRead(reads: OfferReadMark[], mark: OfferReadMark): OfferReadMark[] {

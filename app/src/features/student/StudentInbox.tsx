@@ -9,7 +9,7 @@ import type {
 } from '../../domain/types'
 import { offerReadStore } from '../../storage/readStore'
 import { offerResponseStore } from '../../storage/responseStore'
-import { buildInboxView, markRead, upsertResponse } from './inbox'
+import { buildInboxView, isSelectionStale, markRead, upsertResponse } from './inbox'
 import { OfferCard } from './OfferCard'
 import { OfferDetail } from './OfferDetail'
 import { withReceptionPaused } from './passportForm'
@@ -33,7 +33,11 @@ export function StudentInbox({ preference, savePreference, onNavigateHome }: Stu
   )
   const [reads, setReads] = useState<OfferReadMark[]>(() => offerReadStore.load() ?? [])
   const [selectedOfferId, setSelectedOfferId] = useState<string | null>(null)
-  const [saveFailed, setSaveFailed] = useState(false)
+  // 保存失敗は保存元ごとに管理し、一方の成功で他方の未解決エラーを消さない。
+  // 同じ保存元の書込が後で成功したときだけ、その保存元の失敗を解除する
+  const [readSaveFailed, setReadSaveFailed] = useState(false)
+  const [responseSaveFailed, setResponseSaveFailed] = useState(false)
+  const [resumeSaveFailed, setResumeSaveFailed] = useState(false)
   // 再開通知は、その再開で保存したpreferenceが最新である間だけ表示する
   // （パスポート編集など別の保存が起きると自動的に消える）
   const [resumeNoticeFor, setResumeNoticeFor] = useState<StudentPreference | null>(null)
@@ -45,6 +49,15 @@ export function StudentInbox({ preference, savePreference, onNavigateHome }: Stu
     selectedOfferId === null
       ? undefined
       : view.items.find((item) => item.offer.id === selectedOfferId)
+  const selectionStale = isSelectionStale(selectedOfferId, view.items)
+
+  // 表示集合から対象が消えたら（条件変更で非適合化など）選択IDを破棄する。
+  // データ（返答・既読）自体は消さない。破棄で下の効果が走り、通常の一覧復帰と同じ扱いになる
+  useEffect(() => {
+    if (selectionStale) {
+      setSelectedOfferId(null)
+    }
+  }, [selectionStale])
 
   // 詳細から一覧へ戻ったときだけ、一覧見出しへフォーカスを戻す
   useEffect(() => {
@@ -65,7 +78,7 @@ export function StudentInbox({ preference, savePreference, onNavigateHome }: Stu
     if (nextReads !== reads) {
       const ok = offerReadStore.save(nextReads)
       setReads(nextReads)
-      if (!ok) setSaveFailed(true)
+      setReadSaveFailed(!ok)
     }
     wasDetailOpenRef.current = true
     setResumeNoticeFor(null)
@@ -81,15 +94,17 @@ export function StudentInbox({ preference, savePreference, onNavigateHome }: Stu
     })
     const ok = offerResponseStore.save(next)
     setResponses(next)
-    setSaveFailed(!ok)
+    setResponseSaveFailed(!ok)
   }
 
   const resumeReception = () => {
     const next = withReceptionPaused(student, false)
     const ok = savePreference(next)
-    setSaveFailed(!ok)
+    setResumeSaveFailed(!ok)
     setResumeNoticeFor(next)
   }
+
+  const saveFailed = readSaveFailed || responseSaveFailed || resumeSaveFailed
 
   if (selected !== undefined) {
     return (
@@ -138,7 +153,7 @@ export function StudentInbox({ preference, savePreference, onNavigateHome }: Stu
         <>
           {/* 停止バナー表示中は同趣旨の説明が重複するため、受信中のみ表示する */}
           {!view.paused && (
-            <p className="inbox-lead">興味パスポートで選んだ条件に合う案内だけが届いています。</p>
+            <p className="inbox-lead">選んだ条件に合う新歓案内だけが届いています。</p>
           )}
           <ul className="offer-list">
             {view.items.map((item) => (

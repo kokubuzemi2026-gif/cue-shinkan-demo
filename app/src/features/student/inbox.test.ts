@@ -8,6 +8,7 @@ import {
   deriveOfferStatus,
   formatDeadline,
   formatEventFee,
+  isSelectionStale,
   markRead,
   upsertResponse,
 } from './inbox'
@@ -182,6 +183,30 @@ describe('deriveOfferStatus: 4状態の導出', () => {
   it('返答があれば開封記録がなくても返答状態を優先する（既読データ破損時の縮退）', () => {
     expect(deriveOfferStatus(false, response('o', 'interested'))).toBe('answered')
     expect(deriveOfferStatus(false, response('o', 'thinking'))).toBe('thinking')
+  })
+})
+
+describe('isSelectionStale: 詳細対象の消失判定', () => {
+  it('選択中のオファーが表示集合から消えたらstaleになる（条件変更で非適合化した場合）', () => {
+    const withRokko = buildInboxView(demoStudent, demoOffers, demoClubs, [], [])
+    const mismatched: StudentPreference = {
+      ...demoStudent,
+      interests: ['music'],
+      reception: { ...demoStudent.reception, allowedCategories: ['music'] },
+    }
+    const withoutRokko = buildInboxView(mismatched, demoOffers, demoClubs, [], [])
+    expect(isSelectionStale('offer-rokko-hike', withRokko.items)).toBe(false)
+    expect(isSelectionStale('offer-rokko-hike', withoutRokko.items)).toBe(true)
+  })
+
+  it('未選択（null）はstaleにならない（空の受信箱でも）', () => {
+    expect(isSelectionStale(null, [])).toBe(false)
+    const view = buildInboxView(demoStudent, demoOffers, demoClubs, [], [])
+    expect(isSelectionStale(null, view.items)).toBe(false)
+  })
+
+  it('items空で選択が残っていればstaleになる', () => {
+    expect(isSelectionStale('offer-rokko-hike', [])).toBe(true)
   })
 })
 
