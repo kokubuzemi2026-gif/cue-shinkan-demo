@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { demoClubs, demoOffers, demoStudent } from '../../data/demoData'
+import { demoClubs, demoStudent } from '../../data/demoData'
 import type {
+  OfferDelivery,
   OfferReadMark,
   OfferResponse,
   ResponseChoice,
@@ -18,15 +19,22 @@ const SAVE_FAILED_MESSAGE =
   '端末への保存に失敗しました。表示中の状態はこの画面では保持されています。'
 
 type StudentInboxProps = {
-  // Appが持つ保存済みパスポート。未保存時はdemoStudentで評価する（受入条件の初期表示）
+  // Appが持つ保存済みパスポート。未保存時はdemoStudentを自分として扱う
   preference: StudentPreference | null
+  // Appが持つ配信イベント正本（D023）。団体側と同じ状態を共有する
+  deliveries: OfferDelivery[]
   savePreference: (next: StudentPreference) => boolean
   onNavigateHome: () => void
 }
 
 // オファー受信箱。一覧と詳細を1タブ内で切り替え、既読・返答をlocalStorageへ永続化する。
-// 表示集合はD020の暫定仕様（docs/decisions.md）に従いbuildInboxViewが導出する。
-export function StudentInbox({ preference, savePreference, onNavigateHome }: StudentInboxProps) {
+// 表示集合は保存済み配信イベント（docs/decisions.md D023）からbuildInboxViewが導出する。
+export function StudentInbox({
+  preference,
+  deliveries,
+  savePreference,
+  onNavigateHome,
+}: StudentInboxProps) {
   const student = preference ?? demoStudent
   const [responses, setResponses] = useState<OfferResponse[]>(
     () => offerResponseStore.load() ?? [],
@@ -44,7 +52,7 @@ export function StudentInbox({ preference, savePreference, onNavigateHome }: Stu
   const listHeadingRef = useRef<HTMLHeadingElement>(null)
   const wasDetailOpenRef = useRef(false)
 
-  const view = buildInboxView(student, demoOffers, demoClubs, responses, reads)
+  const view = buildInboxView(student, deliveries, demoClubs, responses, reads)
   const selected =
     selectedOfferId === null
       ? undefined

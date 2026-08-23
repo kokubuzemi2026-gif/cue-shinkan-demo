@@ -1,13 +1,12 @@
-import { rankEligibleOffers } from '../../domain/matching'
 import type {
   Club,
   ClubOffer,
   MatchResult,
+  OfferDelivery,
   OfferReadMark,
   OfferResponse,
   StudentPreference,
 } from '../../domain/types'
-import { withReceptionPaused } from './passportForm'
 
 // 受信箱の状態は4種。返答があれば返答を優先し、なければ開封記録で未読/未回答を分ける
 export type OfferStatus = 'unread' | 'unanswered' | 'thinking' | 'answered'
@@ -40,28 +39,48 @@ export function deriveOfferStatus(read: boolean, response: OfferResponse | null)
   return read ? 'unanswered' : 'unread'
 }
 
-// 受信箱の表示集合を組み立てる（docs/decisions.md D020）。
-// - 受信停止・週上限は「新規配信の判定」の概念のため、ここでは適用しない。
-//   停止の影響を除くため、停止を無効化した設定でeligibleを再評価する。
-// - Task 004では配信イベントが未実装のため、現在のパスポートによる再評価で
-//   導出する暫定仕様（興味・受信カテゴリの編集は表示へ反映される）。
-//   Task 005で配信イベントを保存し、受信済み集合を不変の履歴として固定する。
+// 受信箱の表示集合を組み立てる（docs/decisions.md D023。D020の暫定再評価を置換）。
+// - 正本は保存済みの配信イベント。表示集合と各itemのscore・理由・注意点は
+//   配信時点のsnapshotで固定され、パスポート編集・受信停止・週上限の変更では
+//   変化しない（現在のpreferenceは新規配信の判定だけに使われる・D020/D021）。
+// - 並びは配信の新しい順（同時刻はオファーID昇順）で決定的にする。
+//   新規配信は必ず先頭に未読で現れる
 export function buildInboxView(
   student: StudentPreference,
-  offers: ClubOffer[],
+  deliveries: OfferDelivery[],
   clubs: Club[],
   responses: OfferResponse[],
   reads: OfferReadMark[],
 ): InboxView {
-  const receivingView = withReceptionPaused(student, false)
-  const ranked = rankEligibleOffers(receivingView, offers)
   const clubById = new Map(clubs.map((club) => [club.id, club]))
+  const received = deliveries
+    .filter((delivery) =>
+      delivery.recipients.some((recipient) => recipient.studentId === student.id),
+    )
+    .sort((a, b) => {
+      const aTime = Date.parse(a.deliveredAt)
+      const bTime = Date.parse(b.deliveredAt)
+      if (aTime !== bTime) return bTime - aTime
+      return a.offer.id < b.offer.id ? -1 : a.offer.id > b.offer.id ? 1 : 0
+    })
 
   const items: InboxItem[] = []
-  for (const { offer, result } of ranked) {
+  for (const delivery of received) {
+    const offer = delivery.offer
     const club = clubById.get(offer.clubId)
     // 参照切れデータは表示しない（クラッシュさせない）
     if (club === undefined) continue
+    const snapshot = delivery.recipients.find(
+      (recipient) => recipient.studentId === student.id,
+    )
+    if (snapshot === undefined) continue
+    // 表示根拠は配信時snapshotそのもの。ここでcalculateMatchを再計算しない
+    const result: MatchResult = {
+      eligible: true,
+      score: snapshot.score,
+      reasons: snapshot.reasons,
+      cautions: snapshot.cautions,
+    }
     const response =
       responses.find(
         (candidate) => candidate.offerId === offer.id && candidate.studentId === student.id,

@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AppHeader } from './components/AppHeader'
 import { BottomNav, type StudentTab } from './components/BottomNav'
+import { buildSeedDeliveries } from './data/demoDeliverySeed'
 import { getRoleHeading, type DemoRole } from './domain/role'
-import type { StudentPreference } from './domain/types'
+import type { OfferDelivery, StudentPreference } from './domain/types'
 import { StudentHome } from './features/student/StudentHome'
 import { StudentInbox } from './features/student/StudentInbox'
+import { offerDeliveryStore } from './storage/deliveryStore'
 import { studentPreferenceStore } from './storage/preferenceStore'
 
 const CLUB_LEAD =
@@ -27,6 +29,19 @@ function App() {
   const [preference, setPreference] = useState<StudentPreference | null>(() =>
     studentPreferenceStore.load(),
   )
+  // 配信イベント正本（D023）。学生受信箱と団体ダッシュボードが同じ状態を読むため
+  // Appが持ち上げる。store未保存・破損時はcanonicalシードで再構築する
+  const [deliveries] = useState<OfferDelivery[]>(
+    () => offerDeliveryStore.load() ?? buildSeedDeliveries(),
+  )
+
+  // 初回起動（store未保存または破損）のときだけシードを1回保存する。
+  // シードは引数なしの決定的生成のため、StrictModeの二重実行でも内容は同一で冪等
+  useEffect(() => {
+    if (offerDeliveryStore.load() === null) {
+      offerDeliveryStore.save(buildSeedDeliveries())
+    }
+  }, [])
   const isStudent = role === 'student'
   const studentFocus = isStudent && focusMode
 
@@ -53,6 +68,7 @@ function App() {
             <div className="student-tab-panel" hidden={studentTab !== 'inbox'}>
               <StudentInbox
                 preference={preference}
+                deliveries={deliveries}
                 savePreference={savePreference}
                 onNavigateHome={() => setStudentTab('home')}
               />
