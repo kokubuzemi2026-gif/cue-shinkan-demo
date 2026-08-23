@@ -2,7 +2,6 @@ import { useEffect, useReducer, useState } from 'react'
 
 import { demoStudent } from '../../data/demoData'
 import type { StudentPreference } from '../../domain/types'
-import { studentPreferenceStore } from '../../storage/preferenceStore'
 import {
   buildPreference,
   createDraft,
@@ -18,17 +17,17 @@ const SAVE_FAILED_MESSAGE =
   '端末への保存に失敗しました。入力内容はこの画面では保持されています。'
 
 type StudentHomeProps = {
+  // 保存済みパスポートはAppが保持し、受信箱と共有する（Task 004で持ち上げ）
+  preference: StudentPreference | null
+  savePreference: (next: StudentPreference) => boolean
   // wizard表示中だけtrueを通知し、App側がロール切替と下部ナビを隠す（集中モード）
   onFocusModeChange: (active: boolean) => void
 }
 
 // 新入生ホーム。興味パスポートの未登録／入力中／完了／登録済みを1タブ内で切り替える。
-// localStorageの読み書きはstudentPreferenceStore経由のみ（storage/preferenceStore.ts）。
-export function StudentHome({ onFocusModeChange }: StudentHomeProps) {
-  // 読み込みは同期のためローディング状態は不要。破損データはloadがnullへ縮退させる
-  const [saved, setSaved] = useState<StudentPreference | null>(() =>
-    studentPreferenceStore.load(),
-  )
+// localStorageの読み書きはApp経由のsavePreferenceに一元化する。
+export function StudentHome({ preference, savePreference, onFocusModeChange }: StudentHomeProps) {
+  const saved = preference
   const [view, setView] = useState<PassportView>(saved ? 'summary' : 'intro')
   // シードは「保存済みの内容、なければメイン学生の初期値」（tasks/003 受入条件）
   const [draft, dispatch] = useReducer(passportReducer, saved ?? demoStudent, createDraft)
@@ -49,8 +48,7 @@ export function StudentHome({ onFocusModeChange }: StudentHomeProps) {
 
   const completeWizard = () => {
     const next = buildPreference(draft, saved ?? demoStudent)
-    const ok = studentPreferenceStore.save(next)
-    setSaved(next)
+    const ok = savePreference(next)
     setSaveFailed(!ok)
     setView('complete')
     onFocusModeChange(false)
@@ -64,8 +62,7 @@ export function StudentHome({ onFocusModeChange }: StudentHomeProps) {
   const togglePaused = () => {
     if (!saved) return
     const next = withReceptionPaused(saved, !saved.reception.paused)
-    const ok = studentPreferenceStore.save(next)
-    setSaved(next)
+    const ok = savePreference(next)
     setSaveFailed(!ok)
     // 再開したときだけaria-live領域から「再開しました」を通知する
     setResumeNotice(!next.reception.paused)
