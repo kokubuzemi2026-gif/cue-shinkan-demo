@@ -113,6 +113,19 @@ describe('デモデータ: 整合性', () => {
     }
   })
 
+  it('全団体に公開用の公式窓口が定義されている（個人連絡先ではなく団体公式）', () => {
+    for (const club of demoClubs) {
+      expect(club.contact.label.length).toBeGreaterThan(0)
+      expect(club.contact.handle.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('公式窓口のハンドルは実在と混同しないよう_demo表記を含む', () => {
+    for (const club of demoClubs) {
+      expect(club.contact.handle).toContain('_demo')
+    }
+  })
+
   it('implementation_plan §4の6団体がすべて存在する', () => {
     const names = demoClubs.map((club) => club.name)
     expect(names).toEqual([

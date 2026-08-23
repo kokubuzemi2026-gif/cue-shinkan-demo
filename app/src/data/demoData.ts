@@ -27,36 +27,42 @@ export const demoClubs: Club[] = [
     name: '六甲アウトドア会',
     verified: true,
     description: '山歩きとキャンプを月1〜2回楽しむ、初心者中心のアウトドアサークルです。',
+    contact: { label: '新歓公式アカウント', handle: '@rokko_outdoor_demo' },
   },
   {
     id: 'club-harbor-film',
     name: 'Harbor Film Lab',
     verified: true,
     description: '港町を歩いて撮って、みんなで上映する映像・写真の制作サークルです。',
+    contact: { label: '新歓公式アカウント', handle: '@harbor_film_demo' },
   },
   {
     id: 'club-table-talk',
     name: 'Table Talk International',
     verified: true,
     description: 'お茶を飲みながら色々な国の学生と話す、国際交流カフェサークルです。',
+    contact: { label: '新歓公式アカウント', handle: '@table_talk_demo' },
   },
   {
     id: 'club-bridge-volunteer',
     name: 'Bridge Volunteer Team',
     verified: true,
     description: '地域の子ども食堂や清掃活動を週末に手伝うボランティアチームです。',
+    contact: { label: '新歓公式アカウント', handle: '@bridge_volunteer_demo' },
   },
   {
     id: 'club-weekend-runners',
     name: 'Kobe Weekend Runners',
     verified: true,
     description: '朝の海沿いを走るランニングチーム。大会出場を目指す本格派です。',
+    contact: { label: '新歓公式アカウント', handle: '@kobe_runners_demo' },
   },
   {
     id: 'club-blue-note',
     name: 'Blue Note Session',
     verified: false,
     description: 'ジャズの即興セッションを毎週開くプレイヤーの集まりです。',
+    contact: { label: '新歓公式アカウント', handle: '@blue_note_demo' },
   },
 ]
 

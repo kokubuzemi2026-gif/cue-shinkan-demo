@@ -107,11 +107,19 @@ export type StudentPreference = {
   reception: ReceptionSettings
 }
 
+// 団体の公開用公式窓口。個人の連絡先は扱わない（docs/matching_and_safety.md §6）。
+// デモでは実在と混同しないよう、handleに_demoを含む架空表記のみを使う
+export type ClubContact = {
+  label: string
+  handle: string
+}
+
 export type Club = {
   id: string
   name: string
   verified: boolean
   description: string
+  contact: ClubContact
 }
 
 // マッチングに使う属性はすべてオファー側が持つ（docs/matching_and_safety.md §3）
@@ -147,4 +155,12 @@ export type OfferResponse = {
   studentId: string
   choice: ResponseChoice
   respondedAt: string
+}
+
+// 受信箱でオファー詳細を開いた記録。返答とは独立に保存する（tasks/004の未読・未回答状態の基盤）。
+// storage層とfeature層の双方が参照するため、OfferResponseと同じくdomainに置く
+export type OfferReadMark = {
+  offerId: string
+  studentId: string
+  readAt: string
 }
