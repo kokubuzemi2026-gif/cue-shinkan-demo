@@ -61,6 +61,35 @@ export const FEE_CHOICES_YEN = [0, 500, 1000, 1500, 2000, 2500] as const
 export const CAPACITY_CHOICES = [6, 8, 10, 12, 20] as const
 export const DEADLINE_CHOICES = ['2026-09-10', '2026-09-17', '2026-09-24'] as const
 
+// 参加費チップの短い表記
+export function formatFeeLabel(yen: number): string {
+  return yen === 0 ? '無料' : `${yen.toLocaleString('ja-JP')}円`
+}
+
+// 学生側と同じ「1回あたり」の費用表記（docs/decisions.md D019）
+export function formatEventFeeText(yen: number): string {
+  return yen === 0 ? '参加費無料' : `1回${yen.toLocaleString('ja-JP')}円`
+}
+
+// 申込期限（YYYY-MM-DD）の表示。期限日（2026-09-10は木曜）に曜日は付けない。
+// Dateを使わず文字列分解でタイムゾーン非依存にする
+export function formatDeadlineLabel(isoDate: string): string {
+  const [, month, day] = isoDate.split('-')
+  const monthNumber = Number(month)
+  const dayNumber = Number(day)
+  if (
+    !Number.isInteger(monthNumber) ||
+    !Number.isInteger(dayNumber) ||
+    monthNumber < 1 ||
+    monthNumber > 12 ||
+    dayNumber < 1 ||
+    dayNumber > 31
+  ) {
+    return isoDate
+  }
+  return `${monthNumber}月${dayNumber}日まで`
+}
+
 export function createOfferDraft(): OfferDraft {
   return {
     ...NEW_CAMPAIGN_PRESET,

@@ -31,6 +31,16 @@ export type AudienceSummary = {
   deliverableCount: number
 }
 
+// 送信確定処理の結果。重複・0人・枠到達のときは配信正本を一切書き換えない。
+// sent-save-failedは「配信はメモリ上で成立したが端末保存に失敗した」状態で、
+// UIは保存失敗とリロードで消える可能性を明示する
+export type CommitOutcome =
+  | { kind: 'sent'; summary: AudienceSummary }
+  | { kind: 'sent-save-failed'; summary: AudienceSummary }
+  | { kind: 'duplicate' }
+  | { kind: 'no-recipients' }
+  | { kind: 'limit-reached' }
+
 // 学生が直近7日間（D021）に受信した配信の数
 function receivedInWindow(
   deliveries: OfferDelivery[],

@@ -1,0 +1,108 @@
+import type { RefObject } from 'react'
+
+import type { Club } from '../../domain/types'
+import type { CampaignView } from './funnel'
+
+type ClubDashboardProps = {
+  club: Club
+  campaigns: CampaignView[]
+  sentThisWeek: number
+  weeklyLimit: number
+  onCreate: () => void
+  headingRef: RefObject<HTMLHeadingElement | null>
+}
+
+const FUNNEL_LABELS = [
+  { key: 'delivered', label: '配信' },
+  { key: 'viewed', label: '閲覧' },
+  { key: 'engaged', label: '関心' },
+  { key: 'planned', label: '参加意向' },
+] as const
+
+// 団体ダッシュボード。表示するのはキャンペーン内容と匿名の件数だけで、
+// 学生の名前・ID・個人別の属性は一切受け取らない（props型で遮断・D007/D024）
+export function ClubDashboard({
+  club,
+  campaigns,
+  sentThisWeek,
+  weeklyLimit,
+  onCreate,
+  headingRef,
+}: ClubDashboardProps) {
+  const quotaFull = sentThisWeek >= weeklyLimit
+
+  return (
+    <>
+      <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+        団体ダッシュボード
+      </h1>
+
+      <section className="club-profile" aria-label="団体プロフィール">
+        <div className="club-profile-head">
+          <span className="club-profile-name">{club.name}</span>
+          {club.verified && <span className="verified-chip">認証済み</span>}
+        </div>
+        <p className="club-profile-description">{club.description}</p>
+        <p className="club-profile-contact">
+          <span className="club-contact-label">{club.contact.label}</span>
+          <span className="club-contact-handle">{club.contact.handle}</span>
+        </p>
+      </section>
+
+      <section className="quota-card" aria-label="今週の送信枠">
+        <div className="quota-row">
+          <span className="quota-label">今週のキャンペーン</span>
+          <span className="quota-value">
+            {sentThisWeek}/{weeklyLimit}
+          </span>
+        </div>
+        <p className="quota-helper">直近7日間に送信できるキャンペーンは{weeklyLimit}件までです。</p>
+        <button
+          type="button"
+          className="button button-primary club-create-button"
+          onClick={onCreate}
+          disabled={quotaFull}
+        >
+          新しいオファーを作成
+        </button>
+        {quotaFull && (
+          <p className="quota-full-note">今週の作成上限（{weeklyLimit}件）に達しています。</p>
+        )}
+      </section>
+
+      <section aria-label="配信済みキャンペーン" className="campaign-section">
+        <h2 className="club-section-heading">配信済みキャンペーン</h2>
+        {campaigns.length === 0 ? (
+          <p className="club-empty-note">配信済みのキャンペーンはまだありません。</p>
+        ) : (
+          <ul className="campaign-list">
+            {campaigns.map((campaign) => (
+              <li key={campaign.offer.id} className="campaign-card">
+                <div className="campaign-head">
+                  <span className="campaign-name">{campaign.offer.eventName}</span>
+                  <span className="campaign-status-chip">配信済み</span>
+                </div>
+                <p className="campaign-date">{campaign.offer.dateText}</p>
+                <dl className="campaign-funnel">
+                  {FUNNEL_LABELS.map((metric) => (
+                    <div key={metric.key} className="funnel-item">
+                      <dt className="funnel-label">{metric.label}</dt>
+                      <dd className="funnel-value">{campaign.funnel[metric.key]}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </li>
+            ))}
+          </ul>
+        )}
+        <p className="club-metric-note">
+          参加意向は「行ってみたい」の回答数です。参加の確約ではありません。
+        </p>
+      </section>
+
+      <p className="club-privacy-note">
+        学生の名前や個人の一覧は表示されません。人数のみ確認できます。
+      </p>
+    </>
+  )
+}
