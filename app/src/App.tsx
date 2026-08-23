@@ -25,17 +25,21 @@ const STUDENT_TAB_PLACEHOLDERS: Record<
 function App() {
   const [role, setRole] = useState<DemoRole>('student')
   const [studentTab, setStudentTab] = useState<StudentTab>('home')
+  // wizard入力中の集中モード。ロール切替と下部ナビを隠し、
+  // 未保存draftの喪失と二重の固定バーを防ぐ（完了・中断で自動復元）
+  const [focusMode, setFocusMode] = useState(false)
   const isStudent = role === 'student'
+  const studentFocus = isStudent && focusMode
 
   return (
     <div className="app-shell">
-      <AppHeader role={role} onRoleChange={setRole} />
+      <AppHeader role={role} onRoleChange={setRole} hideRoleSwitcher={studentFocus} />
       <main className={isStudent ? 'app-main app-main--with-nav' : 'app-main'}>
         {isStudent ? (
           <>
             {/* ホームはhiddenで保持し、タブを往復しても入力中のwizard draftが消えないようにする */}
             <div className="student-tab-panel" hidden={studentTab !== 'home'}>
-              <StudentHome />
+              <StudentHome onFocusModeChange={setFocusMode} />
             </div>
             {studentTab !== 'home' && (
               <>
@@ -59,7 +63,7 @@ function App() {
           </>
         )}
       </main>
-      {isStudent && <BottomNav activeTab={studentTab} onSelect={setStudentTab} />}
+      {isStudent && !focusMode && <BottomNav activeTab={studentTab} onSelect={setStudentTab} />}
     </div>
   )
 }

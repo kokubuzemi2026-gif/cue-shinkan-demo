@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { demoStudent } from '../../data/demoData'
-import { isStudentPreference } from '../../storage/preferenceStore'
+import { createStudentPreferenceStore, isStudentPreference } from '../../storage/preferenceStore'
+import type { StorageLike } from '../../storage/appStorage'
 import {
   BUDGET_OPTIONS,
   buildPreference,
@@ -13,6 +14,7 @@ import {
   passportReducer,
   validateStep,
   WEEKLY_LIMIT_OPTIONS,
+  withReceptionPaused,
   type PassportAction,
   type PassportDraft,
 } from './passportForm'
@@ -182,6 +184,53 @@ describe('選択肢プリセット', () => {
   it('表示ラベルが日本語円表記・週n件になる', () => {
     expect(formatBudgetLabel(2000)).toBe('〜2,000円')
     expect(formatWeeklyLimitLabel(3)).toBe('週3件')
+  })
+})
+
+describe('withReceptionPaused', () => {
+  it('reception.pausedだけを差し替え、他のフィールドは変えない', () => {
+    const stopped = withReceptionPaused(demoStudent, true)
+    expect(stopped.reception.paused).toBe(true)
+    expect(stopped).toEqual({
+      ...demoStudent,
+      reception: { ...demoStudent.reception, paused: true },
+    })
+    const resumed = withReceptionPaused(stopped, false)
+    expect(resumed).toEqual(demoStudent)
+  })
+
+  it('入力を破壊せず、ストアの型検証も通る', () => {
+    const frozen = Object.freeze({
+      ...demoStudent,
+      reception: Object.freeze({ ...demoStudent.reception }),
+    })
+    const next = withReceptionPaused(frozen, true)
+    expect(next).not.toBe(frozen)
+    expect(frozen.reception.paused).toBe(false)
+    expect(isStudentPreference(next)).toBe(true)
+  })
+
+  it('再開した設定はlocalStorage adapterへ保存・復元できる', () => {
+    const map = new Map<string, string>()
+    const storage: StorageLike = {
+      getItem: (key) => map.get(key) ?? null,
+      setItem: (key, value) => {
+        map.set(key, value)
+      },
+      removeItem: (key) => {
+        map.delete(key)
+      },
+    }
+    const store = createStudentPreferenceStore(storage)
+    store.save(withReceptionPaused(demoStudent, true))
+    expect(store.load()?.reception.paused).toBe(true)
+    const stored = store.load()
+    expect(stored).not.toBeNull()
+    if (stored) {
+      store.save(withReceptionPaused(stored, false))
+    }
+    expect(store.load()?.reception.paused).toBe(false)
+    expect(store.load()).toEqual(demoStudent)
   })
 })
 

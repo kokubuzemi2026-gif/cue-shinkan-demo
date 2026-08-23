@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react'
-
 import {
   ACTIVITY_STYLE_LABELS,
   DAY_SLOT_LABELS,
@@ -16,15 +14,8 @@ type PassportSummaryProps = {
   // 編集・停止/再開の導線は登録済みホームでだけ渡す（完了直後の要約では表示しない）
   onEdit?: () => void
   onTogglePaused?: () => void
-}
-
-function Fact({ term, children }: { term: string; children: ReactNode }) {
-  return (
-    <div className="passport-fact">
-      <dt>{term}</dt>
-      <dd>{children}</dd>
-    </div>
-  )
+  // 受信再開の直後だけtrue。aria-live領域から通知する
+  showResumeNotice?: boolean
 }
 
 function ValueChips({ labels }: { labels: string[] }) {
@@ -42,61 +33,103 @@ function ValueChips({ labels }: { labels: string[] }) {
   )
 }
 
-export function PassportSummary({ preference, onEdit, onTogglePaused }: PassportSummaryProps) {
+export function PassportSummary({
+  preference,
+  onEdit,
+  onTogglePaused,
+  showResumeNotice = false,
+}: PassportSummaryProps) {
   const { reception } = preference
   const paused = reception.paused
 
   return (
     <section className="passport-card" aria-label="興味パスポートの登録内容">
-      {/* 停止/再開の切替結果を読み上げへ届けるため、状態チップはaria-liveで包む */}
+      {/* 停止/再開の切替結果を読み上げへ届けるため、状態表示はaria-liveで包む */}
       <p className="passport-status-row" aria-live="polite">
         <span className={paused ? 'status-chip status-chip--paused' : 'status-chip'}>
           {paused ? '受信停止中' : `オファー受信中・${formatWeeklyLimitLabel(reception.weeklyLimit)}まで`}
         </span>
+        {showResumeNotice && (
+          <span className="status-notice">オファーの受信を再開しました</span>
+        )}
       </p>
 
       <h2 className="passport-card-title">あなたの興味パスポート</h2>
 
-      {paused && (
-        <p className="paused-banner">
-          オファーの受信を停止しています。再開すると、条件の合う案内がまた届くようになります。
-        </p>
+      {onEdit !== undefined && (
+        <button type="button" className="button button-secondary passport-edit" onClick={onEdit}>
+          内容を編集
+        </button>
       )}
 
-      <dl className="passport-facts">
-        <Fact term="興味のあるジャンル">
-          <ValueChips labels={preference.interests.map((value) => INTEREST_LABELS[value])} />
-        </Fact>
-        <Fact term="活動の目的">
-          <ValueChips labels={preference.purposes.map((value) => PURPOSE_LABELS[value])} />
-        </Fact>
-        <Fact term="活動スタイル">{ACTIVITY_STYLE_LABELS[preference.style]}</Fact>
-        <Fact term="いまの経験">{EXPERIENCE_LABELS[preference.experience]}</Fact>
-        <Fact term="参加できる曜日">
-          <ValueChips labels={preference.availableDays.map((value) => DAY_SLOT_LABELS[value])} />
-        </Fact>
-        <Fact term="活動の頻度">{FREQUENCY_LABELS[preference.frequency]}</Fact>
-        <Fact term="1回あたりの予算">{formatBudgetLabel(preference.maxFeePerEventYen)}</Fact>
-        <Fact term="受け取るカテゴリ">
-          <ValueChips labels={reception.allowedCategories.map((value) => INTEREST_LABELS[value])} />
-        </Fact>
-        <Fact term="1週間に受け取る上限">{formatWeeklyLimitLabel(reception.weeklyLimit)}</Fact>
-      </dl>
-
-      {(onEdit !== undefined || onTogglePaused !== undefined) && (
-        <div className="passport-actions">
-          {onEdit !== undefined && (
-            <button type="button" className="button button-secondary" onClick={onEdit}>
-              内容を編集する
-            </button>
-          )}
+      {paused ? (
+        <div className="paused-banner">
+          <p>
+            オファーの受信を停止しています。再開すると、条件の合う案内がまた届くようになります。
+          </p>
           {onTogglePaused !== undefined && (
-            <button type="button" className="button button-secondary" onClick={onTogglePaused}>
-              {paused ? '受信を再開する' : '受信を停止する'}
+            <button type="button" className="button button-primary" onClick={onTogglePaused}>
+              オファー受信を再開
             </button>
           )}
         </div>
+      ) : (
+        onTogglePaused !== undefined && (
+          <button type="button" className="button button-ghost" onClick={onTogglePaused}>
+            受信を停止する
+          </button>
+        )
       )}
+
+      <dl className="passport-facts">
+        <div className="passport-fact">
+          <dt>興味のあるジャンル</dt>
+          <dd>
+            <ValueChips labels={preference.interests.map((value) => INTEREST_LABELS[value])} />
+          </dd>
+        </div>
+        <div className="passport-fact">
+          <dt>活動の目的</dt>
+          <dd>
+            <ValueChips labels={preference.purposes.map((value) => PURPOSE_LABELS[value])} />
+          </dd>
+        </div>
+        {/* 単一値の条件は2列グリッドでコンパクトに見せる */}
+        <div className="passport-grid">
+          <div className="passport-fact">
+            <dt>活動スタイル</dt>
+            <dd>{ACTIVITY_STYLE_LABELS[preference.style]}</dd>
+          </div>
+          <div className="passport-fact">
+            <dt>いまの経験</dt>
+            <dd>{EXPERIENCE_LABELS[preference.experience]}</dd>
+          </div>
+          <div className="passport-fact">
+            <dt>参加できる曜日</dt>
+            <dd>{preference.availableDays.map((value) => DAY_SLOT_LABELS[value]).join('・')}</dd>
+          </div>
+          <div className="passport-fact">
+            <dt>活動の頻度</dt>
+            <dd>{FREQUENCY_LABELS[preference.frequency]}</dd>
+          </div>
+          <div className="passport-fact">
+            <dt>1回あたりの予算</dt>
+            <dd>{formatBudgetLabel(preference.maxFeePerEventYen)}</dd>
+          </div>
+          <div className="passport-fact">
+            <dt>1週間に受け取る上限</dt>
+            <dd>{formatWeeklyLimitLabel(reception.weeklyLimit)}</dd>
+          </div>
+        </div>
+        <div className="passport-fact">
+          <dt>受け取るカテゴリ</dt>
+          <dd>
+            <ValueChips
+              labels={reception.allowedCategories.map((value) => INTEREST_LABELS[value])}
+            />
+          </dd>
+        </div>
+      </dl>
 
       <p className="passport-privacy-note">名前や顔写真は、団体には公開されません</p>
     </section>

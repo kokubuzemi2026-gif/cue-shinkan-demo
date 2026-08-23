@@ -62,25 +62,19 @@ const RECEPTION_OPTIONS: ChipOption<'on' | 'off'>[] = [
 type PassportWizardProps = {
   draft: PassportDraft
   dispatch: (action: PassportAction) => void
-  // 初回は「やめる」、編集時は「保存せずにもどる」を親が渡す
-  cancelLabel: string
   onComplete: () => void
   onCancel: () => void
 }
 
-export function PassportWizard({
-  draft,
-  dispatch,
-  cancelLabel,
-  onComplete,
-  onCancel,
-}: PassportWizardProps) {
+export function PassportWizard({ draft, dispatch, onComplete, onCancel }: PassportWizardProps) {
   const [step, setStep] = useState(1)
   const headingRef = useRef<HTMLHeadingElement>(null)
 
-  // step切替時に見出しへフォーカスを移し、キーボード・スクリーンリーダーでも現在地が分かるようにする
+  // step切替のたびにスクロールを先頭へ統一し（wizard見出しがviewport上部へ来る）、
+  // 見出しへフォーカスを移してキーボード・スクリーンリーダーでも現在地が分かるようにする
   useEffect(() => {
-    headingRef.current?.focus()
+    window.scrollTo(0, 0)
+    headingRef.current?.focus({ preventScroll: true })
   }, [step])
 
   const meta = PASSPORT_STEPS[step - 1]
@@ -219,7 +213,7 @@ export function PassportWizard({
 
       <div className="wizard-footer">
         <button type="button" className="button button-secondary" onClick={goBack}>
-          {step > 1 ? '戻る' : cancelLabel}
+          {step > 1 ? '戻る' : 'やめる'}
         </button>
         <button
           type="button"

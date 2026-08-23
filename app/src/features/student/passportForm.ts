@@ -116,6 +116,14 @@ export function buildPreference(draft: PassportDraft, base: StudentPreference): 
   }
 }
 
+// 登録済みホームの停止/再開トグルで使う。入力を破壊せず、reception.pausedだけ差し替える
+export function withReceptionPaused(
+  preference: StudentPreference,
+  paused: boolean,
+): StudentPreference {
+  return { ...preference, reception: { ...preference.reception, paused } }
+}
+
 export type PassportStepMeta = {
   step: number
   heading: string

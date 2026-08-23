@@ -38,6 +38,16 @@
   border: 1.5px solid rgba(23, 33, 43, 0.18);
 }
 
+/* 控えめな第3のボタン。主要操作（内容を編集）より視覚的に弱くする */
+.button-ghost {
+  min-height: var(--tap-target);
+  background: transparent;
+  color: var(--color-muted);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .button:focus-visible,
 .choice-chip:focus-visible {
   outline: 2px solid var(--color-ink);
@@ -173,14 +183,19 @@
   font-weight: 700;
 }
 
-/* 下部ナビの真上に固定し、「次へ」を常に親指の届く位置へ置く */
+/* 集中モード中は下部ナビが消えるため、操作バーをviewport下端へ固定する。
+   本文側の逃げ余白は.app-main--with-navのpadding-bottomが引き続き確保する */
 .wizard-footer {
-  position: sticky;
-  bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: var(--shell-max-width);
+  z-index: 10;
   display: flex;
   gap: var(--space-3);
-  margin: 0 calc(-1 * var(--space-4));
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-3) var(--space-4) calc(var(--space-3) + env(safe-area-inset-bottom, 0px));
   background: var(--color-white);
   border-top: var(--line-soft);
 }
@@ -305,19 +320,27 @@
   font-size: 20px;
   font-weight: 800;
   line-height: 1.5;
+  text-wrap: balance;
 }
 
+/* 手動改行は入れず、balance＋フレーズ境界改行（対応ブラウザのみ）で
+   「です。」の途中などの不自然な折返しを避ける */
 .complete-body {
   margin: 0;
   font-size: 14px;
-  line-height: 1.8;
+  line-height: 1.9;
+  text-wrap: balance;
+  word-break: auto-phrase;
 }
 
 .complete-note {
   margin: 0;
+  align-self: stretch;
   font-size: 12px;
-  line-height: 1.7;
+  line-height: 1.8;
   color: var(--color-muted);
+  text-align: left;
+  word-break: auto-phrase;
 }
 
 .save-warning {
@@ -356,6 +379,16 @@
 
 .passport-status-row {
   margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.status-notice {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-muted);
 }
 
 .status-chip {
@@ -379,14 +412,30 @@
   line-height: 1.5;
 }
 
+/* 停止説明と「オファー受信を再開」をひとまとまりで、最初のviewport内に置く */
 .paused-banner {
   margin: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
   padding: var(--space-3);
   background: var(--color-cream);
   border: var(--line-soft);
   border-radius: 12px;
   font-size: 13px;
   line-height: 1.7;
+}
+
+.paused-banner p {
+  margin: 0;
+}
+
+/* 主要操作を最初のviewportに置くため、編集・停止・再開はカード幅いっぱいに広げる */
+.passport-edit,
+.passport-card .button-ghost,
+.paused-banner .button {
+  align-self: stretch;
 }
 
 .passport-facts {
@@ -411,6 +460,22 @@
   line-height: 1.6;
 }
 
+/* 単一値の条件は2列グリッドで縦の余白を圧縮する（375pxでも折れ・重なりなし） */
+.passport-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.passport-grid .passport-fact {
+  min-width: 0;
+}
+
+.passport-grid .passport-fact dd {
+  overflow-wrap: anywhere;
+}
+
 .value-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -429,13 +494,6 @@
 .value-empty {
   color: var(--color-muted);
   font-size: 13px;
-}
-
-.passport-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  align-self: stretch;
 }
 
 .passport-privacy-note {

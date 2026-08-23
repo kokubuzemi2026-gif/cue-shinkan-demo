@@ -1,9 +1,14 @@
-import { useReducer, useState } from 'react'
+import { useEffect, useReducer, useState } from 'react'
 
 import { demoStudent } from '../../data/demoData'
 import type { StudentPreference } from '../../domain/types'
 import { studentPreferenceStore } from '../../storage/preferenceStore'
-import { buildPreference, createDraft, passportReducer } from './passportForm'
+import {
+  buildPreference,
+  createDraft,
+  passportReducer,
+  withReceptionPaused,
+} from './passportForm'
 import { PassportSummary } from './PassportSummary'
 import { PassportWizard } from './PassportWizard'
 
@@ -12,9 +17,14 @@ type PassportView = 'intro' | 'wizard' | 'complete' | 'summary'
 const SAVE_FAILED_MESSAGE =
   '端末への保存に失敗しました。入力内容はこの画面では保持されています。'
 
+type StudentHomeProps = {
+  // wizard表示中だけtrueを通知し、App側がロール切替と下部ナビを隠す（集中モード）
+  onFocusModeChange: (active: boolean) => void
+}
+
 // 新入生ホーム。興味パスポートの未登録／入力中／完了／登録済みを1タブ内で切り替える。
 // localStorageの読み書きはstudentPreferenceStore経由のみ（storage/preferenceStore.ts）。
-export function StudentHome() {
+export function StudentHome({ onFocusModeChange }: StudentHomeProps) {
   // 読み込みは同期のためローディング状態は不要。破損データはloadがnullへ縮退させる
   const [saved, setSaved] = useState<StudentPreference | null>(() =>
     studentPreferenceStore.load(),
@@ -23,10 +33,18 @@ export function StudentHome() {
   // シードは「保存済みの内容、なければメイン学生の初期値」（tasks/003 受入条件）
   const [draft, dispatch] = useReducer(passportReducer, saved ?? demoStudent, createDraft)
   const [saveFailed, setSaveFailed] = useState(false)
+  const [resumeNotice, setResumeNotice] = useState(false)
+
+  // ビュー切替のたびにスクロール位置を先頭へ統一する
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [view])
 
   const startWizard = () => {
     dispatch({ type: 'reset', value: createDraft(saved ?? demoStudent) })
+    setResumeNotice(false)
     setView('wizard')
+    onFocusModeChange(true)
   }
 
   const completeWizard = () => {
@@ -35,21 +53,22 @@ export function StudentHome() {
     setSaved(next)
     setSaveFailed(!ok)
     setView('complete')
+    onFocusModeChange(false)
   }
 
   const cancelWizard = () => {
     setView(saved ? 'summary' : 'intro')
+    onFocusModeChange(false)
   }
 
   const togglePaused = () => {
     if (!saved) return
-    const next: StudentPreference = {
-      ...saved,
-      reception: { ...saved.reception, paused: !saved.reception.paused },
-    }
+    const next = withReceptionPaused(saved, !saved.reception.paused)
     const ok = studentPreferenceStore.save(next)
     setSaved(next)
     setSaveFailed(!ok)
+    // 再開したときだけaria-live領域から「再開しました」を通知する
+    setResumeNotice(!next.reception.paused)
   }
 
   if (view === 'wizard') {
@@ -60,7 +79,6 @@ export function StudentHome() {
         <PassportWizard
           draft={draft}
           dispatch={dispatch}
-          cancelLabel={saved ? '保存せずにもどる' : 'やめる'}
           onComplete={completeWizard}
           onCancel={cancelWizard}
         />
@@ -76,13 +94,13 @@ export function StudentHome() {
           <span className="complete-check" aria-hidden="true">
             ✓
           </span>
-          <h2 className="complete-heading">興味パスポートができました</h2>
+          <h2 className="complete-heading">興味パスポートを保存しました</h2>
           <p className="complete-body">
-            あとは、条件の合う団体からの案内を待つだけです。応募もDMもいりません。
+            あとは、条件の合う団体から届く案内を待つだけ。応募やDMは必要ありません。
           </p>
           {saveFailed && <p className="save-warning">{SAVE_FAILED_MESSAGE}</p>}
           <p className="complete-note">
-            内容はこの端末のブラウザにだけ保存されます。名前や顔写真は登録されていません。
+            内容はこのブラウザだけに保存され、名前や顔写真は登録されません。
           </p>
         </section>
         <PassportSummary preference={saved} />
@@ -102,7 +120,12 @@ export function StudentHome() {
       <>
         <h1 className="page-title">新入生ホーム</h1>
         {saveFailed && <p className="save-warning">{SAVE_FAILED_MESSAGE}</p>}
-        <PassportSummary preference={saved} onEdit={startWizard} onTogglePaused={togglePaused} />
+        <PassportSummary
+          preference={saved}
+          onEdit={startWizard}
+          onTogglePaused={togglePaused}
+          showResumeNotice={resumeNotice}
+        />
         <section className="placeholder-card" aria-label="次のステップ">
           <span className="placeholder-chip">次のステップ</span>
           <p className="placeholder-text">
@@ -117,7 +140,7 @@ export function StudentHome() {
     <>
       <h1 className="page-title">新入生ホーム</h1>
       <section className="hero-card" aria-label="興味パスポートの案内">
-        <span className="hero-chip">はじめの60秒</span>
+        <span className="hero-chip">約60秒で完了</span>
         <h2 className="hero-heading">探さなくても、あなたに合う新歓が届く</h2>
         <p className="hero-body">
           興味や参加しやすい条件を登録すると、条件の合う部活・サークルの方から新歓イベントの案内が届きます。自分から応募したり、DMを送ったりする必要はありません。
@@ -130,7 +153,7 @@ export function StudentHome() {
         <button type="button" className="button button-primary" onClick={startWizard}>
           興味パスポートをつくる
         </button>
-        <p className="hero-note">タップだけ・約60秒で完了します</p>
+        <p className="hero-note">あとからいつでも変更できます</p>
       </section>
     </>
   )
