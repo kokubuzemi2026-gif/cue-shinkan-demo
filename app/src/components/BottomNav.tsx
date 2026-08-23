@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+export type StudentTab = 'home' | 'inbox' | 'settings'
+
 function NavIcon({ children }: { children: ReactNode }) {
   return (
     <svg
@@ -19,11 +21,10 @@ function NavIcon({ children }: { children: ReactNode }) {
   )
 }
 
-const NAV_ITEMS = [
+const NAV_ITEMS: { key: StudentTab; label: string; icon: ReactNode }[] = [
   {
     key: 'home',
     label: 'ホーム',
-    current: true,
     icon: (
       <NavIcon>
         <path d="M4 11.2 12 4.5l8 6.7" />
@@ -34,7 +35,6 @@ const NAV_ITEMS = [
   {
     key: 'inbox',
     label: '受信箱',
-    current: false,
     icon: (
       <NavIcon>
         <rect x="4" y="6.5" width="16" height="12" rx="2.4" />
@@ -45,7 +45,6 @@ const NAV_ITEMS = [
   {
     key: 'settings',
     label: '設定',
-    current: false,
     icon: (
       <NavIcon>
         <path d="M4.5 8.2h2.6" />
@@ -59,8 +58,13 @@ const NAV_ITEMS = [
   },
 ]
 
-// Task 001時点では外枠のみ。各タブの画面と遷移は後続タスクで実装する。
-export function BottomNav() {
+type BottomNavProps = {
+  activeTab: StudentTab
+  onSelect: (tab: StudentTab) => void
+}
+
+// Task 003でタブ切替を接続。受信箱・設定タブの中身は後続タスクで実装する。
+export function BottomNav({ activeTab, onSelect }: BottomNavProps) {
   return (
     <nav className="bottom-nav" aria-label="新入生メニュー">
       {NAV_ITEMS.map((item) => (
@@ -68,8 +72,8 @@ export function BottomNav() {
           key={item.key}
           type="button"
           className="bottom-nav-item"
-          aria-current={item.current ? 'page' : undefined}
-          aria-disabled={!item.current}
+          aria-current={activeTab === item.key ? 'page' : undefined}
+          onClick={() => onSelect(item.key)}
         >
           {item.icon}
           <span>{item.label}</span>
