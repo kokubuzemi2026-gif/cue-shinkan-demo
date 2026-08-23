@@ -60,9 +60,14 @@ export function SendConfirm({
           の新入生とマッチしています
         </p>
         {summary.limitedCount > 0 && (
+          // 「10」と「人」の泣き別れを防ぐため、人数と単位はnowrapで束ね、
+          // 折り返しは矢印の位置でだけ起きるようにする
           <p className="audience-breakdown">
-            うち受信上限に達している学生 {summary.limitedCount}人 → 今回の配信{' '}
-            {summary.deliverableCount}人
+            <span className="audience-nowrap">
+              うち受信上限に達している学生 {summary.limitedCount}人
+            </span>{' '}
+            →{' '}
+            <span className="audience-nowrap">今回の配信 {summary.deliverableCount}人</span>
           </p>
         )}
         {canSend && (

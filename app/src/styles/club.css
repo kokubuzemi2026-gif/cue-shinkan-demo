@@ -302,6 +302,10 @@
   font-weight: 700;
 }
 
+.audience-nowrap {
+  white-space: nowrap;
+}
+
 .audience-quota {
   margin: 0;
   font-size: 12px;
