@@ -4,22 +4,39 @@ import { formatEventFee, OFFER_STATUS_LABELS, type InboxItem } from './inbox'
 type OfferCardProps = {
   item: InboxItem
   onOpen: (offerId: string) => void
+  // 到着状態（tasks/006）: pending=一度きりの演出＋「新着」チップ /
+  // settled=チップのみ（animationend後も表示維持） / null=通常。既読状態とは独立
+  arrivalPhase?: 'pending' | 'settled' | null
+  onArrivalSettled?: (offerId: string) => void
 }
 
 // 受信箱の一覧カード。カード全体が1つのボタンで、タップで詳細（開封=既読）へ進む
-export function OfferCard({ item, onOpen }: OfferCardProps) {
+export function OfferCard({
+  item,
+  onOpen,
+  arrivalPhase = null,
+  onArrivalSettled,
+}: OfferCardProps) {
   const { offer, club, result, response, status } = item
   const statusLabel = OFFER_STATUS_LABELS[status]
   const firstReason = result.reasons[0]
+  const isArrival = arrivalPhase !== null
 
   return (
     <button
       type="button"
-      className="offer-card"
+      className={arrivalPhase === 'pending' ? 'offer-card offer-card--arrival' : 'offer-card'}
       onClick={() => onOpen(offer.id)}
-      aria-label={`${statusLabel} ${club.name} ${offer.eventName} マッチ度${result.score}`}
+      onAnimationEnd={(event) => {
+        // 子要素のアニメや別animationの終了で誤ってsettled化しないよう限定する
+        if (event.target === event.currentTarget && event.animationName === 'offer-arrive') {
+          onArrivalSettled?.(offer.id)
+        }
+      }}
+      aria-label={`${isArrival ? '新着 ' : ''}${statusLabel} ${club.name} ${offer.eventName} マッチ度${result.score}`}
     >
       <span className="offer-card-top">
+        {isArrival && <span className="arrival-chip">新着</span>}
         <span className={`offer-status offer-status--${status}`}>{statusLabel}</span>
         <span className="offer-match-chip">マッチ度 {result.score}</span>
       </span>

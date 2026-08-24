@@ -10,6 +10,7 @@ import type {
 } from '../../domain/types'
 import { offerReadStore } from '../../storage/readStore'
 import { offerResponseStore } from '../../storage/responseStore'
+import type { ArrivalEvent, ArrivalState } from './arrival'
 import { buildInboxView, isSelectionStale, markRead, upsertResponse } from './inbox'
 import { OfferCard } from './OfferCard'
 import { OfferDetail } from './OfferDetail'
@@ -23,6 +24,9 @@ type StudentInboxProps = {
   preference: StudentPreference | null
   // Appが持つ配信イベント正本（D023）。団体側と同じ状態を共有する
   deliveries: OfferDelivery[]
+  // 到着状態（tasks/006）。pending=演出＋「新着」/ settled=「新着」のみ / null=通常
+  arrival: ArrivalState
+  onArrivalEvent: (event: ArrivalEvent) => void
   savePreference: (next: StudentPreference) => boolean
   onNavigateHome: () => void
 }
@@ -32,6 +36,8 @@ type StudentInboxProps = {
 export function StudentInbox({
   preference,
   deliveries,
+  arrival,
+  onArrivalEvent,
   savePreference,
   onNavigateHome,
 }: StudentInboxProps) {
@@ -53,6 +59,11 @@ export function StudentInbox({
   const wasDetailOpenRef = useRef(false)
 
   const view = buildInboxView(student, deliveries, demoClubs, responses, reads)
+  // 到着対象が現在の表示集合に実在するときだけ読み上げ通知を出す
+  const arrivalItem =
+    arrival === null
+      ? undefined
+      : view.items.find((item) => item.offer.id === arrival.offerId)
   const selected =
     selectedOfferId === null
       ? undefined
@@ -88,6 +99,8 @@ export function StudentInbox({
       setReads(nextReads)
       setReadSaveFailed(!ok)
     }
+    // 到着状態は「対象の詳細を開いた」ときだけ消費される（IDが違えば維持）
+    onArrivalEvent({ type: 'opened', offerId })
     wasDetailOpenRef.current = true
     setResumeNoticeFor(null)
     setSelectedOfferId(offerId)
@@ -163,10 +176,26 @@ export function StudentInbox({
           {!view.paused && (
             <p className="inbox-lead">選んだ条件に合う新歓案内だけが届いています。</p>
           )}
+          {/* 新着の読み上げ通知。テキストはofferIdにのみ依存し、
+              phase遷移（pending→settled）で再読み上げされない。他のlive regionと入れ子にしない */}
+          {arrivalItem !== undefined && (
+            <p role="status" className="visually-hidden">
+              新しいオファーが届きました: {arrivalItem.offer.eventName}
+            </p>
+          )}
           <ul className="offer-list">
             {view.items.map((item) => (
               <li key={item.offer.id}>
-                <OfferCard item={item} onOpen={openDetail} />
+                <OfferCard
+                  item={item}
+                  onOpen={openDetail}
+                  arrivalPhase={
+                    arrival !== null && arrival.offerId === item.offer.id ? arrival.phase : null
+                  }
+                  onArrivalSettled={(offerId) =>
+                    onArrivalEvent({ type: 'animationSettled', offerId })
+                  }
+                />
               </li>
             ))}
           </ul>

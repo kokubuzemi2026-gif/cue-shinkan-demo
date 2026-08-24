@@ -10,6 +10,12 @@ import type { DemoRole } from './domain/role'
 import type { ClubOffer, OfferDelivery, StudentPreference } from './domain/types'
 import { ClubHome } from './features/club/ClubHome'
 import {
+  arrivalEventForDelivery,
+  nextArrivalState,
+  type ArrivalEvent,
+  type ArrivalState,
+} from './features/student/arrival'
+import {
   appendDelivery,
   CLUB_WEEKLY_CAMPAIGN_LIMIT,
   clubSentInWindow,
@@ -81,6 +87,13 @@ function App({ initialResetCompleted }: AppProps) {
     }
   }, [initialResetCompleted])
 
+  // ---- 到着状態（tasks/006・非永続） ----
+  // 対象は「最後に実際にメイン学生へ届いた」配信1件。reloadで消滅し偽の新着は出ない
+  const [arrival, setArrival] = useState<ArrivalState>(null)
+  const sendArrival = (event: ArrivalEvent) => {
+    setArrival((state) => nextArrivalState(state, event))
+  }
+
   const openResetDialog = () => {
     setResetError(null)
     setResetDialogOpen(true)
@@ -148,30 +161,42 @@ function App({ initialResetCompleted }: AppProps) {
     if (evaluation.recipients.length === 0) {
       return { kind: 'no-recipients' }
     }
-    const next = appendDelivery(current, buildDelivery(offer, evaluation.recipients, nowIso))
+    const delivery = buildDelivery(offer, evaluation.recipients, nowIso)
+    const next = appendDelivery(current, delivery)
     if (next === current) {
       return { kind: 'duplicate' }
     }
     deliveriesRef.current = next
     setDeliveries(next)
     const saved = offerDeliveryStore.save(next)
+    // 到着状態は、この配信のrecipientsにメイン学生が実際に含まれるときだけ更新する
+    // （停止・不許可・週上限・score不足で届かない送信では偽の新着を出さない）。
+    // 保存失敗時もメモリ上の配信は受信箱へ表示されるため演出対象になる
+    const arrivalEvent = arrivalEventForDelivery(delivery, (preference ?? demoStudent).id)
+    if (arrivalEvent !== null) {
+      sendArrival(arrivalEvent)
+    }
     return { kind: saved ? 'sent' : 'sent-save-failed', summary: toAudienceSummary(evaluation) }
   }
 
   // 送信完了画面の主CTA: 学生ロールの受信箱タブをページ先頭で開く（新着未読が先頭）
   const openStudentInbox = () => {
+    setShowResetNotice(false)
     setRole('student')
     setStudentTab('inbox')
     window.scrollTo(0, 0)
   }
 
-  // タブ・ロール切替のラッパ。リセット完了通知は最初の移動で片づける
+  // タブ・ロール切替のラッパ。リセット完了通知は最初の移動で片づけ、
+  // 受信箱から離れたら到着状態を消費する（hidden→再表示でのアニメ再発火防止）
   const changeStudentTab = (tab: StudentTab) => {
     if (tab !== 'home') setShowResetNotice(false)
+    if (studentTab === 'inbox' && tab !== 'inbox') sendArrival({ type: 'leftInbox' })
     setStudentTab(tab)
   }
   const changeRole = (next: DemoRole) => {
     if (next !== 'student') setShowResetNotice(false)
+    if (next !== 'student' && studentTab === 'inbox') sendArrival({ type: 'leftInbox' })
     setRole(next)
   }
 
@@ -203,8 +228,10 @@ function App({ initialResetCompleted }: AppProps) {
               <StudentInbox
                 preference={preference}
                 deliveries={deliveries}
+                arrival={arrival}
+                onArrivalEvent={sendArrival}
                 savePreference={savePreference}
-                onNavigateHome={() => setStudentTab('home')}
+                onNavigateHome={() => changeStudentTab('home')}
               />
             </div>
             {studentTab === 'settings' && (
