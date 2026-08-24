@@ -70,3 +70,42 @@ CUE は、新入生が事前に登録した「興味パスポート」をもと�
 - 方針: 認証・DB・本番通知は作らず、学生側と団体側が連動する一連のデモを完成させる
 
 実装順序は `docs/implementation_plan.md` と `tasks/` を参照してください。
+
+## ローカル開発
+
+前提: Node.js 22（Vite 8の要件 `^20.19.0 || >=22.12.0` を満たすLTS）
+
+```bash
+cd app
+npm ci
+npm run dev   # http://localhost:5173/cue-shinkan-demo/
+```
+
+品質チェックとビルド:
+
+```bash
+npm run lint
+npm run test -- --run
+npm run build
+```
+
+production preview（公開時と同じbase pathで確認）:
+
+```bash
+npm run preview   # http://localhost:4173/cue-shinkan-demo/
+```
+
+## 公開（GitHub Pages）
+
+- 公開URL: https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/
+- 公開元はGitHub Actions（Settings → Pages → Build and deployment → Source: GitHub Actions）
+- `main`へのpushで自動公開。Actionsタブの「Deploy to GitHub Pages」からworkflow_dispatchで手動再公開できる
+- デモ状態はブラウザのlocalStorageへ保存される。ヘッダーの「デモ用架空データ」バッジから、いつでも初期状態へ戻せる
+- 表示されるのはすべて架空データで、実在する学生の情報を含まない
+
+公開URLで問題がある場合の確認手順:
+
+1. Actionsタブで「Deploy to GitHub Pages」の最新runが成功しているか確認する
+2. Settings → Pages のSourceが「GitHub Actions」になっているか確認する
+3. ブラウザを再読み込みする（必要ならキャッシュを削除する）
+4. 表示が崩れた状態が残る場合は「デモ用架空データ」バッジからデモをリセットする
