@@ -218,6 +218,10 @@ test('3-25: 登録→権限→団体→招待→切替の一連フロー', async
     })
 
     await test.step('18-19: 招待URLのhash即時除去→内容確認→参加', async () => {
+      // 同一URLでhashだけ異なるgotoはsame-document navigationとなり再読込されない。
+      // 招待リンクは外部（チャット等）から新規に開かれる想定のため、about:blankを
+      // 挟んで実際のリンクオープンと同じ全読込にする
+      await pageB.goto('about:blank')
       await pageB.goto(inviteUrl)
       // 18: 読み取り直後にURLから#invite=...が除去される（トークンを出力しないbooleanで検証）
       await expect
@@ -239,6 +243,7 @@ test('3-25: 登録→権限→団体→招待→切替の一連フロー', async
     })
 
     await test.step('21: 使用済み招待リンクは再利用できない', async () => {
+      await pageB.goto('about:blank')
       await pageB.goto(inviteUrl)
       await expect(pageB.getByText('この招待リンクは使えません', { exact: false })).toBeVisible({
         timeout: 15_000,
