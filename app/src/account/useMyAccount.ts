@@ -21,7 +21,12 @@ export function useMyAccount(
 
   useEffect(() => {
     let active = true
-    setState({ status: 'loading' })
+    // 初回（未取得）だけ全画面ローディングを出す。取得済みデータがある再取得（reload）では
+    // 表示中のaccountを保持し、AuthenticatedShellのunmount＝選択中コンテキストの喪失を防ぐ
+    // （団体プロフィール保存後に新入生画面へ戻る不具合の修正）。
+    // ユーザー切替時はAppRootがkey={userId}でこのフックごと再マウントするため、
+    // 前ユーザーのデータがここで持ち越されることはない
+    setState((previous) => (previous.status === 'loaded' ? previous : { status: 'loading' }))
 
     void (async () => {
       try {
@@ -94,7 +99,10 @@ export function useMyAccount(
           })
         }
       } catch {
-        if (active) setState({ status: 'error' })
+        // 再取得の失敗では表示中のデータを保持する（エラー画面を出すのは初回取得の失敗のみ）
+        if (active) {
+          setState((previous) => (previous.status === 'loaded' ? previous : { status: 'error' }))
+        }
       }
     })()
 

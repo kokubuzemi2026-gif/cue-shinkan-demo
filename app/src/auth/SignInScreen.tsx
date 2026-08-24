@@ -100,7 +100,10 @@ export function SignInScreen({ client, hasPendingInvite }: SignInScreenProps) {
               団体の招待リンクを開いています。ログイン後に参加確認へ進みます。
             </p>
           )}
-          <form className="auth-form" onSubmit={handleEmailSubmit}>
+          {/* noValidate: 入力値は送信前にnormalizeUniversityEmailで正規化するため、
+              前後空白付きの生入力をブラウザ標準のemail検証が弾かないようにする。
+              判定は自前のisUniversityEmail（+サーバー側is_university_user）が行う */}
+          <form className="auth-form" onSubmit={handleEmailSubmit} noValidate>
             <label className="field-label" htmlFor="signin-email">
               大学メールアドレス
             </label>

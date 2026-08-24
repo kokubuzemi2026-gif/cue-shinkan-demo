@@ -21,6 +21,12 @@ dist-ssr
 supabase/.temp/
 supabase/.branches/
 
+# Playwrightの成果物（trace等は無効化しているが、生成された場合もcommitしない）
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
