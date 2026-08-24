@@ -90,10 +90,12 @@ async function signInWithOtp(
   const sendButton = page.getByRole('button', { name: '6桁コードを送る' })
   await expect(sendButton).toBeEnabled()
   await sendButton.click()
-  await expect(page.getByLabel('6桁コード')).toBeVisible()
+  // section側のaria-label「6桁コードの入力」と部分一致しないよう、textboxロールで特定する
+  const codeInput = page.getByRole('textbox', { name: '6桁コード' })
+  await expect(codeInput).toBeVisible()
 
   const mail = await fetchOtpMail(request, expectedAddress)
-  await page.getByLabel('6桁コード').fill(mail.code)
+  await codeInput.fill(mail.code)
   await page.getByRole('button', { name: 'ログインする' }).click()
   await expect(page.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
     timeout: 15_000,
