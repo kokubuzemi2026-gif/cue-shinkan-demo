@@ -12,6 +12,15 @@ dist
 dist-ssr
 *.local
 
+# 環境変数（実値はコミットしない。プレースホルダーは.env.exampleのみ）
+.env
+.env.*
+!.env.example
+
+# Supabase CLIの一時ファイル
+supabase/.temp/
+supabase/.branches/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
