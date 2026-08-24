@@ -64,30 +64,29 @@ select is_empty(
 );
 
 -- ---- authenticatedのEXECUTEは公開RPC（F2・F5〜F12）だけ ----
-select results_eq(
-  $$
-  select distinct p.proname::text
-  from pg_proc p
-  join pg_namespace n on n.oid = p.pronamespace
-  cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
-  where n.nspname in ('public', 'private')
-    and p.proname in (
-      'is_university_email', 'is_university_user',
-      'is_org_member', 'org_role_at_least', 'generate_member_label',
-      'set_updated_at', 'protect_last_owner',
-      'create_organization', 'update_organization_profile',
-      'create_invitation', 'revoke_invitation', 'list_invitations',
-      'preview_invitation', 'accept_invitation', 'org_member_directory'
-    )
-    and a.privilege_type = 'EXECUTE'
-    and a.grantee = 'authenticated'::regrole
-  order by 1
-  $$,
-  array[
-    'accept_invitation', 'create_invitation', 'create_organization',
-    'is_university_user', 'list_invitations', 'org_member_directory',
-    'preview_invitation', 'revoke_invitation', 'update_organization_profile'
-  ],
+-- pg_procのname型はcollation "C"のため、明示collateで単一テキストへ集約して比較する
+select is(
+  (
+    select coalesce(string_agg(fn.fname, ',' order by fn.fname), '')
+    from (
+      select distinct p.proname::text collate "C" as fname
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+      where n.nspname in ('public', 'private')
+        and p.proname in (
+          'is_university_email', 'is_university_user',
+          'is_org_member', 'org_role_at_least', 'generate_member_label',
+          'set_updated_at', 'protect_last_owner',
+          'create_organization', 'update_organization_profile',
+          'create_invitation', 'revoke_invitation', 'list_invitations',
+          'preview_invitation', 'accept_invitation', 'org_member_directory'
+        )
+        and a.privilege_type = 'EXECUTE'
+        and a.grantee = 'authenticated'::regrole
+    ) fn
+  ),
+  'accept_invitation,create_invitation,create_organization,is_university_user,list_invitations,org_member_directory,preview_invitation,revoke_invitation,update_organization_profile',
   'authenticatedのEXECUTEは公開RPCの9関数に限定'
 );
 

@@ -175,6 +175,11 @@ select is(
   '招待テスト団体',
   'F10: 承諾前に団体名を確認できる'
 );
+select throws_ok(
+  $$select * from public.preview_invitation((select token from inv1))$$,
+  'invalid_invitation',
+  'F10: 使用済みトークンのプレビューは単一の無効エラー'
+);
 reset role;
 
 -- ---- ドメイン外ユーザーは承諾できない ----
