@@ -386,3 +386,10 @@
 .done-secondary {
   width: 100%;
 }
+
+/* ---- 長文・分割不能な英数字への耐性（Task 006・対象を限定して適用） ---- */
+
+.campaign-name,
+.club-profile-name {
+  overflow-wrap: anywhere;
+}

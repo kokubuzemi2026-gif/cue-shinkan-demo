@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { AppHeader } from './components/AppHeader'
 import { BottomNav, type StudentTab } from './components/BottomNav'
+import { DemoResetDialog } from './components/DemoResetDialog'
 import { demoStudent } from './data/demoData'
 import { buildSeedDeliveries } from './data/demoDeliverySeed'
 import { anonymousStudentPool } from './data/demoStudentPool'
@@ -8,6 +9,12 @@ import { buildDelivery } from './domain/delivery'
 import type { DemoRole } from './domain/role'
 import type { ClubOffer, OfferDelivery, StudentPreference } from './domain/types'
 import { ClubHome } from './features/club/ClubHome'
+import {
+  arrivalEventForDelivery,
+  nextArrivalState,
+  type ArrivalEvent,
+  type ArrivalState,
+} from './features/student/arrival'
 import {
   appendDelivery,
   CLUB_WEEKLY_CAMPAIGN_LIMIT,
@@ -21,15 +28,21 @@ import {
 import { StudentHome } from './features/student/StudentHome'
 import { StudentInbox } from './features/student/StudentInbox'
 import { offerDeliveryStore } from './storage/deliveryStore'
+import {
+  getSessionStorageSafe,
+  markResetCompleted,
+  resetDemoStorageDefault,
+  type DemoResetResult,
+} from './storage/demoReset'
 import { studentPreferenceStore } from './storage/preferenceStore'
 
-// 設定タブの詳細はTask 006以降で実装する
-const SETTINGS_PLACEHOLDER = {
-  title: '設定',
-  text: '受信の停止・再開や条件の変更は、ホームの興味パスポートからいつでもできます。',
+type AppProps = {
+  // main.tsxがcreateRootより前に1回だけ消費したリセット完了フラグ（StrictMode安全）。
+  // Appはこの純粋なpropから完了通知とscrollTo(0,0)を行う
+  initialResetCompleted: boolean
 }
 
-function App() {
+function App({ initialResetCompleted }: AppProps) {
   const [role, setRole] = useState<DemoRole>('student')
   const [studentTab, setStudentTab] = useState<StudentTab>('home')
   // 入力中の集中モード（学生wizardと団体compose/confirmで共用）。ロール切替と
@@ -57,6 +70,60 @@ function App() {
       offerDeliveryStore.save(buildSeedDeliveries())
     }
   }, [])
+
+  // ---- デモリセット（tasks/006） ----
+  const [resetDialogOpen, setResetDialogOpen] = useState(false)
+  const [resetBusy, setResetBusy] = useState(false)
+  const [resetError, setResetError] = useState<Extract<DemoResetResult, { ok: false }> | null>(
+    null,
+  )
+  // リセット完了通知はmain.tsxで消費済みのpropから初期化（renderでの再消費なし）
+  const [showResetNotice, setShowResetNotice] = useState(initialResetCompleted)
+
+  // scroll restorationはmanualだが、リセット直後の先頭表示を明示的にも保証する
+  useEffect(() => {
+    if (initialResetCompleted) {
+      window.scrollTo(0, 0)
+    }
+  }, [initialResetCompleted])
+
+  // ---- 到着状態（tasks/006・非永続） ----
+  // 対象は「最後に実際にメイン学生へ届いた」配信1件。reloadで消滅し偽の新着は出ない
+  const [arrival, setArrival] = useState<ArrivalState>(null)
+  const sendArrival = (event: ArrivalEvent) => {
+    setArrival((state) => nextArrivalState(state, event))
+  }
+
+  const openResetDialog = () => {
+    setResetError(null)
+    setResetDialogOpen(true)
+  }
+
+  const cancelResetDialog = () => {
+    if (resetBusy) return
+    setResetDialogOpen(false)
+    setResetError(null)
+  }
+
+  const runDemoReset = () => {
+    if (resetBusy) return
+    setResetError(null)
+    setResetBusy(true)
+    // busy表示（「初期状態に戻しています…」）を最低1フレーム描画してから、
+    // 同期のstorage操作を開始する（rAF×2で描画境界を跨ぐ）
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const result = resetDemoStorageDefault()
+        if (result.ok) {
+          markResetCompleted(getSessionStorageSafe())
+          window.location.reload()
+          return
+        }
+        setResetBusy(false)
+        setResetError(result)
+      })
+    })
+  }
 
   const isStudent = role === 'student'
 
@@ -94,27 +161,59 @@ function App() {
     if (evaluation.recipients.length === 0) {
       return { kind: 'no-recipients' }
     }
-    const next = appendDelivery(current, buildDelivery(offer, evaluation.recipients, nowIso))
+    const delivery = buildDelivery(offer, evaluation.recipients, nowIso)
+    const next = appendDelivery(current, delivery)
     if (next === current) {
       return { kind: 'duplicate' }
     }
     deliveriesRef.current = next
     setDeliveries(next)
     const saved = offerDeliveryStore.save(next)
+    // 到着状態は、この配信のrecipientsにメイン学生が実際に含まれるときだけ更新する
+    // （停止・不許可・週上限・score不足で届かない送信では偽の新着を出さない）。
+    // 保存失敗時もメモリ上の配信は受信箱へ表示されるため演出対象になる
+    const arrivalEvent = arrivalEventForDelivery(delivery, (preference ?? demoStudent).id)
+    if (arrivalEvent !== null) {
+      sendArrival(arrivalEvent)
+    }
     return { kind: saved ? 'sent' : 'sent-save-failed', summary: toAudienceSummary(evaluation) }
   }
 
   // 送信完了画面の主CTA: 学生ロールの受信箱タブをページ先頭で開く（新着未読が先頭）
   const openStudentInbox = () => {
+    setShowResetNotice(false)
     setRole('student')
     setStudentTab('inbox')
     window.scrollTo(0, 0)
   }
 
+  // タブ・ロール切替のラッパ。リセット完了通知は最初の移動で片づけ、
+  // 受信箱から離れたら到着状態を消費する（hidden→再表示でのアニメ再発火防止）
+  const changeStudentTab = (tab: StudentTab) => {
+    if (tab !== 'home') setShowResetNotice(false)
+    if (studentTab === 'inbox' && tab !== 'inbox') sendArrival({ type: 'leftInbox' })
+    setStudentTab(tab)
+  }
+  const changeRole = (next: DemoRole) => {
+    if (next !== 'student') setShowResetNotice(false)
+    if (next !== 'student' && studentTab === 'inbox') sendArrival({ type: 'leftInbox' })
+    setRole(next)
+  }
+
   return (
     <div className="app-shell">
-      <AppHeader role={role} onRoleChange={setRole} hideRoleSwitcher={focusMode} />
+      <AppHeader
+        role={role}
+        onRoleChange={changeRole}
+        hideRoleSwitcher={focusMode}
+        onOpenDemoReset={openResetDialog}
+      />
       <main className={isStudent ? 'app-main app-main--with-nav' : 'app-main'}>
+        {isStudent && showResetNotice && studentTab === 'home' && (
+          <p className="reset-complete-notice" role="status">
+            デモを初期状態に戻しました
+          </p>
+        )}
         {isStudent ? (
           <>
             {/* ホーム・受信箱はhiddenで保持し、タブ往復でも入力中draftや詳細位置が消えないようにする */}
@@ -129,16 +228,26 @@ function App() {
               <StudentInbox
                 preference={preference}
                 deliveries={deliveries}
+                arrival={arrival}
+                onArrivalEvent={sendArrival}
                 savePreference={savePreference}
-                onNavigateHome={() => setStudentTab('home')}
+                onNavigateHome={() => changeStudentTab('home')}
               />
             </div>
             {studentTab === 'settings' && (
               <>
-                <h1 className="page-title">{SETTINGS_PLACEHOLDER.title}</h1>
-                <section className="placeholder-card" aria-label="準備中の画面">
-                  <span className="placeholder-chip">準備中</span>
-                  <p className="placeholder-text">{SETTINGS_PLACEHOLDER.text}</p>
+                <h1 className="page-title">設定</h1>
+                <section className="placeholder-card" aria-label="受信設定の案内">
+                  <p className="placeholder-text">
+                    受信の停止・再開や条件の変更は、ホームの興味パスポートからいつでもできます。
+                  </p>
+                  <button
+                    type="button"
+                    className="button button-secondary"
+                    onClick={() => changeStudentTab('home')}
+                  >
+                    ホームで条件を変更する
+                  </button>
                 </section>
               </>
             )}
@@ -153,7 +262,16 @@ function App() {
           />
         )}
       </main>
-      {isStudent && !focusMode && <BottomNav activeTab={studentTab} onSelect={setStudentTab} />}
+      {isStudent && !focusMode && (
+        <BottomNav activeTab={studentTab} onSelect={changeStudentTab} />
+      )}
+      <DemoResetDialog
+        open={resetDialogOpen}
+        busy={resetBusy}
+        error={resetError}
+        onCancel={cancelResetDialog}
+        onConfirm={runDemoReset}
+      />
     </div>
   )
 }

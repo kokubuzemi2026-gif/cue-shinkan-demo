@@ -40,7 +40,35 @@
   box-shadow: var(--shadow-soft);
   text-align: left;
   cursor: pointer;
-  animation: passport-rise 0.3s ease-out;
+}
+
+/* 今回自分へ届いた新着1件だけの到着演出（tasks/006）。
+   一覧全体を毎回アニメーションしない。opacityは使わず、mint背景の減衰＋
+   わずかな上昇のみ280ms・1回。「新着」チップは演出後（settled）も残る */
+.offer-card--arrival {
+  animation: offer-arrive 280ms ease-out;
+}
+
+@keyframes offer-arrive {
+  from {
+    transform: translateY(6px);
+    background-color: var(--color-mint);
+  }
+  to {
+    transform: none;
+    background-color: var(--color-white);
+  }
+}
+
+/* 到着を色だけに依存させない文字チップ。未読チップと区別できる枠線つき */
+.arrival-chip {
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--color-ink);
+  background: var(--color-mint);
+  border: 1.5px solid rgba(23, 33, 43, 0.4);
+  border-radius: var(--radius-pill);
 }
 
 /* タップ可能の手掛かり（aria-hidden。名前はカードのaria-labelが担う） */
@@ -407,11 +435,29 @@
 /* ---- 動きを抑える設定への配慮 ---- */
 
 @media (prefers-reduced-motion: reduce) {
-  .offer-card {
+  /* 動きは止めるが、「新着」チップと読み上げ通知による状態表示は残る */
+  .offer-card--arrival {
     animation: none;
   }
 
   .offer-card:active {
     transform: none;
   }
+}
+
+/* ---- 長文・分割不能な英数字への耐性（Task 006・対象を限定して適用） ---- */
+
+.offer-event-name,
+.offer-club-name,
+.offer-meta,
+.detail-title,
+.panel-contact-handle,
+.reason-list li,
+.caution-list li {
+  overflow-wrap: anywhere;
+}
+
+/* flexの理由行は分割不能文字列でmin-width:autoのまま溢れるため縮小を許可する */
+.reason-list li {
+  min-width: 0;
 }
