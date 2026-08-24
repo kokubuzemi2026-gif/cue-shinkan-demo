@@ -164,3 +164,22 @@ export type OfferReadMark = {
   studentId: string
   readAt: string
 }
+
+// 配信時点のマッチ結果snapshot。受信箱・団体ファネルの表示根拠として固定し、
+// 以後のパスポート編集では変化しない（docs/decisions.md D023）
+export type DeliveredMatchSnapshot = {
+  studentId: string
+  score: number
+  reasons: string[]
+  cautions: string[]
+}
+
+// 配信イベント。送信済みキャンペーンと学生受信箱の唯一の正本（docs/decisions.md D023）。
+// オファー内容全体を配信時点のsnapshotとして内蔵し、1レコード=1書込で原子的に保存する。
+// offerId・clubIdはoffer.id / offer.clubIdから取り、重複フィールドを持たない
+export type OfferDelivery = {
+  id: string
+  offer: ClubOffer
+  deliveredAt: string
+  recipients: DeliveredMatchSnapshot[]
+}

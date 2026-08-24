@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
-import { demoClubs, demoOffers, demoStudent } from '../../data/demoData'
-import { calculateMatch } from '../../domain/matching'
-import type { OfferReadMark, OfferResponse, StudentPreference } from '../../domain/types'
+import { demoClubs, demoStudent } from '../../data/demoData'
+import { buildSeedDeliveries } from '../../data/demoDeliverySeed'
+import type {
+  OfferDelivery,
+  OfferReadMark,
+  OfferResponse,
+  StudentPreference,
+} from '../../domain/types'
 import {
   buildInboxView,
   deriveOfferStatus,
@@ -14,6 +19,13 @@ import {
 } from './inbox'
 import { withReceptionPaused } from './passportForm'
 
+// Task 005（D023）で受信箱の正本は保存済み配信イベントへ移行した。
+// Task 004の「条件に合わない学生fixtureでは空の受信箱になる」はD020暫定仕様
+// （現在パスポートでの再評価）の検証だったため、本仕様の完成に伴い
+// 「条件を変更しても配信済み履歴は消えない」という新仕様のテストへ意図的に置換している
+
+const seedDeliveries = buildSeedDeliveries()
+
 const READ_ROKKO: OfferReadMark = {
   offerId: 'offer-rokko-hike',
   studentId: 'student-you',
@@ -22,6 +34,41 @@ const READ_ROKKO: OfferReadMark = {
 
 function response(offerId: string, choice: OfferResponse['choice']): OfferResponse {
   return { offerId, studentId: 'student-you', choice, respondedAt: '2026-04-10T09:30:00.000Z' }
+}
+
+// 新規配信のfixture（メイン学生宛て・ウィンドウ内の新しい日時）
+function newCampaignDelivery(overrides: Partial<OfferDelivery> = {}): OfferDelivery {
+  return {
+    id: 'delivery-offer-created-1',
+    deliveredAt: '2026-08-23T10:00:00.000Z',
+    offer: {
+      id: 'offer-created-1',
+      clubId: 'club-rokko-outdoor',
+      eventName: 'はじめてのテント泊体験会',
+      description: 'テント設営から体験する1日イベントです。',
+      reasonNote: 'アウトドアをこれから始めたい新入生に来てほしいからです。',
+      dateText: '9月12日（土）10:00〜16:00',
+      place: '北テラス広場 集合',
+      eventDays: ['weekend'],
+      frequency: 'monthly_1_2',
+      feePerEventYen: 1500,
+      beginnerFriendly: true,
+      intensity: 'moderate',
+      targetCategories: ['outdoor'],
+      targetPurposes: ['friends', 'challenge'],
+      capacity: 10,
+      deadline: '2026-09-10',
+    },
+    recipients: [
+      {
+        studentId: 'student-you',
+        score: 100,
+        reasons: ['アウトドアに興味がある', '土日に参加しやすい', '未経験でも歓迎される活動'],
+        cautions: [],
+      },
+    ],
+    ...overrides,
+  }
 }
 
 function deepFreezeStudent(student: StudentPreference): StudentPreference {
@@ -33,50 +80,100 @@ function deepFreezeStudent(student: StudentPreference): StudentPreference {
   return Object.freeze(student)
 }
 
-describe('buildInboxView: 受信済み集合の導出', () => {
-  it('デモ学生では六甲100→Harbor85→TableTalk68の順で団体が正しく結合される', () => {
-    const view = buildInboxView(demoStudent, demoOffers, demoClubs, [], [])
+describe('buildInboxView: 配信履歴からの導出（D023）', () => {
+  it('シード3配信では六甲→Harbor→TableTalkの順で、delivery.offerの内容と団体が結合される', () => {
+    const view = buildInboxView(demoStudent, seedDeliveries, demoClubs, [], [])
     expect(view.items.map((item) => item.offer.id)).toEqual([
       'offer-rokko-hike',
       'offer-photo-walk',
       'offer-cafe-night',
     ])
-    expect(view.items.map((item) => item.result.score)).toEqual([100, 85, 68])
     expect(view.items.map((item) => item.club.name)).toEqual([
       '六甲アウトドア会',
       'Harbor Film Lab',
       'Table Talk International',
     ])
+    expect(view.items.map((item) => item.offer.eventName)).toEqual([
+      'はじめての六甲山ハイク',
+      '週末フォトウォークと上映会',
+      '国際交流カフェナイト',
+    ])
     expect(view.paused).toBe(false)
   })
 
-  it('各itemのreasons/cautionsはcalculateMatchの計算結果と完全に一致する', () => {
-    const view = buildInboxView(demoStudent, demoOffers, demoClubs, [], [])
+  it('各itemのresultは配信時snapshotのリテラル（100/85/68・理由・注意点）と一致する', () => {
+    const view = buildInboxView(demoStudent, seedDeliveries, demoClubs, [], [])
+    expect(view.items.map((item) => item.result.score)).toEqual([100, 85, 68])
+    expect(view.items[0].result.reasons).toEqual([
+      'アウトドアに興味がある',
+      '土日に参加しやすい',
+      '未経験でも歓迎される活動',
+    ])
+    expect(view.items[0].result.cautions).toEqual([])
+    expect(view.items[1].result.cautions).toEqual([
+      '参加費（2,500円）は希望予算（1回2,000円以内）より高めです',
+    ])
+    expect(view.items[2].result.cautions).toEqual(['活動頻度（週1回）は希望より多めです'])
     for (const item of view.items) {
-      const expected = calculateMatch(demoStudent, item.offer)
-      expect(item.result.reasons).toEqual(expected.reasons)
-      expect(item.result.cautions).toEqual(expected.cautions)
-      expect(item.result.score).toBe(expected.score)
+      expect(item.result.eligible).toBe(true)
     }
+  })
+
+  it('新規配信を追加すると4件になり、新着が先頭に未読で現れる（送信→新着の核心）', () => {
+    const view = buildInboxView(
+      demoStudent,
+      [...seedDeliveries, newCampaignDelivery()],
+      demoClubs,
+      [],
+      [],
+    )
+    expect(view.items).toHaveLength(4)
+    expect(view.items[0].offer.id).toBe('offer-created-1')
+    expect(view.items[0].status).toBe('unread')
+    expect(view.items[1].offer.id).toBe('offer-rokko-hike')
+  })
+
+  it('同時刻の配信はオファーID昇順で決定的に並ぶ', () => {
+    const first = newCampaignDelivery()
+    const second = newCampaignDelivery({
+      id: 'delivery-offer-created-2',
+      offer: { ...first.offer, id: 'offer-created-2', eventName: '同時刻のイベント' },
+    })
+    const view = buildInboxView(demoStudent, [second, first], demoClubs, [], [])
+    expect(view.items.map((item) => item.offer.id)).toEqual([
+      'offer-created-1',
+      'offer-created-2',
+    ])
+  })
+
+  it('興味・受信カテゴリをmusicのみへ変更しても、受信済み3件と表示内容は変わらない（履歴固定・D023）', () => {
+    const changed: StudentPreference = {
+      ...demoStudent,
+      interests: ['music'],
+      reception: { ...demoStudent.reception, allowedCategories: ['music'] },
+    }
+    const view = buildInboxView(changed, seedDeliveries, demoClubs, [], [])
+    expect(view.items).toHaveLength(3)
+    expect(view.items.map((item) => item.result.score)).toEqual([100, 85, 68])
+    expect(view.items[0].result.reasons).toEqual([
+      'アウトドアに興味がある',
+      '土日に参加しやすい',
+      '未経験でも歓迎される活動',
+    ])
   })
 
   it('受信停止中でも受信済み3件は表示され続け、pausedフラグだけが立つ（D020）', () => {
     const paused = withReceptionPaused(demoStudent, true)
-    const view = buildInboxView(paused, demoOffers, demoClubs, [], [])
+    const view = buildInboxView(paused, seedDeliveries, demoClubs, [], [])
     expect(view.paused).toBe(true)
     expect(view.items).toHaveLength(3)
-    expect(view.items.map((item) => item.offer.id)).toEqual([
-      'offer-rokko-hike',
-      'offer-photo-walk',
-      'offer-cafe-night',
-    ])
   })
 
   it('受信停止中でも返答・既読の結合と状態導出は通常どおり機能する', () => {
     const paused = withReceptionPaused(demoStudent, true)
     const view = buildInboxView(
       paused,
-      demoOffers,
+      seedDeliveries,
       demoClubs,
       [response('offer-rokko-hike', 'interested')],
       [READ_ROKKO],
@@ -90,20 +187,46 @@ describe('buildInboxView: 受信済み集合の導出', () => {
       ...demoStudent,
       reception: { ...demoStudent.reception, weeklyLimit: 1 },
     }
-    const view = buildInboxView(limited, demoOffers, demoClubs, [], [])
+    const view = buildInboxView(limited, seedDeliveries, demoClubs, [], [])
     expect(view.items).toHaveLength(3)
   })
 
-  it('受信許可カテゴリ外（Bridge Volunteer）は混入しない', () => {
-    const view = buildInboxView(demoStudent, demoOffers, demoClubs, [], [])
-    expect(view.items.map((item) => item.offer.id)).not.toContain('offer-kodomo-shokudo')
+  it('自分がrecipientに含まれない配信は表示しない（学生間のデータ分離）', () => {
+    const othersOnly = newCampaignDelivery({
+      recipients: [
+        { studentId: 'pool-05', score: 88, reasons: ['アウトドアに興味がある'], cautions: [] },
+      ],
+    })
+    const view = buildInboxView(
+      demoStudent,
+      [...seedDeliveries, othersOnly],
+      demoClubs,
+      [],
+      [],
+    )
+    expect(view.items.map((item) => item.offer.id)).not.toContain('offer-created-1')
+    expect(view.items).toHaveLength(3)
   })
 
-  it('clubIdが不明なオファーは例外を出さずに除外される', () => {
-    const orphan = { ...demoOffers[0], id: 'offer-orphan', clubId: 'club-missing' }
-    const view = buildInboxView(demoStudent, [...demoOffers, orphan], demoClubs, [], [])
+  it('delivery.offer.clubIdが不明な配信は例外を出さずに除外される', () => {
+    const orphan = newCampaignDelivery({
+      id: 'delivery-offer-orphan',
+      offer: { ...newCampaignDelivery().offer, id: 'offer-orphan', clubId: 'club-missing' },
+    })
+    const view = buildInboxView(
+      demoStudent,
+      [...seedDeliveries, orphan],
+      demoClubs,
+      [],
+      [],
+    )
     expect(view.items.map((item) => item.offer.id)).not.toContain('offer-orphan')
     expect(view.items).toHaveLength(3)
+  })
+
+  it('deliveriesが空なら空の受信箱になる（空状態のfixture検証）', () => {
+    const view = buildInboxView(demoStudent, [], demoClubs, [], [])
+    expect(view.items).toEqual([])
   })
 
   it('他学生の返答・既読は無視される', () => {
@@ -118,12 +241,18 @@ describe('buildInboxView: 受信済み集合の導出', () => {
       studentId: 'student-other',
       readAt: '2026-04-10T09:00:00.000Z',
     }
-    const view = buildInboxView(demoStudent, demoOffers, demoClubs, [otherResponse], [otherRead])
+    const view = buildInboxView(
+      demoStudent,
+      seedDeliveries,
+      demoClubs,
+      [otherResponse],
+      [otherRead],
+    )
     expect(view.items[0].status).toBe('unread')
     expect(view.items[0].response).toBeNull()
   })
 
-  it('全入力を凍結しても動作し、入力を破壊しない', () => {
+  it('全入力を凍結しても動作し、入力（配信配列の並び含む）を破壊しない', () => {
     const student = deepFreezeStudent({
       ...demoStudent,
       interests: [...demoStudent.interests],
@@ -134,34 +263,16 @@ describe('buildInboxView: 受信済み集合の導出', () => {
         allowedCategories: [...demoStudent.reception.allowedCategories],
       },
     })
-    const offers = Object.freeze([...demoOffers])
-    const clubs = Object.freeze([...demoClubs])
-    const responses = Object.freeze([response('offer-rokko-hike', 'thinking')])
-    const reads = Object.freeze([READ_ROKKO])
+    // 古い順に渡しても入力配列自体は並び替えない
+    const reversed = Object.freeze([...seedDeliveries].reverse()) as OfferDelivery[]
+    const responses = Object.freeze([response('offer-rokko-hike', 'thinking')]) as OfferResponse[]
+    const reads = Object.freeze([READ_ROKKO]) as OfferReadMark[]
     expect(() =>
-      buildInboxView(
-        student,
-        offers as typeof demoOffers,
-        clubs as typeof demoClubs,
-        responses as OfferResponse[],
-        reads as OfferReadMark[],
-      ),
+      buildInboxView(student, reversed, Object.freeze([...demoClubs]) as typeof demoClubs, responses, reads),
     ).not.toThrow()
-  })
-
-  it('offersが空なら空の受信箱になる（空状態のfixture検証）', () => {
-    const view = buildInboxView(demoStudent, [], demoClubs, [], [])
-    expect(view.items).toEqual([])
-  })
-
-  it('条件に合わない学生fixtureでは空の受信箱になる（空状態のfixture検証）', () => {
-    const mismatched: StudentPreference = {
-      ...demoStudent,
-      interests: ['music'],
-      reception: { ...demoStudent.reception, allowedCategories: ['music'] },
-    }
-    const view = buildInboxView(mismatched, demoOffers, demoClubs, [], [])
-    expect(view.items).toEqual([])
+    expect(reversed[0].offer.id).toBe('offer-cafe-night')
+    const view = buildInboxView(student, reversed, demoClubs, responses, reads)
+    expect(view.items[0].offer.id).toBe('offer-rokko-hike')
   })
 })
 
@@ -187,21 +298,22 @@ describe('deriveOfferStatus: 4状態の導出', () => {
 })
 
 describe('isSelectionStale: 詳細対象の消失判定', () => {
-  it('選択中のオファーが表示集合から消えたらstaleになる（条件変更で非適合化した場合）', () => {
-    const withRokko = buildInboxView(demoStudent, demoOffers, demoClubs, [], [])
-    const mismatched: StudentPreference = {
-      ...demoStudent,
-      interests: ['music'],
-      reception: { ...demoStudent.reception, allowedCategories: ['music'] },
-    }
-    const withoutRokko = buildInboxView(mismatched, demoOffers, demoClubs, [], [])
+  it('選択中のオファーが表示集合から消えたらstaleになる（配信データ縮退などの場合）', () => {
+    const withRokko = buildInboxView(demoStudent, seedDeliveries, demoClubs, [], [])
+    const withoutRokko = buildInboxView(
+      demoStudent,
+      seedDeliveries.filter((delivery) => delivery.offer.id !== 'offer-rokko-hike'),
+      demoClubs,
+      [],
+      [],
+    )
     expect(isSelectionStale('offer-rokko-hike', withRokko.items)).toBe(false)
     expect(isSelectionStale('offer-rokko-hike', withoutRokko.items)).toBe(true)
   })
 
   it('未選択（null）はstaleにならない（空の受信箱でも）', () => {
     expect(isSelectionStale(null, [])).toBe(false)
-    const view = buildInboxView(demoStudent, demoOffers, demoClubs, [], [])
+    const view = buildInboxView(demoStudent, seedDeliveries, demoClubs, [], [])
     expect(isSelectionStale(null, view.items)).toBe(false)
   })
 
