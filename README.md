@@ -61,15 +61,15 @@ CUE は、新入生が事前に登録した「興味パスポート」をもと�
 
 ## 現在地
 
-2026年8月22日（土）のメンバー持ち寄りデモへ向けた実装フェーズです。
+Phase 1（2026年8月22日のメンバー持ち寄りデモ）は完了し、`main`ブランチと公開デモを凍結しています。現在はPhase 2（アカウント・権限・サーバーデータ化）を`develop`ブランチで開発中です。
 
-- 技術: Vite + React + TypeScript
-- データ: 架空データ + localStorage
-- 公開: GitHub Pages
-- テスト: マッチングロジックのunit test、lint、build
-- 方針: 認証・DB・本番通知は作らず、学生側と団体側が連動する一連のデモを完成させる
+- 公開デモ（凍結中・mainのlocalStorage版）: https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/
+- Phase 2の技術: Supabase Auth（メールOTP）+ PostgreSQL + RLS
+- ブランチ運用: `main`は凍結。Task 008〜011は`develop`をbaseにしたPRで進め、`main`へはマージしない
+- 認証・権限の正本: `docs/auth_and_authorization.md`、決定は`docs/decisions.md`（D026〜D031）
+- hosted環境（staging）の構築・確認手順: `docs/runbook_supabase_hosted.md`
 
-実装順序は `docs/implementation_plan.md` と `tasks/` を参照してください。
+Phase 1の実装順序は `docs/implementation_plan.md`（凍結済みの歴史文書）と `tasks/000〜007` を参照してください。
 
 ## ローカル開発
 
@@ -94,6 +94,25 @@ production preview（公開時と同じbase pathで確認）:
 ```bash
 npm run preview   # http://localhost:4173/cue-shinkan-demo/
 ```
+
+### Phase 2開発（Supabaseローカルスタック）
+
+前提: 上記に加えてDocker（Docker Desktop等）
+
+```bash
+cd app
+npm ci
+npm run db:start        # 初回はイメージ取得で数分。API URLとpublishable keyが表示される
+cp .env.example .env.local   # 表示されたURLとキーを転記する（この2値以外は置かない）
+npm run dev             # http://localhost:5173/cue-shinkan-demo/
+```
+
+- OTPメールは実送信されず、Mailpit（ http://127.0.0.1:54324 ）で6桁コードを確認する
+- テスト用メールは架空の `demo-*@stu.kobe-u.ac.jp` だけを使い、実在の学生メールを使わない
+- DB・RLSテスト: `npm run db:test`（pgTAP）
+- 生成型の更新: `npm run db:types`
+- 停止: `npm run db:stop`
+- `.env.local`が無い場合、アプリはクラッシュせず接続設定の案内画面を表示する（公開デモには影響しない）
 
 ## 公開（GitHub Pages）
 

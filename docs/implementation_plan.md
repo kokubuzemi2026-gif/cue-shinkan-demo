@@ -1,5 +1,9 @@
 # Demo Implementation Plan
 
+> **注記（2026-08-24）**: 本書はPhase 1（8/22デモ）の計画であり、完了済みの歴史文書として凍結する。
+> §1の「採用しない」（バックエンド・認証・Supabase等）はPhase 1時点の判断である。
+> Phase 2（認証・DB・通知）の正本は `docs/auth_and_authorization.md`・`docs/decisions.md`（D026〜D031）・`tasks/008-*.md` 以降を参照。
+
 - Deadline: 2026-08-22（土）
 - Goal: メンバー持ち寄りで最も記憶に残る、動作するスマートフォンデモ
 - Scope: 学生登録 → 団体オファー → 学生受信・返答 → 団体指標更新

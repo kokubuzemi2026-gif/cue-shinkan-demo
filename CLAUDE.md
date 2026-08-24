@@ -26,7 +26,8 @@
 2. `docs/decisions.md`
 3. `docs/product_spec.md`
 4. `docs/matching_and_safety.md`
-5. 指定された `tasks/NNN-*.md`
+5. `docs/auth_and_authorization.md`（Phase 2の認証・権限の正本）
+6. 指定された `tasks/NNN-*.md`
 
 タスクに明記されていない資料を無制限に読み込まず、必要な仕様だけを参照してください。
 
@@ -39,17 +40,33 @@
 - force push、履歴書き換え、破壊的操作を行わない
 - デプロイ、外部サービス作成、課金、公開設定変更は明示的な指示なしに行わない
 
-## 今回のデモで固定する技術
+## 技術構成
+
+### Phase 1（2026-08-22デモ）で固定した技術
 
 - Vite
 - React
 - TypeScript
 - 独自CSS（大規模UIライブラリは追加しない）
-- localStorage
+- localStorage（デモ実装の保存先。Task 009でサーバーデータへ移行する）
 - Vitest
 - GitHub Actions / GitHub Pages
 
-アプリ本体は `app/` 配下に置きます。ルーティングライブラリ、状態管理ライブラリ、バックエンド、認証サービスは追加しません。
+### Phase 2（Task 008〜011）で追加する技術
+
+- Supabase Auth（メールOTP。パスワードとMagic Linkは使わない）
+- Supabase PostgreSQL + RLS（認可はSECURITY DEFINER RPCとRLSで完結させる）
+- `@supabase/supabase-js`
+- Supabase CLI（ローカルスタック・migration・pgTAPテスト）
+- 通知はSupabase Edge Functions + Resendを候補とする（Task 010で導入判断）
+
+アプリ本体とSupabase構成（`app/supabase/`）は `app/` 配下に置きます。ルーティングライブラリ、状態管理ライブラリ、上記以外のバックエンド・認証サービスは追加しません。Phase 2の詳細は `docs/auth_and_authorization.md` を正本とします。
+
+### Phase 2のブランチ運用
+
+- `main`と公開デモ（GitHub Pages）は凍結する。Task 008〜011を`main`へマージしない
+- 長期統合ブランチは`develop`。PRのbaseは`develop`とする
+- Supabase secret key・service-role key・DBパスワード・アクセストークンをリポジトリ・CI・`VITE_*`へ置かない
 
 ## UI要件
 
