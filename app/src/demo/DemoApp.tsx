@@ -1,20 +1,24 @@
+// Phase 1のlocalStorageデモ本体（旧src/App.tsx。Task 008で隔離）。
+// localStorageがユーザーIDで分離されていないため、認証済みシェル（src/AppRoot.tsx）からは
+// importしない・マウントしない。公開デモはmainブランチ（GitHub Pages）が正本。
+// Task 009でここの機能をサーバーデータへ接続し直す
 import { useEffect, useRef, useState } from 'react'
-import { AppHeader } from './components/AppHeader'
-import { BottomNav, type StudentTab } from './components/BottomNav'
-import { DemoResetDialog } from './components/DemoResetDialog'
-import { demoStudent } from './data/demoData'
-import { buildSeedDeliveries } from './data/demoDeliverySeed'
-import { anonymousStudentPool } from './data/demoStudentPool'
-import { buildDelivery } from './domain/delivery'
-import type { DemoRole } from './domain/role'
-import type { ClubOffer, OfferDelivery, StudentPreference } from './domain/types'
-import { ClubHome } from './features/club/ClubHome'
+import { AppHeader } from '../components/AppHeader'
+import { BottomNav, type StudentTab } from '../components/BottomNav'
+import { DemoResetDialog } from '../components/DemoResetDialog'
+import { demoStudent } from '../data/demoData'
+import { buildSeedDeliveries } from '../data/demoDeliverySeed'
+import { anonymousStudentPool } from '../data/demoStudentPool'
+import { buildDelivery } from '../domain/delivery'
+import type { DemoRole } from '../domain/role'
+import type { ClubOffer, OfferDelivery, StudentPreference } from '../domain/types'
+import { ClubHome } from '../features/club/ClubHome'
 import {
   arrivalEventForDelivery,
   nextArrivalState,
   type ArrivalEvent,
   type ArrivalState,
-} from './features/student/arrival'
+} from '../features/student/arrival'
 import {
   appendDelivery,
   CLUB_WEEKLY_CAMPAIGN_LIMIT,
@@ -24,25 +28,25 @@ import {
   toAudienceSummary,
   type AudienceSummary,
   type CommitOutcome,
-} from './features/club/delivery'
-import { StudentHome } from './features/student/StudentHome'
-import { StudentInbox } from './features/student/StudentInbox'
-import { offerDeliveryStore } from './storage/deliveryStore'
+} from '../features/club/delivery'
+import { StudentHome } from '../features/student/StudentHome'
+import { StudentInbox } from '../features/student/StudentInbox'
+import { offerDeliveryStore } from '../storage/deliveryStore'
 import {
   getSessionStorageSafe,
   markResetCompleted,
   resetDemoStorageDefault,
   type DemoResetResult,
-} from './storage/demoReset'
-import { studentPreferenceStore } from './storage/preferenceStore'
+} from '../storage/demoReset'
+import { studentPreferenceStore } from '../storage/preferenceStore'
 
-type AppProps = {
+type DemoAppProps = {
   // main.tsxがcreateRootより前に1回だけ消費したリセット完了フラグ（StrictMode安全）。
   // Appはこの純粋なpropから完了通知とscrollTo(0,0)を行う
   initialResetCompleted: boolean
 }
 
-function App({ initialResetCompleted }: AppProps) {
+function DemoApp({ initialResetCompleted }: DemoAppProps) {
   const [role, setRole] = useState<DemoRole>('student')
   const [studentTab, setStudentTab] = useState<StudentTab>('home')
   // 入力中の集中モード（学生wizardと団体compose/confirmで共用）。ロール切替と
@@ -276,4 +280,4 @@ function App({ initialResetCompleted }: AppProps) {
   )
 }
 
-export default App
+export default DemoApp
