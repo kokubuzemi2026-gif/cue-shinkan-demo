@@ -2,9 +2,9 @@ name: CI
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, develop]
   push:
-    branches: [main]
+    branches: [main, develop]
   workflow_dispatch:
 
 permissions:
@@ -33,3 +33,36 @@ jobs:
         run: npm run test -- --run
       - name: Build
         run: npm run build
+
+  # Task 008: ローカルSupabaseスタックでmigrationとRLS/RPCをpgTAP検証する。
+  # remote secretは一切使わない（DBはCI上の使い捨てローカルスタック）。
+  # Dockerイメージ取得を含むため+3〜6分/runかかる
+  db-tests:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      - name: Start local Supabase stack
+        # CLIはdevDependenciesでバージョン固定。migrationはstart時に自動適用される
+        run: npx supabase start
+      - name: Run pgTAP tests
+        run: npx supabase test db
+      - name: Check generated types drift (informational)
+        # 生成型（src/lib/database.types.ts）と実DBの差分を表示する。
+        # 差分があってもこのステップは失敗させない（警告として出力）
+        run: |
+          npx supabase gen types typescript --local > /tmp/generated.types.ts
+          if ! diff -u src/lib/database.types.ts /tmp/generated.types.ts; then
+            echo "::warning::database.types.ts が supabase gen types の出力と異なります。npm run db:types で再生成してください"
+          fi
