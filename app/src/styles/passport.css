@@ -105,6 +105,11 @@
   font-weight: 800;
 }
 
+/* タップした瞬間のフィードバック（transformのみ・レイアウトシフトなし） */
+.choice-chip:active {
+  transform: scale(0.97);
+}
+
 .chip-helper {
   margin: var(--space-2) 0 0;
   font-size: 12px;
@@ -502,6 +507,13 @@
   color: var(--color-muted);
 }
 
+/* 長文・分割不能な英数字への耐性（Task 006）。
+   要約とオファー詳細のイベント情報・参加方法の値欄が対象 */
+.passport-fact dd,
+.panel-fact dd {
+  overflow-wrap: anywhere;
+}
+
 /* ---- 動きを抑える設定への配慮 ---- */
 
 @media (prefers-reduced-motion: reduce) {
@@ -513,5 +525,10 @@
   .choice-chip,
   .wizard-progress-fill {
     transition: none;
+  }
+
+  .button:active:not(:disabled),
+  .choice-chip:active {
+    transform: none;
   }
 }

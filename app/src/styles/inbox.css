@@ -444,3 +444,20 @@
     transform: none;
   }
 }
+
+/* ---- 長文・分割不能な英数字への耐性（Task 006・対象を限定して適用） ---- */
+
+.offer-event-name,
+.offer-club-name,
+.offer-meta,
+.detail-title,
+.panel-contact-handle,
+.reason-list li,
+.caution-list li {
+  overflow-wrap: anywhere;
+}
+
+/* flexの理由行は分割不能文字列でmin-width:autoのまま溢れるため縮小を許可する */
+.reason-list li {
+  min-width: 0;
+}

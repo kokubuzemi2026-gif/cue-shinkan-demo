@@ -333,3 +333,33 @@ button {
 .bottom-nav-item[aria-current='page'] .bottom-nav-icon {
   color: var(--color-coral);
 }
+
+/* ---- 押下フィードバックと選択抑止（Task 006） ---- */
+
+/* 操作要素だけ文字選択・タップハイライトを抑止する。
+   本文テキストの選択可否は変えない（無差別なuser-select指定はしない） */
+.button,
+.choice-chip,
+.offer-card,
+.role-switcher-button,
+.bottom-nav-item,
+.demo-badge-button {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.role-switcher-button:active {
+  transform: scale(0.97);
+}
+
+.bottom-nav-item:active {
+  opacity: 0.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .role-switcher-button:active,
+  .demo-badge-button:active .demo-badge {
+    transform: none;
+  }
+}
