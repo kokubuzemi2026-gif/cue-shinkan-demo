@@ -112,7 +112,13 @@ export function ClubHome({
       return
     }
     setComposeErrors([])
-    const offer = buildClubOffer(draft, deliveries)
+    // 採番の予約済みID: 既読・返答が参照するofferIdを含める。deliveryストアだけが
+    // 破損して再シードされた後も、残存する行動記録のIDを再利用しない
+    const reservedOfferIds = [
+      ...responses.map((response) => response.offerId),
+      ...reads.map((mark) => mark.offerId),
+    ]
+    const offer = buildClubOffer(draft, deliveries, reservedOfferIds)
     const nowIso = new Date().toISOString()
     setConfirmInfo({
       offer,

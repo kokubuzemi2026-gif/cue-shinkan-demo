@@ -70,8 +70,10 @@ describe('buildClubOffer / draft操作', () => {
       },
     ]
     const draft = { ...createOfferDraft(), eventName: '  余白つきイベント名  ' }
-    const offer = buildClubOffer(draft, existing)
+    const offer = buildClubOffer(draft, existing, [])
     expect(offer.id).toBe('offer-created-2')
+    // 既読・返答が参照する予約済みIDも採番に反映される（破損再シード後の防衛）
+    expect(buildClubOffer(draft, existing, ['offer-created-9']).id).toBe('offer-created-10')
     expect(offer.clubId).toBe(DEMO_CLUB_ID)
     expect(offer.eventName).toBe('余白つきイベント名')
     expect(offer.eventDays).toEqual(draft.eventDays)

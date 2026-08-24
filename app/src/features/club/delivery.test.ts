@@ -2,9 +2,17 @@ import { describe, expect, it } from 'vitest'
 
 import { buildSeedDeliveries } from '../../data/demoDeliverySeed'
 import { anonymousStudentPool } from '../../data/demoStudentPool'
-import { demoStudent } from '../../data/demoData'
+import { demoClubs, demoStudent } from '../../data/demoData'
+import { buildDelivery } from '../../domain/delivery'
 import { calculateMatch } from '../../domain/matching'
-import type { OfferDelivery, StudentPreference } from '../../domain/types'
+import type {
+  OfferDelivery,
+  OfferReadMark,
+  OfferResponse,
+  StudentPreference,
+} from '../../domain/types'
+import { buildInboxView } from '../student/inbox'
+import { buildFunnel } from './funnel'
 import {
   appendDelivery,
   clubSentInWindow,
@@ -21,7 +29,7 @@ const NOW = '2026-08-23T12:00:00.000Z'
 const audience = [demoStudent, ...anonymousStudentPool]
 const seedDeliveries = buildSeedDeliveries()
 // プリセット（マッチ条件が六甲ハイクと同一）から作る新キャンペーン
-const presetOffer = buildClubOffer(createOfferDraft(), seedDeliveries)
+const presetOffer = buildClubOffer(createOfferDraft(), seedDeliveries, [])
 
 const EXPECTED_RECIPIENT_IDS = [
   'student-you',
@@ -237,14 +245,101 @@ describe('findDuplicateEvent: 同一イベント再送の検出', () => {
 
 describe('nextCreatedOfferId / clubSentInWindow', () => {
   it('配信なしならoffer-created-1、欠番混在でも最大suffix+1を返す（ID衝突の防止）', () => {
-    expect(nextCreatedOfferId([])).toBe('offer-created-1')
-    expect(nextCreatedOfferId(seedDeliveries)).toBe('offer-created-1')
+    expect(nextCreatedOfferId([], [])).toBe('offer-created-1')
+    expect(nextCreatedOfferId(seedDeliveries, [])).toBe('offer-created-1')
     const withCreated = [
       ...seedDeliveries,
       inWindowDeliveryFor(['student-you'], 1),
       inWindowDeliveryFor(['pool-01'], 3),
     ]
-    expect(nextCreatedOfferId(withCreated)).toBe('offer-created-4')
+    expect(nextCreatedOfferId(withCreated, [])).toBe('offer-created-4')
+  })
+
+  it('deliveriesにoffer-created-1があれば、予約なしでも次はoffer-created-2になる', () => {
+    const withFirst = [...seedDeliveries, inWindowDeliveryFor(['student-you'], 1)]
+    expect(nextCreatedOfferId(withFirst, [])).toBe('offer-created-2')
+  })
+
+  it('deliveriesになくても、返答が参照するoffer-created-7は再利用せず次は8になる（破損再シード後の防衛）', () => {
+    expect(nextCreatedOfferId(seedDeliveries, ['offer-created-7'])).toBe('offer-created-8')
+  })
+
+  it('既読側により大きな作成IDが残っていれば、それも予約として扱う', () => {
+    expect(
+      nextCreatedOfferId(seedDeliveries, ['offer-created-7', 'offer-created-30']),
+    ).toBe('offer-created-31')
+  })
+
+  it('返答と既読に同一IDが重複していても決定的に同じ結果を返す', () => {
+    const reserved = ['offer-created-5', 'offer-created-5', 'offer-created-5']
+    expect(nextCreatedOfferId(seedDeliveries, reserved)).toBe('offer-created-6')
+    expect(nextCreatedOfferId(seedDeliveries, reserved)).toBe('offer-created-6')
+  })
+
+  it('malformed ID・別prefix・非数値suffixは安全に無視される', () => {
+    const reserved = [
+      'offer-created-',
+      'offer-created-abc',
+      'offer-created-2extra',
+      'delivery-offer-created-9',
+      'offer-rokko-hike',
+      '',
+    ]
+    expect(nextCreatedOfferId(seedDeliveries, reserved)).toBe('offer-created-1')
+  })
+
+  it('canonicalシード＋シード由来の既読・返答IDだけなら、初回採番はoffer-created-1のまま変わらない', () => {
+    const seedEraReserved = ['offer-rokko-hike', 'offer-photo-walk', 'offer-cafe-night']
+    expect(nextCreatedOfferId(seedDeliveries, seedEraReserved)).toBe('offer-created-1')
+  })
+
+  it('旧offer-created-1の既読・返答が残っていても、新規作成イベントのファネル・受信箱状態へ誤接続しない（統合）', () => {
+    // 破損→canonical再シード後の状態: deliveriesはシード3件のみ、行動記録は旧IDを参照したまま
+    const oldReads: OfferReadMark[] = [
+      {
+        offerId: 'offer-created-1',
+        studentId: 'student-you',
+        readAt: '2026-08-22T10:00:00.000Z',
+      },
+    ]
+    const oldResponses: OfferResponse[] = [
+      {
+        offerId: 'offer-created-1',
+        studentId: 'student-you',
+        choice: 'interested',
+        respondedAt: '2026-08-22T10:05:00.000Z',
+      },
+    ]
+    const reservedOfferIds = [
+      ...oldResponses.map((response) => response.offerId),
+      ...oldReads.map((mark) => mark.offerId),
+    ]
+    const offer = buildClubOffer(createOfferDraft(), seedDeliveries, reservedOfferIds)
+    // 旧IDは再利用されない
+    expect(offer.id).toBe('offer-created-2')
+    const delivery = buildDelivery(
+      offer,
+      [
+        {
+          studentId: 'student-you',
+          score: 100,
+          reasons: ['アウトドアに興味がある'],
+          cautions: [],
+        },
+      ],
+      '2026-08-23T12:30:00.000Z',
+    )
+    // 旧記録は新キャンペーンのファネルへ数えられない（初期は配信1・閲覧0・関心0・参加意向0）
+    expect(buildFunnel(delivery, oldReads, oldResponses)).toEqual({
+      delivered: 1,
+      viewed: 0,
+      engaged: 0,
+      planned: 0,
+    })
+    // 受信箱でも新着は未読のまま（旧返答・旧既読が結合されない）
+    const view = buildInboxView(demoStudent, [delivery], demoClubs, oldResponses, oldReads)
+    expect(view.items[0].status).toBe('unread')
+    expect(view.items[0].response).toBeNull()
   })
 
   it('過去シード（4月）は団体週3枠を消費せず、今週の送信2件を追加すると2になる', () => {

@@ -117,14 +117,28 @@ export function findDuplicateEvent(
   )
 }
 
-// 作成オファーのID採番。既存配信のoffer-created-Nの最大suffix+1（欠番があっても衝突しない）
-export function nextCreatedOfferId(deliveries: OfferDelivery[]): string {
+// 作成オファーのID採番。既存配信のoffer-created-Nに加えて、既読・返答など
+// 別ストアの行動記録が参照するofferId（reservedOfferIds）も予約済みとして扱い、
+// 最大suffix+1を返す（欠番は埋めない）。deliveryストアだけが破損して
+// canonicalへ再シードされた場合でも、残存する既読・返答のIDを再利用しないため、
+// 古い行動記録が新しいキャンペーンへ誤接続しない。offer-created-N形式以外
+// （別prefix・非数値suffix・空suffix）は安全に無視する
+export function nextCreatedOfferId(
+  deliveries: OfferDelivery[],
+  reservedOfferIds: readonly string[],
+): string {
   let maxSuffix = 0
-  for (const delivery of deliveries) {
-    const matched = /^offer-created-(\d+)$/.exec(delivery.offer.id)
+  const consider = (offerId: string) => {
+    const matched = /^offer-created-(\d+)$/.exec(offerId)
     if (matched !== null) {
       maxSuffix = Math.max(maxSuffix, Number(matched[1]))
     }
+  }
+  for (const delivery of deliveries) {
+    consider(delivery.offer.id)
+  }
+  for (const offerId of reservedOfferIds) {
+    consider(offerId)
   }
   return `offer-created-${maxSuffix + 1}`
 }

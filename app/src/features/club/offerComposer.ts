@@ -125,10 +125,15 @@ export function validateOfferDraft(draft: OfferDraft): DraftValidation {
   return messages.length === 0 ? { ok: true } : { ok: false, messages }
 }
 
-// 検証済みdraftからオファーを組み立てる。IDは既存配信から採番し、団体は固定
-export function buildClubOffer(draft: OfferDraft, deliveries: OfferDelivery[]): ClubOffer {
+// 検証済みdraftからオファーを組み立てる。団体は固定。IDは既存配信と、
+// 既読・返答が参照する予約済みofferId（reservedOfferIds）の両方から採番する
+export function buildClubOffer(
+  draft: OfferDraft,
+  deliveries: OfferDelivery[],
+  reservedOfferIds: readonly string[],
+): ClubOffer {
   return {
-    id: nextCreatedOfferId(deliveries),
+    id: nextCreatedOfferId(deliveries, reservedOfferIds),
     clubId: DEMO_CLUB_ID,
     eventName: draft.eventName.trim(),
     description: draft.description.trim(),
