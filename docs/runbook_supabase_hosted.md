@@ -21,7 +21,8 @@
 
 1. Authentication → Sign In / Providers → Email: 有効・signup許可のまま。**Email OTP expiryを600秒**へ変更。
 2. Email Templates: **「Magic Link」と「Confirm signup」の両テンプレート**を、リンク（`{{ .ConfirmationURL }}`）でなく**6桁コード`{{ .Token }}`だけを表示する本文**へ差し替える（signInWithOtpは既存ユーザーにMagic Link、新規ユーザーにConfirm signupテンプレートを使うため両方必要。ローカルの`app/supabase/templates/otp_code.html`と同等の文面にする）。
-   **重要（2026-08-24確認）**: **2026-06-03以降に作成された新規Freeプロジェクトは、標準メールプロバイダのままだと本文・件名とも変更できない**（プラットフォーム制約。公式changelog #46599。Dashboard/Management API共通で、テンプレ項目のPATCHのみ400になることを対照実験で確認済み）。該当プロジェクト（`cue-shinkan-staging`を含む）では、カスタムSMTP（Task 010でResend等を導入）を設定するまで標準テンプレート（リンク形式）のまま運用し、6桁コードのメール本文化はTask 010で行う。標準SMTPは**組織メンバーのアドレス宛にしか配信されない**点にも注意。
+   **重要（2026-08-24確認）**: **2026-06-03以降に作成された新規Freeプロジェクトは、標準メールプロバイダのままだと本文・件名とも変更できない**（プラットフォーム制約。公式changelog #46599。Dashboard/Management API共通で、テンプレ項目のPATCHのみ400になることを対照実験で確認済み）。該当プロジェクトでは、カスタムSMTPを設定するとロックが解除される。標準SMTPは**組織メンバーのアドレス宛にしか配信されない**点にも注意。
+   → stagingでは2026-08-25に、**staging専用Gmailアカウント**（2段階認証+アプリパスワード。資格情報はDashboardのSMTP設定へ直接入力し、リポジトリ・チャット・CIへは置かない）を`smtp.gmail.com`:`587`のカスタムSMTPとして設定し、テンプレートを6桁形式へ変更済み。**宛先制限・テンプレートロックとも解除済み**。Gmail SMTPは個人アカウント上限500宛先/日のstaging暫定構成であり、本番向けは独自ドメイン+専用プロバイダ（Resend等）をTask 010で導入する。
 3. **Site URL: ローカル確認用URL `http://localhost:5173/cue-shinkan-demo/` を設定する。凍結中のGitHub Pages公開デモURLへは向けない。**本番URL・新実運用URLへの変更はTask 011の公開判断時に行う。Redirect URLsは追加しない（OTPコード方式でリダイレクト不使用）。
 4. Attack protection（CAPTCHA・レート強化）は既定のまま（最終化はTask 011）。
 
@@ -46,7 +47,8 @@ npx supabase db push                                      # app/supabase/migrati
 
 **記録上の注意: 実在メールアドレス・OTPコード・招待トークンをスクリーンショット・PR・ログへ残さない。**結果はPR本文へチェックリストとして記録する。
 
-> 2026-08-24: 下記2（実メール実配信）を除く全項目+追加の否定系（使用済み/取消/期限切れ招待・無効session・ログアウト後アクセス・RLS越権プローブ12件）を、staging接続のPlaywright自動検証33項目として完了（記録は`tasks/008-auth-and-authorization.md`「Phase B 検証記録」）。残るのは本人の大学メールでの実配信確認のみで、標準SMTPの組織メンバー限定配信とテンプレートロック（§3）により「本人メールの組織メンバー化→標準テンプレート（リンク形式）での受信確認」となる。6桁コード本文の実配信はTask 010で検証する。
+> 2026-08-24: 下記2（実メール実配信）を除く全項目+追加の否定系（使用済み/取消/期限切れ招待・無効session・ログアウト後アクセス・RLS越権プローブ12件）を、staging接続のPlaywright自動検証33項目として完了（記録は`tasks/008-auth-and-authorization.md`「Phase B 検証記録」）。
+> 2026-08-25: カスタムSMTP設定（§3）後に、本人所有の大学メールで「実配信→6桁コード確認→アプリ入力→ログイン成立→リロード復元」まで実機確認し、**全項目完了（Task 008最終完了）**。検証用authユーザーは削除済み。
 
 1. [ ] ローカルの`npm run dev`をstagingへ接続（`.env.local`をstaging値へ）
 2. [ ] **本人所有の大学メール1件だけ**でOTP送信→6桁コード検証が成功する

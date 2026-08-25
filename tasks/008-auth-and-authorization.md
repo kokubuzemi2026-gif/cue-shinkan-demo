@@ -51,19 +51,19 @@ Phase 2の土台として、大学メール（メールOTP）による登録・�
 
 ### Phase B（hosted staging確認）
 
-- [x] `docs/runbook_supabase_hosted.md` §6のチェックリストを完了し、結果を記録（下記「Phase B 検証記録」。残存は実メール実配信1件のみ）
-- [ ] **Phase B完了までは「実装完了・hosted検証待ち」とし、Task 008の最終完了と判定しない**（現況: 自動検証工程は完了。「本人所有の大学メールでの実配信確認」のみ残存）
+- [x] `docs/runbook_supabase_hosted.md` §6のチェックリストを完了し、結果を記録（下記「Phase B 検証記録」）
+- [x] **Phase B完了までは「実装完了・hosted検証待ち」とし、Task 008の最終完了と判定しない**（2026-08-25: カスタムSMTP経由の実メール6桁ログインまで全項目完了し、**Task 008最終完了**）
 
 ### Phase B 検証記録（2026-08-24 自動実行）
 
 - **staging構築**: `cue-shinkan-staging`（project ref `cyjmduaijtdihfesawvd`・region `ap-northeast-1`・組織 `cue-shinkan-staging`）。組織はAPI読み戻しで`plan: free`（0円）を確認。project status `ACTIVE_HEALTHY`
 - **migration適用**: 実行環境から直結Postgres（直結ホストはIPv6のみ・poolerへの生TCPは不可）へ到達できないため、`db push`と同等のManagement API SQLエンドポイント（postgres権限・HTTPS）で4migration（`20260824111223`〜`20260824111230`）を番号順に適用し、CLI互換の`supabase_migrations.schema_migrations`へ履歴を記録。適用後の読み戻しで、テーブル4・全RLS有効・policy構成・関数EXECUTE（PUBLIC/anon残存ゼロ・authenticated付与は公開RPC 9本のみ）・スキーマ/テーブル権限マトリクスを確認
-- **Auth設定**: site_url=`http://localhost:5173/cue-shinkan-demo/`・OTP有効期限600秒・6桁・signup有効（PATCH後にGET読み戻しで確認）。**メールテンプレート・件名は変更不可**: 2026-06-03以降に作成された新規Freeプロジェクト+標準メールプロバイダではプラットフォーム側でロックされる（公式changelog #46599。対照実験: 同一トークン・同一エンドポイントで非テンプレ項目PATCH=200／テンプレ項目のみ=400）。6桁コードのメール本文化はTask 010（カスタムSMTP導入）で解禁される
+- **Auth設定**: site_url=`http://localhost:5173/cue-shinkan-demo/`・OTP有効期限600秒・6桁・signup有効（PATCH後にGET読み戻しで確認）。**メールテンプレート・件名は変更不可**: 2026-06-03以降に作成された新規Freeプロジェクト+標準メールプロバイダではプラットフォーム側でロックされる（公式changelog #46599。対照実験: 同一トークン・同一エンドポイントで非テンプレ項目PATCH=200／テンプレ項目のみ=400）。6桁コードのメール本文化はカスタムSMTP設定で解禁される → 2026-08-25: staging専用Gmailアカウント（2段階認証+アプリパスワード。資格情報はDashboardのSMTP設定へ直接入力し、リポジトリ・チャットへは置かない）を`smtp.gmail.com:587`のカスタムSMTPとして設定してロックを解除し、両テンプレートを`{{ .Token }}`の6桁形式へ変更（読み戻しで`{{ .Token }}`あり・リンクなしを機械確認）
 - **APIキー移行**: 新形式`sb_publishable_...`（アプリ接続用）と`sb_secret_...`（テストユーザー管理のみの一時利用）の動作確認後、legacy `anon`/`service_role`キーを無効化（無効化後legacy=401・新形式正常を確認）。作業中にセッション画面へ露出したlegacy HS256 JWT secretは署名キーとしてrevoke済み（主署名はES256・ユーザーゼロ時点のため影響なし）
 - **自動検証: 33項目すべて合格**: 架空`@stu.kobe-u.ac.jp`2名+ドメイン外1名を管理APIで作成し（メール送信なし。6桁OTPは`generate_link`の`email_otp`を実際の`verifyOtp`で検証してsession確立）、staging接続のローカルアプリ（390×844）をPlaywrightで駆動。合格範囲: クライアント第一ゲート（plus・別ドメイン拒否）／正規化（前後空白+大文字入力が小文字trim済みで送信・送信失敗時の安全表示）／session成立・リロード復元／新入生登録／団体作成（審査待ち・owner匿名ラベル・自分バッジ）／プロフィール保存後のコンテキスト維持と保存内容の永続化／新入生⇄団体切替／招待リンク（一度きり表示・hash即時除去・団体名/役割の事前表示・別ユーザー承諾・担当者2人・PII非表示・使用済み/取消済み/期限切れの汎用エラー・UIからの取消）／RLS・権限RESTプローブ12件（自行のみ可視・他ユーザー団体の不可視・直接UPDATE/INSERT拒否・anonゼロ・privateスキーマ406・ドメイン外ユーザーの全遮断）／accessBlocked表示とログアウト導線／無効・期限切れsessionの拒否／ログアウト後に保護画面へ戻れない／localStorageは`sb-*`のみ／横スクロールなし／予期しない失敗リクエスト・console errorゼロ
 - **既知の制約（修正せず記録）**: サインイン済みタブで同一URLのhashのみを`#invite=`へ変更しても招待処理は走らない（hosted実機で再現確認。同じURLを再読込すれば処理される。Task 008の受入条件外のため修正しない）
-- **実メールOTP実配信（唯一の残存項目）**: 標準SMTPは組織メンバー宛のみ配信+上記テンプレートロックのため、本人の大学メールをSupabase組織メンバー化したうえで「標準テンプレート（リンク形式）の実配信確認」のみ実施可能。6桁コード本文の実配信検証はTask 010で行う
-- **後片付け**: 作成した団体・membership・招待・student_accounts・authユーザーを削除し、`organizations`/`organization_memberships`/`student_accounts`/`private.organization_invitations`/`auth.users`のcount=0を確認。secret key・DBパスワード・sessionの一時ファイルは破棄済み（`.env.local`はURL+publishable keyの2行のみ）
+- **実メールOTP実配信（2026-08-25完了）**: カスタムSMTP設定後、本人所有の大学メール1件でアプリUIから送信→実受信（件名【CUE】登録コード・本文に6桁コードあり・リンクなしを本人確認）→受信した6桁コードでログイン成立→リロード後のsession復元まで実機確認（390px・localStorageは`sb-*`のみ・横スクロールなし）。Gmail SMTPは個人アカウント上限500宛先/日のstaging暫定構成で、本番向けは独自ドメイン+専用プロバイダをTask 010で導入する
+- **後片付け**: 作成した団体・membership・招待・student_accounts・authユーザーを削除し、`organizations`/`organization_memberships`/`student_accounts`/`private.organization_invitations`/`auth.users`のcount=0を確認。実配信検証後も、検証用authユーザー2件（大学メール1件・SMTP疎通確認用Gmail1件）を削除して全5系統count=0を再確認。secret key・DBパスワード・session・メールアドレス・OTPの一時ファイルは破棄済み（`.env.local`はURL+publishable keyの2行のみ）
 
 ## 対象外
 
