@@ -74,7 +74,19 @@ Phase 1がlocalStorageへ保存していたデモ状態（興味パスポート�
 
 ### Phase B 検証記録
 
-（staging検証の実施後に記録する）
+**未実施（2026-08-25時点）。実装セッションの実行環境からhosted stagingへ到達できないため。**
+
+- 事象: `supabase login`（`--no-browser`）のトークン交換が常に `failed to execute http request: Transport error (GET https://api.supabase.com/platform/cli/login/<session>?device_code=<code>)` で失敗する。ブラウザ承認は完了しており、コードもCLIへ正しく渡っている（エラーURLに device_code が載っている）
+- 切り分け:
+  - `curl` / Node の `fetch` から同一エンドポイントへは到達できる（HTTP 400/404 が返る＝ネットワーク経路は生きている）
+  - egressプロキシの記録に `api.supabase.com` の失敗はなく、CONNECT自体は成功している
+  - Supabase CLIはDNS-over-HTTPS（1.1.1.1）を使い、これは組織のegressポリシーで拒否される（403）。`--dns-resolver native` でDoHは回避できるが、交換は同じエラーで失敗する
+  - CLI本体はGo（BoringCrypto）製バイナリで、TLSを再終端するプロキシ環境と相性が悪い。`/root/.ccr/README.md` の「Not supported through the proxy（報告し、迂回しない）」に該当する
+- 結論: この実行環境からCLIのアクセストークンを取得できず、Management API経由のmigration適用・実機検証を行えない。**回避策は取らない**（TLS検証の無効化・プロキシの迂回は禁止事項）
+- 次の実施方法: 下記いずれか
+  1. 開発者のローカル端末（プロキシ制約のない環境）で `supabase login` 済みの状態から実行する
+  2. 組織のegressポリシーでSupabase CLIの要件を許可してもらう
+- 実行手順は `docs/runbook_supabase_hosted.md` §4・§6のとおり。適用対象は本Taskの4migration（`20260825054000`〜`20260825054008`）で、確認項目は上記「Phase B（hosted staging確認）」チェックリストに従う
 
 ## 対象外
 
