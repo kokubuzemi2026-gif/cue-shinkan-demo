@@ -181,7 +181,7 @@ test('Task 009: パスポート・オファー・受信箱・ファネルのサ�
     })
 
     await test.step('2: 受信箱は空状態から始まる', async () => {
-      await pageA.getByRole('button', { name: '受信箱' }).click()
+      await pageA.getByRole('button', { name: '受信箱', exact: true }).click()
       await expect(pageA.getByText('オファー 0件')).toBeVisible({ timeout: 15_000 })
       await expectNoHorizontalScroll(pageA, '受信箱(空・390px)')
     })
@@ -273,7 +273,7 @@ test('Task 009: パスポート・オファー・受信箱・ファネルのサ�
 
     await test.step('8: 学生Aの受信箱に理由つきで届く（リロードで取得）', async () => {
       await pageA.reload()
-      await pageA.getByRole('button', { name: '受信箱' }).click()
+      await pageA.getByRole('button', { name: '受信箱', exact: true }).click()
       await expect(pageA.locator('.offer-card')).toHaveCount(1, { timeout: 15_000 })
       await expect(pageA.getByText(EVENT_NAME)).toBeVisible()
       await expect(pageA.getByText('アウトドアに興味がある')).toBeVisible()
@@ -322,7 +322,7 @@ test('Task 009: パスポート・オファー・受信箱・ファネルのサ�
         timeout: 15_000,
       })
       await expect(pageA.getByText('アウトドア').first()).toBeVisible()
-      await pageA.getByRole('button', { name: '受信箱' }).click()
+      await pageA.getByRole('button', { name: '受信箱', exact: true }).click()
       await expect(pageA.locator('.offer-card')).toHaveCount(1, { timeout: 15_000 })
       await expect(pageA.getByText('回答済み')).toBeVisible()
     })
@@ -341,7 +341,7 @@ test('Task 009: パスポート・オファー・受信箱・ファネルのサ�
       await expect(pageA2.getByRole('heading', { name: '新入生ホーム' })).toBeVisible({
         timeout: 15_000,
       })
-      await pageA2.getByRole('button', { name: '受信箱' }).click()
+      await pageA2.getByRole('button', { name: '受信箱', exact: true }).click()
       await expect(pageA2.locator('.offer-card')).toHaveCount(1, { timeout: 15_000 })
       await expect(pageA2.getByText('回答済み')).toBeVisible()
     })
