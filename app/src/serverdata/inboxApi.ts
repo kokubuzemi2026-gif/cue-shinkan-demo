@@ -8,8 +8,17 @@ import { SELF_STUDENT_ID } from './passportApi'
 // 配信時点のsnapshot（list_my_inboxの戻り値）で固定される（D023）。
 // InboxItem（features/student/inbox.ts）へ変換して既存のOfferCard表示部品を再利用する
 
-export type InboxRow =
+type GeneratedInboxRow =
   Database['public']['Functions']['list_my_inbox']['Returns'][number]
+
+// 生成型（supabase gen types）はRETURNS TABLEの列のnull可否を表現できない。
+// 実際にはread_at・返答はLEFT JOIN由来でnullになり得るため、ここで実挙動へ広げる
+// （生成型の行は構造的にこの型へ代入可能で、database.types.tsは生成出力と一致を保つ）
+export type InboxRow = Omit<GeneratedInboxRow, 'read_at' | 'responded_at' | 'response_choice'> & {
+  read_at: string | null
+  responded_at: string | null
+  response_choice: Database['public']['Enums']['response_choice'] | null
+}
 
 export function inboxRowToItem(row: InboxRow): InboxItem {
   const read = row.read_at !== null

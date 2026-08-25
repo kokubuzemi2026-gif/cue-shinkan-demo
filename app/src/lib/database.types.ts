@@ -233,11 +233,11 @@ export type Database = {
           org_name: string
           organization_id: string
           place: string
-          read_at: string | null
+          read_at: string
           reason_note: string
           reasons: string[]
-          response_choice: Database["public"]["Enums"]["response_choice"] | null
-          responded_at: string | null
+          responded_at: string
+          response_choice: Database["public"]["Enums"]["response_choice"]
           score: number
           target_categories: Database["public"]["Enums"]["interest_category"][]
           target_purposes: Database["public"]["Enums"]["purpose"][]
@@ -268,10 +268,7 @@ export type Database = {
           viewed_count: number
         }[]
       }
-      mark_offer_read: {
-        Args: { delivery_id: string }
-        Returns: undefined
-      }
+      mark_offer_read: { Args: { delivery_id: string }; Returns: undefined }
       org_member_directory: {
         Args: { org_id: string }
         Returns: {
