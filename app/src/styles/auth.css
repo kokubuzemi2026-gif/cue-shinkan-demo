@@ -1,0 +1,268 @@
+/* ---- Task 008: 認証・権限シェル（SignIn / Onboarding / Org / Shell） ---- */
+/* 色・余白・角丸はtokens.cssの変数だけを使う。既存CSSファイルは変更しない */
+
+.auth-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: 100%;
+  max-width: var(--shell-max-width);
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-4) calc(var(--space-5) + env(safe-area-inset-bottom));
+}
+
+.auth-main--center {
+  justify-content: center;
+  align-items: center;
+  min-height: 60vh;
+}
+
+.auth-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
+  padding: var(--space-5) var(--space-4);
+  background: var(--color-white);
+  border-radius: var(--radius-m);
+  box-shadow: var(--shadow-soft);
+}
+
+.auth-card-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+}
+
+.auth-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.auth-hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-muted);
+}
+
+.auth-notice {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: 13px;
+  background: var(--color-mint);
+  border-radius: 10px;
+}
+
+.form-error {
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-ink);
+  background: rgba(255, 107, 94, 0.14);
+  border-left: 3px solid var(--color-coral);
+  border-radius: 8px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.field-label {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.text-input {
+  min-height: var(--tap-target);
+  padding: var(--space-3);
+  font-size: 16px; /* iOSの自動ズームを避ける */
+  font-family: inherit;
+  color: var(--color-ink);
+  background: var(--color-white);
+  border: 1.5px solid rgba(23, 33, 43, 0.18);
+  border-radius: 12px;
+}
+
+.text-input:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 1px;
+}
+
+.text-area {
+  resize: vertical;
+}
+
+.code-input {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 8px;
+  text-align: center;
+}
+
+.auth-submit {
+  width: 100%;
+}
+
+.auth-subactions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.setup-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+/* ---- コンテキスト切替（新入生⇄団体）。RoleSwitcherと同じ操作感 ---- */
+
+.context-switcher {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+}
+
+.context-switcher-button {
+  min-height: var(--tap-target);
+  padding: var(--space-2) var(--space-4);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-muted);
+  background: var(--color-cream);
+  border: 1.5px solid transparent;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.context-switcher-button[aria-pressed='true'] {
+  color: var(--color-ink);
+  background: var(--color-white);
+  border-color: var(--color-coral);
+}
+
+.context-switcher-button:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+.signout-button {
+  min-height: var(--tap-target);
+}
+
+/* ---- 団体ホーム ---- */
+
+.status-chip {
+  align-self: flex-start;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+}
+
+.status-pending {
+  background: var(--color-cream);
+  color: var(--color-muted);
+  border: 1px dashed rgba(23, 33, 43, 0.25);
+}
+
+.status-verified {
+  background: var(--color-mint);
+  color: var(--color-ink);
+}
+
+.status-suspended {
+  background: rgba(255, 107, 94, 0.14);
+  color: var(--color-ink);
+}
+
+.member-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-height: var(--tap-target);
+  padding: var(--space-2) 0;
+  border-bottom: var(--line-soft);
+}
+
+.member-row:last-child {
+  border-bottom: none;
+}
+
+.member-label {
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.member-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.self-chip {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-ink);
+  background: var(--color-mint);
+  border-radius: var(--radius-pill);
+}
+
+.invite-create-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.invite-created {
+  box-shadow: none;
+  border: 1.5px solid rgba(23, 33, 43, 0.18);
+  padding: var(--space-4);
+}
+
+.invite-url {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.invite-revoke {
+  min-height: var(--tap-target);
+  padding: var(--space-1) var(--space-2);
+}
+
+.invite-org-name {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.shell-actions {
+  margin-top: var(--space-4);
+}

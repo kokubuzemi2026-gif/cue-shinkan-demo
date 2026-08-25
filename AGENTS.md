@@ -10,7 +10,8 @@
 2. `docs/decisions.md`
 3. `docs/product_spec.md`
 4. `docs/matching_and_safety.md`
-5. 対象となる `tasks/NNN-*.md`
+5. `docs/auth_and_authorization.md`（Phase 2の認証・権限の正本）
+6. 対象となる `tasks/NNN-*.md`
 
 古い会話やAIの記憶より、GitHub上の最新仕様を優先します。文書間に矛盾がある場合は、作業を止めて矛盾箇所を報告してください。
 
