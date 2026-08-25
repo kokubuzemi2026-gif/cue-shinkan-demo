@@ -72,6 +72,8 @@ async function expectNoHorizontalScroll(page: Page, situation: string) {
 type MailpitSearchResult = { messages?: { ID: string }[] }
 type MailpitMessage = { HTML?: string; Text?: string }
 
+// 同じアドレスで再ログインするとき、消費済みの古いOTPメールを拾わないよう、
+// 読み取ったメッセージはその場でMailpitから削除する
 async function fetchOtpCode(request: APIRequestContext, address: string): Promise<string> {
   let messageId = ''
   await expect
@@ -91,6 +93,7 @@ async function fetchOtpCode(request: APIRequestContext, address: string): Promis
   const detail = (await detailRes.json()) as MailpitMessage
   const otpMatch = /\b(\d{6})\b/.exec(`${detail.HTML ?? ''}\n${detail.Text ?? ''}`)
   expect(otpMatch !== null).toBe(true)
+  await request.delete(`${MAILPIT}/api/v1/messages`, { data: { IDs: [messageId] } })
   return otpMatch![1]
 }
 
