@@ -10,9 +10,9 @@ import {
 import { registerStudentAccount } from '../account/useMyAccount'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
 import { OrgCreateScreen } from '../org/OrgCreateScreen'
+import { StudentArea } from '../student/StudentArea'
 import { ContextSwitcher } from './ContextSwitcher'
 import { OrgHome } from './OrgHome'
-import { StudentPreparing } from './StudentPreparing'
 
 type AuthenticatedShellProps = {
   client: CueSupabaseClient
@@ -36,6 +36,9 @@ export function AuthenticatedShell({
   const [creatingOrg, setCreatingOrg] = useState(false)
   const [addStudentBusy, setAddStudentBusy] = useState(false)
   const [addStudentFailed, setAddStudentFailed] = useState(false)
+  // wizard・オファー作成などの集中モード中は、コンテキスト切替と権限追加を隠して
+  // 入力中の喪失を防ぐ（Phase 1のRoleSwitcher非表示と同趣旨）
+  const [focusMode, setFocusMode] = useState(false)
 
   // アカウント再読込（団体追加・脱退など）後に、選択中コンテキストの有効性を再解決する
   useEffect(() => {
@@ -90,7 +93,7 @@ export function AuthenticatedShell({
             ログアウト
           </button>
         </div>
-        {active !== null && (
+        {active !== null && !focusMode && (
           <ContextSwitcher
             account={account}
             contexts={contexts}
@@ -105,13 +108,16 @@ export function AuthenticatedShell({
             <p className="placeholder-text">利用できる権限がありません。</p>
           </section>
         )}
-        {active?.kind === 'student' && <StudentPreparing />}
+        {active?.kind === 'student' && (
+          <StudentArea client={client} onFocusModeChange={setFocusMode} />
+        )}
         {active?.kind === 'org' &&
           (activeMembership !== null ? (
             <OrgHome
               client={client}
               membership={activeMembership}
               onAccountChanged={reloadAccount}
+              onFocusModeChange={setFocusMode}
             />
           ) : (
             <section className="placeholder-card" aria-label="読み込み中">
@@ -119,6 +125,7 @@ export function AuthenticatedShell({
             </section>
           ))}
 
+        {!focusMode && (
         <section className="auth-card shell-actions" aria-label="権限の追加">
           <h2 className="auth-card-title">権限を追加する</h2>
           {!account.hasStudentAccount && (
@@ -146,6 +153,7 @@ export function AuthenticatedShell({
             新しい団体を作る
           </button>
         </section>
+        )}
       </main>
     </div>
   )

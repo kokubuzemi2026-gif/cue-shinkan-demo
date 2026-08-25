@@ -1,6 +1,10 @@
+import { useCallback, useState } from 'react'
+
 import { canManageOrg, ORG_STATUS_LABELS, type MembershipInfo } from '../account/contextModel'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
+import { OrgContactForm } from '../org/OrgContactForm'
 import { OrgMembersScreen } from '../org/OrgMembersScreen'
+import { OrgOffersPanel } from '../org/OrgOffersPanel'
 import { OrgProfileForm } from '../org/OrgProfileForm'
 
 type OrgHomeProps = {
@@ -8,6 +12,8 @@ type OrgHomeProps = {
   membership: MembershipInfo
   // プロフィール保存後などに親がアカウント情報（団体名表示）を更新する
   onAccountChanged: () => void
+  // オファー作成中は親シェルがコンテキスト切替・権限追加を隠す（集中モード）
+  onFocusModeChange: (active: boolean) => void
 }
 
 const STATUS_NOTES: Record<MembershipInfo['organizationStatus'], string> = {
@@ -16,43 +22,83 @@ const STATUS_NOTES: Record<MembershipInfo['organizationStatus'], string> = {
   suspended: 'この団体は現在停止中です。心当たりがない場合は運営へ連絡してください。',
 }
 
-// 団体コンテキストのホーム。オファー作成・配信はTask 009以降で接続される
-export function OrgHome({ client, membership, onAccountChanged }: OrgHomeProps) {
+// 団体コンテキストのホーム。オファー作成・配信・ファネルはTask 009でサーバー接続済み
+export function OrgHome({
+  client,
+  membership,
+  onAccountChanged,
+  onFocusModeChange,
+}: OrgHomeProps) {
   const manager = canManageOrg(membership.role)
+  const verified = membership.organizationStatus === 'verified'
+  // 公式窓口の保存後にダッシュボード表示（公式窓口snapshot）を再読込するためのトークン
+  const [contactVersion, setContactVersion] = useState(0)
+  // オファー作成・確認・完了中はプロフィール・担当者一覧を隠し、入力へ集中させる
+  const [offersFocus, setOffersFocus] = useState(false)
+  const handleOffersFocus = useCallback(
+    (active: boolean) => {
+      setOffersFocus(active)
+      onFocusModeChange(active)
+    },
+    [onFocusModeChange],
+  )
+
   return (
     <>
-      <h1 className="page-title">{membership.organizationName}</h1>
-      <section className="auth-card" aria-label="団体の状態">
-        <span className={`status-chip status-${membership.organizationStatus}`}>
-          {ORG_STATUS_LABELS[membership.organizationStatus]}
-        </span>
-        <p className="auth-text">{STATUS_NOTES[membership.organizationStatus]}</p>
-        <p className="auth-hint">あなたの表示ラベル: {membership.memberLabel}</p>
-      </section>
-
-      {manager && (
-        <OrgProfileForm
-          key={membership.organizationId}
-          client={client}
-          organizationId={membership.organizationId}
-          initialName={membership.organizationName}
-          initialDescription={membership.organizationDescription}
-          onSaved={onAccountChanged}
-        />
+      {!offersFocus && <h1 className="page-title">{membership.organizationName}</h1>}
+      {!offersFocus && (
+        <section className="auth-card" aria-label="団体の状態">
+          <span className={`status-chip status-${membership.organizationStatus}`}>
+            {ORG_STATUS_LABELS[membership.organizationStatus]}
+          </span>
+          <p className="auth-text">{STATUS_NOTES[membership.organizationStatus]}</p>
+          <p className="auth-hint">あなたの表示ラベル: {membership.memberLabel}</p>
+        </section>
       )}
 
-      <OrgMembersScreen
-        client={client}
-        organizationId={membership.organizationId}
-        myRole={membership.role}
-      />
+      {verified ? (
+        <OrgOffersPanel
+          client={client}
+          organizationId={membership.organizationId}
+          canSend={manager}
+          refreshToken={contactVersion}
+          onFocusModeChange={handleOffersFocus}
+        />
+      ) : (
+        <section className="placeholder-card" aria-label="オファー配信の案内">
+          <span className="placeholder-chip">認証待ち</span>
+          <p className="placeholder-text">
+            新歓イベントのオファー作成・配信・ファネルは、運営の認証が完了すると利用できます。
+          </p>
+        </section>
+      )}
 
-      <section className="placeholder-card" aria-label="準備中の案内">
-        <span className="placeholder-chip">準備中</span>
-        <p className="placeholder-text">
-          新歓イベントのオファー作成・配信・ファネル表示は、次の開発段階（サーバーデータ移行）でこの団体に接続されます。
-        </p>
-      </section>
+      {!offersFocus && manager && (
+        <>
+          <OrgProfileForm
+            key={membership.organizationId}
+            client={client}
+            organizationId={membership.organizationId}
+            initialName={membership.organizationName}
+            initialDescription={membership.organizationDescription}
+            onSaved={onAccountChanged}
+          />
+          <OrgContactForm
+            key={`contact-${membership.organizationId}`}
+            client={client}
+            organizationId={membership.organizationId}
+            onSaved={() => setContactVersion((version) => version + 1)}
+          />
+        </>
+      )}
+
+      {!offersFocus && (
+        <OrgMembersScreen
+          client={client}
+          organizationId={membership.organizationId}
+          myRole={membership.role}
+        />
+      )}
     </>
   )
 }
