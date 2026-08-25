@@ -285,7 +285,8 @@ test('Task 009: パスポート・オファー・受信箱・ファネルのサ�
     await test.step('9: 詳細を開く（既読化）→「行ってみたい」→公式窓口が開示される', async () => {
       await pageA.locator('.offer-card').click()
       await expect(pageA.getByRole('heading', { name: EVENT_NAME })).toBeVisible()
-      await expect(pageA.getByText('マッチ度 100 / 100')).toBeVisible()
+      // 興味35+目的1件10+スタイル15+曜日15+初心者歓迎10+予算内5 = 90点（65点以上で配信）
+      await expect(pageA.getByText('マッチ度 90 / 100')).toBeVisible()
       await expect(pageA.getByText('あなたに届いた理由')).toBeVisible()
       await expect(pageA.getByText('団体からのメッセージ')).toBeVisible()
       await expectNoHorizontalScroll(pageA, 'オファー詳細(390px)')
