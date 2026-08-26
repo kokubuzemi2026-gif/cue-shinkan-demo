@@ -149,6 +149,10 @@ DENY_CASES = (
     # NUL文字による切り詰め回避
     "git push origin main\x00-suffix",
     "git reset --hard\x00x",
+    # ヒアドキュメント本文がシェルの標準入力になる形（bashは本文を実行する）
+    "bash -s <<EOF\ngit push origin main\nEOF",
+    "sh <<EOF\ngit reset --hard\nEOF",
+    "bash <<'EOF'\ngit clean -fd\nEOF",
     # ヒアドキュメント除去を悪用した回避（終端語が無い／引用符の中／算術のシフト）
     'echo "<<EOF"\ngit push origin main',
     "cat <<EOF\ngit push origin main",
@@ -216,8 +220,9 @@ ALLOW_CASES = (
     # 引用符が改行をまたぐ引数（複数行のcommit message）
     'git commit -m "1行目\n\n2行目: mainへ直接pushしない方針を明記する"',
     'git commit -m "fix: git reset --hard を拒否する" -m "詳細は docs/agent_harness.md を参照"',
-    # ヒアドキュメント本文のコマンド例
+    # ヒアドキュメント本文のコマンド例（シェルへ渡らないので実行されない）
     "cat <<'EOF' > /tmp/note.txt\ngit push origin main は禁止\nEOF",
+    "bash -s <<EOF\nnpm run lint\nEOF",
     # -e の値ではない -n はdry-runとして扱う
     "git clean -f -e '*.log' -n",
     "git clean -n -e -f",

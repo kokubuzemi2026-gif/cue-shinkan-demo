@@ -170,11 +170,17 @@ def _extract_heredocs(tokens: list[str]) -> tuple[list[str], list[str]]:
     return kept, terminators
 
 
-def _skip_heredoc_body(lines: list[str], start: int, terminator: str) -> int | None:
-    """終端語が見つかればその次の行番号を返す。見つからなければ None（何も捨てない）。"""
+def _read_heredoc_body(
+    lines: list[str], start: int, terminator: str
+) -> tuple[int, str] | None:
+    """終端語が見つかれば (次の行番号, 本文) を返す。見つからなければ None。
+
+    None を返した場合、呼び出し側は行を1つも捨てない。終端語が無いときに
+    残りの行を捨てると、ガードが丸ごと無効化されてしまうため。
+    """
     for offset in range(start, len(lines)):
         if lines[offset].strip() == terminator:
-            return offset + 1
+            return offset + 1, "\n".join(lines[start:offset])
     return None
 
 
@@ -213,10 +219,12 @@ def split_segments(command: str) -> list[list[str]] | None:
         index += consumed
 
         tokens, terminators = _extract_heredocs(tokens)
+        bodies: list[str] = []
         for terminator in terminators:
-            resume = _skip_heredoc_body(lines, index, terminator)
-            if resume is not None:
-                index = resume
+            found = _read_heredoc_body(lines, index, terminator)
+            if found is not None:
+                index, body = found
+                bodies.append(body)
 
         current: list[str] = []
         for token in tokens:
@@ -228,6 +236,18 @@ def split_segments(command: str) -> list[list[str]] | None:
                 current.append(token)
         if current:
             segments.append(current)
+
+        # `bash -s <<EOF` のようにヒアドキュメントがシェルの標準入力になる場合、
+        # 本文はコマンドとして実行される。捨てずに中身も判定対象へ加える。
+        if bodies and any(
+            os.path.basename(token) in _SHELL_EXECUTABLES
+            or os.path.basename(token) == "eval"
+            for token in tokens
+        ):
+            for body in bodies:
+                nested = split_segments(body)
+                if nested:
+                    segments.extend(nested)
 
     return segments
 

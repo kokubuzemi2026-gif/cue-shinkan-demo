@@ -63,8 +63,8 @@
 
 | 受入条件 | 検証手段 | 場所 |
 |---|---|---|
-| guard_git の拒否判定（短縮形・ラッパー・シェル・alias・NUL・ヒアドキュメント回避・危険な `-c` 設定を含む） | 模擬コマンド82件で `evaluate()` を実行 | `.claude/hooks/test_hooks.py` |
-| guard_git の誤検知 | 通常の開発コマンド39件で許可されることを検証 | 同上 |
+| guard_git の拒否判定（短縮形・ラッパー・シェル・alias・NUL・ヒアドキュメント回避・危険な `-c` 設定を含む） | 模擬コマンド85件で `evaluate()` を実行 | `.claude/hooks/test_hooks.py` |
+| guard_git の誤検知 | 通常の開発コマンド40件で許可されることを検証 | 同上 |
 | guard_git の拒否理由 | 代表14件で、どの規則により拒否したかを検証 | 同上 |
 | guard_git の現在ブランチ依存判定 | 一時gitリポジトリ（main / feature）で8件を検証 | 同上 |
 | guard_git のヒアドキュメント誤検知 | 本文にコマンド例を含むPR作成コマンドが許可されること | 同上 |
@@ -92,7 +92,7 @@
 - Python構文チェック: `python3 -m py_compile .claude/hooks/{guard_git,quality_gate,test_hooks}.py` → OK
 - settings.jsonのparse: OK（deny 10件 / PreToolUse matcher `Bash` / Stopはmatcherなし / timeout 30秒・1500秒）
 - subagentのfrontmatter: `claude plugin validate .claude/agents` → Validation passed（4件）
-- hookテスト: `python3 .claude/hooks/test_hooks.py` → **194 checks passed**
+- hookテスト: `python3 .claude/hooks/test_hooks.py` → **198 checks passed**
 - Stop hookの実挙動（本リポジトリ）:
   - `app/` 変更なし → exit 0（ゲート未実行）
   - `app/` に未追跡ファイルあり → lint / test / build を実行し7秒でexit 0
@@ -130,6 +130,7 @@
 | 重大度 | 指摘 | 対応 |
 |---|---|---|
 | Blocker | ヒアドキュメント除去が引用符・算術シフトを区別せず、終端語が無い場合に以降の全行を判定対象から捨てるため、`echo "<<EOF"` 1行でガードが丸ごと無効化された | トークン列上の `<<` 演算子だけをヒアドキュメントと認識し、終端語が実在する場合のみ本文を読み飛ばす方式へ変更 |
+| Blocker | 上記の派生。`bash -s <<EOF` / `sh <<EOF` は本文がシェルの標準入力として実行されるのに、本文を判定対象から外していた | 本文がシェルへ渡る場合は、本文をコマンドとして再帰的に判定する。`cat <<EOF > file` のようにシェルへ渡らない場合は従来どおり除外 |
 | Blocker | `git -c push.default=matching push origin` / `-c remote.*.push` / `-c remote.*.mirror` は、refspecを書かずに保護ブランチを更新できるため素通りしていた（実gitで再現確認） | 該当する設定キーを伴うpushを拒否 |
 | Blocker | `git clean -f -e -n` の `-n` は `-e`（--exclude）の値であり実際には削除されるのに、dry-runと誤認して許可していた | オプションの値を走査対象から除外 |
 | Non-blocker | 引用符が改行をまたぐ引数（複数行のcommit message）が必ず解析失敗し、本文の文字列だけで誤って拒否されていた | 解析に失敗した行は次行以降を連結して解析し直す方式へ変更 |
