@@ -1,6 +1,13 @@
 # 自律開発ハーネス
 
-このリポジトリでAIエージェント（主にClaude Code）が自走するための実行規約です。`CLAUDE.md` と `AGENTS.md` を、実行手順のレベルまで具体化したものです。矛盾する場合は `AGENTS.md` → `CLAUDE.md` → 本書の順に優先します。
+このリポジトリでAIエージェント（主にClaude Code）が自走するための実行規約です。`CLAUDE.md` と `AGENTS.md` を、実行手順のレベルまで具体化したものです（D032）。
+
+正本の分担は次のとおりです。
+
+- **実行手順**（モード選択・ループ・レビューの回し方・hookの仕様と限界）は本書が正本です
+- **プロダクト仕様・安全要件・プライバシー・タスク境界**は `AGENTS.md` と `CLAUDE.md` が優先します
+
+安全要件に関わる記述が食い違う場合は `AGENTS.md` → `CLAUDE.md` → 本書の順に優先してください。
 
 想定する使い方は、人間が「Task 010やって」のような短い指示を出し、エージェントが調査から設計・実装・テスト・独立レビュー・修正・PR・CI追跡まで進める形です。人間の確認は、後述の「人間へのエスカレーション」に該当する場合だけ求めます。
 
@@ -100,7 +107,7 @@ Deepモード、または実装方針が分岐するときに使います。
 2. スコープ外のファイルを変更していない
 3. `app/` 変更時: lint / unit test / build がローカルでgreen
 4. 変更内容に応じた追加検証（pgTAP / E2E / hookテスト / 390px確認）を実行、または未実施として明示した
-5. 独立レビュー（Standard以上）を通し、Blockerが残っていない
+5. 独立レビュー（Standard以上。Fastは自己レビュー）を通し、Blockerが残っていない
 6. secret・実在する個人情報・APIキーをコミットしていない
 7. feature branchへpushし、`develop` 向けPRを作成した
 8. CIがgreen、または赤の原因と対応方針をPRへ記録した
@@ -133,48 +140,84 @@ Deepモード、または実装方針が分岐するときに使います。
 - 何が決められないか、選択肢は何か
 - 各選択肢の影響と、エージェントとしての推奨
 
-## 6. 自動ガード（hooks）
+## 6. 自動ガード（hooksと権限設定）
 
-`.claude/settings.json` から2つのhookが動きます。実装は `.claude/hooks/` にあり、python3が必要です。
+`.claude/settings.json` から2つのhookと、`.env`系ファイルのRead拒否が有効になります。hookの実装は `.claude/hooks/` にあり、python3が必要です。
 
 ### guard_git.py（PreToolUse / Bash）
 
-次のコマンドを機械的に拒否します。判定はトークン解析で行い、tool inputをshellへ展開しません。拒否理由にコマンド全文を含めない（URLに埋め込まれたトークンを出さない）設計です。
+次の**5種類だけ**を機械的に拒否します。判定はトークン解析で行い、tool inputをshellへ展開しません。拒否理由にコマンド全文を含めない（URLに埋め込まれたトークンを出さない）設計です。
 
 - `main` / `develop` への直接push（明示的なrefspec、`HEAD`、refspecなしの暗黙push、`--all` / `--mirror`、削除push）
 - force push（`--force` / `-f` / `--force-with-lease` / `--force-if-includes` / `+refspec`）
 - `git reset --hard`
-- `git clean -f`（`-fd` などの結合短オプションを含む）
+- `git clean -f`（`-fd` などの結合短オプションを含む。`--dry-run` 併用時は許可）
 - `git branch -D` / `git branch --delete --force`
+
+次の回避経路も判定できるようにしています。
+
+- gitが受理する長オプションの短縮形（`--har` は `--hard`、`--fo` は `--force`）
+- ラッパーコマンド経由（`env` / `sudo` / `nohup` / `time` / `command` / `timeout` / `nice` など）
+- `bash -c "..."` / `sh -c "..."` / `eval "..."` の中身、バッククォート、`$(...)`
+- シェル制御構文（`if ... then`、`for ... do`、`{ }`、`&&`、`;`、`|`、改行、行継続）
+- git alias（`git -c alias.x=push x` とリポジトリ設定の両方を展開してから判定）
+- NUL文字による引数の切り詰め
 
 ### quality_gate.py（Stop）
 
-セッション終了時に、`app/` に変更がある場合だけ `npm run lint` → `npm run test -- --run` → `npm run build` を実行します。失敗したらStopをブロックし、失敗コマンドと出力の末尾（secretはマスク）をエージェントへ返します。
+セッション終了時に、`app/` に変更がある場合だけ `npm run lint` → `npm run test -- --run` → `npm run build` を実行します。失敗したらStopをブロックし、失敗コマンドと出力の末尾をエージェントへ返します。
 
+- 変更判定は「`app/` の未コミット変更」または「ベースref（`origin/develop` → `origin/main` →
+  `develop` → `main` の順）からの差分に `app/` が含まれること」です。
+  セッション単位ではなく**ブランチ単位**なので、`app/` を触ったブランチでは
+  文書だけを編集したセッションでもゲートが走ります（安全側に倒しています）。
 - `stop_hook_active` が true のときは即座に終了し、無限ループを防ぎます。
-  そのため**ブロックは1回まで**です。2回目以降の担保はCIが行います。
+  そのため**ブロックは1セッションにつき1回まで**です。2回目以降の担保はCIが行います。
 - 重いDBテスト・E2Eはここでは実行しません。タスクのDoDとCIで担保します。
 - `app/node_modules` がない場合は `npm ci` を促してブロックします。
   npm自体がない環境ではゲートを省略します（CIが最終的な砦）。
+- 出力は既知形式のsecret（`ghp_` / `github_pat_` / `sb_secret_` / `sbp_` / `re_` / JWT /
+  `Bearer` / URL埋め込み資格情報 / `*_KEY=` など）をマスクしてから返します。
+  **網羅は保証しません。**この出力をPR・タスクファイル・報告へ転記する前に、必ず目視で確認してください。
+
+### permissions.deny（`.env`系の保護）
+
+`.claude/settings.json` の `permissions.deny` で、`.env` / `.env.local` / `.env.*.local` /
+`.env.development` / `.env.production` / `.env.staging` / `.env.test` と `.git/config` の
+**Readツールでの読み取り**を拒否します。プレースホルダーだけの `app/.env.example` は読めます。
+アプリが開発コマンド内で環境変数を使うことは妨げません。
+
+この拒否は**Readツールにしか効きません**。`cat` / `grep` / `printenv` などBash経由の読み取りは防げません。実値の保護は `.gitignore` と、「secretをローカルにも置かない・Dashboardへ直接入力する」運用（`docs/runbook_supabase_hosted.md`）で担保します。
 
 ### hookの限界（把握したうえで使う）
 
-- ローカルの最終防衛線ではありません。ブランチ保護とCIが本来の防御です。
-- ヒアドキュメントの中に破壊的なgitコマンドの文字列が入っていると、誤って拒否することがあります。
-  文書へコマンド例を書くときは、シェルのヒアドキュメントではなくファイル編集ツールを使ってください。
-- 引用符が閉じていないなど解析できないコマンドは、既知の危険パターンだけを正規表現で拒否します。
+- **ローカルの最終防衛線ではありません。** `main` / `develop` の保護は、GitHubの
+  ブランチ保護（PR必須・force push禁止・削除禁止）とCIが本来の防御です。
+- 上記5種類以外の破壊的操作は拒否しません。`git branch -M`、`git checkout -f`、
+  `git restore .`、`git stash clear`、`git update-ref -d`、`git rebase`、`git commit --amend` は
+  素通りします。**`git reset --hard` / `git clean -f` / `git branch -D` は、
+  失われるのがローカルの未コミット変更なので、リモート側に受け皿がありません。**
+  規約（本書とCLAUDE.md）で守る前提です。
+- 変数展開・コマンド置換の**結果**は判定できません。`git push origin $BRANCH` や
+  `echo main | xargs git push origin` は、実行時の値が `main` でも検出できません。
+- Claude Codeの `Bash` ツール経由のコマンドだけを見ます。他のツール、エディタ、
+  別ターミナルからの実行は対象外です。
+- ヒアドキュメントの本文は判定対象から除いていますが、引用符が閉じていないなど
+  解析できないコマンドは、既知の危険パターンだけを正規表現で拒否します（誤検知しうる）。
 - `.claude/hooks/` を変更したら `python3 .claude/hooks/test_hooks.py` を実行してください。
 
 ## 7. subagentの使い分け
 
 `.claude/agents/` にプロジェクトsubagentを置いています。
 
-| subagent | 役割 | 編集権限 | 使う場面 |
+| subagent | 役割 | 編集方針 | 使う場面 |
 |---|---|---|---|
-| architect | 調査と設計、Best-of-N比較 | なし | Standard以上の実装前 |
+| architect | 調査と設計、Best-of-N比較 | 編集しない | Standard以上の実装前 |
 | test-engineer | 受入条件のテスト化 | テストファイルのみ | 実装後、レビュー前 |
-| reviewer | 独立レビュー | なし | commit・PR前（Standard以上） |
-| security-reviewer | 安全・プライバシーレビュー | なし | 認証・DB・RLS・RPC・migration・Edge Function・通知・PIIに触れたとき |
+| reviewer | 独立レビュー | 編集しない | commit・PR前（Standard以上） |
+| security-reviewer | 安全・プライバシーレビュー | 編集しない | 認証・DB・RLS・RPC・migration・Edge Function・通知・PIIに触れたとき |
+
+「編集方針」は規約であって機械的な強制ではありません。レビュー系subagentも `Bash` を持つため、技術的にはファイルを書けます（`tools` から `Edit` / `Write` を外しても、リダイレクトや `sed -i` は塞げません）。test-engineerの「テストファイルのみ」も同様に規約です。
 
 レビュー系subagentには「自分の実装が正しいことを確認して」と依頼しないでください。差分と正本を渡し、独立に検証させます。
 
@@ -199,6 +242,13 @@ Deepモード、または実装方針が分岐するときに使います。
 
 - ローカル品質ゲートは1セッションにつき1回しかブロックできません（無限ループ防止のため）。
 - hookはClaude Codeの `Bash` ツール経由のコマンドだけを見ます。他のツールや、
-  エディタから直接実行されたコマンドは対象外です。
+  エディタから直接実行されたコマンドは対象外です。変数展開・コマンド置換の結果、
+  および標準入力から渡される引数（`xargs` など）は判定できません。
+- guard_gitが拒否するのは §6 に列挙した5種類だけです。それ以外の破壊的操作は素通りします。
+- Stop hookの出力マスクは既知形式のsecretに限られます。網羅は保証しません。
+- `permissions.deny` はReadツールにしか効かず、Bash経由の読み取りは防げません。
+- subagentの「編集しない」は規約であり、機械的な強制ではありません（§7）。
 - 本書はエージェントの行動規約であり、権限の分離ではありません。
   実効的な保護は、GitHubのブランチ保護（PR必須・force push禁止・削除禁止）とCIです。
+  ただし `git reset --hard` / `git clean -f` / `git branch -D` が壊すのはローカルの
+  未コミット変更なので、リモート側に受け皿がありません。この3つは規約とhookだけが防御です。

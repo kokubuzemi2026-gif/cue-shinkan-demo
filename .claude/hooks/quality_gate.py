@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Stop hook: `app/` に変更があるセッションだけローカル品質ゲートを実行する。
+"""Stop hook: `app/` に変更があるときだけローカル品質ゲートを実行する。
+
+変更の判定は「`app/` の未コミット変更（未追跡ファイルを含む）」または
+「ベースref（origin/develop → origin/main → develop → main の順で最初に見つかったもの）からの
+差分に `app/` が含まれること」で行う。セッション単位ではなくブランチ単位の判定なので、
+`app/` を触ったブランチでは文書だけを編集したセッションでもゲートが走る（安全側）。
 
 実行内容（`app/` で順に実行し、最初の失敗で停止する）:
 
@@ -15,7 +20,7 @@ Claude Codeはstderrをそのまま読み、原因分析・修正・再検証へ
 - `stop_hook_active` が true のとき（直前のStopブロックによる継続中）は即座に終了し、
   無限ループを防ぐ。
 - 重いDBテスト（pgTAP）やE2Eはここでは実行しない。それらはタスクのDoDとCIで担保する。
-- 出力はsecretをマスクしてから返す。
+- 出力は既知形式のsecretをマスクしてから返す（網羅は保証しない。`redact()` を参照）。
 - 判定に必要な情報が取れない場合（gitがない・npmがない等）は実行せずに終了する。
   ローカルゲートはCIの代替ではなく、早期発見のための手段である。
 """
@@ -43,26 +48,61 @@ COMMAND_TIMEOUT_SECONDS = 420
 MAX_OUTPUT_LINES = 40
 MAX_LINE_LENGTH = 500
 
-_SECRET_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
-    (re.compile(r"sb_secret_[A-Za-z0-9_\-]+"), "sb_secret_***"),
+def _mask_value(match: re.Match[str]) -> str:
+    """`名前 区切り 値` の「値」だけを伏せる。"""
+    return f"{match.group(1)}{match.group(2)}***"
+
+
+# 既知のsecret形式。網羅は保証しない（`_tail()` の注意書きと揃えること）。
+_SECRET_PATTERNS: tuple[tuple[re.Pattern[str], object], ...] = (
+    # 値そのもので識別できるトークン（区切り文字に依存しない）
+    (re.compile(r"\bgh[pousr]_[A-Za-z0-9]{16,}"), "***TOKEN***"),
+    (re.compile(r"\bgithub_pat_[A-Za-z0-9_]{20,}"), "***TOKEN***"),
+    (re.compile(r"\bsb_(?:secret|publishable)_[A-Za-z0-9_\-]+"), "***TOKEN***"),
+    (re.compile(r"\bsbp_[A-Za-z0-9]{16,}"), "***TOKEN***"),
+    (re.compile(r"\bre_[A-Za-z0-9_\-]{16,}"), "***TOKEN***"),
+    (re.compile(r"\bsk-[A-Za-z0-9_\-]{16,}"), "***TOKEN***"),
+    (re.compile(r"\bAKIA[0-9A-Z]{16}\b"), "***TOKEN***"),
+    (re.compile(r"\bxox[abprs]-[A-Za-z0-9\-]{10,}"), "***TOKEN***"),
     (re.compile(r"\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]+"), "***JWT***"),
     (
-        # 直前が `_` でも効くよう `\b` ではなく英数字の否定後読みを使う
-        # （例: SUPABASE_SERVICE_ROLE_KEY=...）
-        re.compile(
-            r"(?i)(?<![A-Za-z0-9])(service[_-]?role[_-]?key|secret[_-]?key|access[_-]?key|api[_-]?key"
-            r"|password|passwd|secret|token)([\"']?\s*[:=]\s*[\"']?)([^\s\"',;]+)"
-        ),
-        r"\1\2***",
+        re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----"),
+        "***PRIVATE KEY***",
     ),
+    # 認証ヘッダ
+    (re.compile(r"(?i)\b(bearer|basic)\s+[A-Za-z0-9._\-+/=]{12,}"), r"\1 ***"),
+    # `名前=値` / `名前: 値`。直前が `_` でも効くよう `\b` ではなく否定後読みを使い、
+    # `//registry.npmjs.org/:_authToken=...` のような接頭辞付きの名前も拾う。
+    (
+        re.compile(
+            r"(?i)(?<![A-Za-z0-9])([A-Za-z0-9_.-]*(?:service[_-]?role[_-]?key|service[_-]?role"
+            r"|secret[_-]?key|secret|api[_-]?key|access[_-]?key|passwd|password"
+            r"|auth[_-]?token|token))([\"']?\s*[:=]\s*[\"']?)([^\s\"',;]+)"
+        ),
+        _mask_value,
+    ),
+    # `名前 値`（空白区切り）。誤爆を避けるため、値がトークンらしい場合だけ伏せる。
+    (
+        re.compile(
+            r"(?i)(?<![A-Za-z0-9])(service[_-]?role|secret|passwd|password|api[_-]?key"
+            r"|access[_-]?key|auth[_-]?token|token)(\s+)([A-Za-z0-9_\-./+=]{12,})"
+        ),
+        _mask_value,
+    ),
+    # URLへ埋め込んだ資格情報（`user:pass@` と `token@` の両方）
     (re.compile(r"://([^:/@\s]+):([^@\s]+)@"), r"://\1:***@"),
+    (re.compile(r"://([^/@\s]+)@"), "://***@"),
 )
 
 
 def redact(text: str) -> str:
-    """出力からsecretらしき値を取り除く。"""
+    """出力から既知の形式のsecretを取り除く。
+
+    網羅は保証しない。新しい形式のトークンは通り抜けうるため、この出力を
+    PRやタスクファイルへ転記する前には必ず目視で確認すること。
+    """
     for pattern, replacement in _SECRET_PATTERNS:
-        text = pattern.sub(replacement, text)
+        text = pattern.sub(replacement, text)  # type: ignore[arg-type]
     return text
 
 
@@ -143,7 +183,8 @@ def run_gate(app_dir: str) -> tuple[bool, str]:
             output = _tail(f"{result.stdout}\n{result.stderr}")
             return False, (
                 f"[quality gate] `{label}` が失敗しました（exit {result.returncode}）。\n"
-                f"--- 出力の末尾（最大{MAX_OUTPUT_LINES}行 / secretはマスク済み） ---\n"
+                f"--- 出力の末尾（最大{MAX_OUTPUT_LINES}行 / 既知形式のsecretはマスク済み。"
+                "転記する前に必ず目視で確認すること） ---\n"
                 f"{output}\n"
                 "--- ここまで ---\n"
                 "原因を特定して修正し、lint → test → build をすべて通してから終了してください。\n"

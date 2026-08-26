@@ -71,7 +71,10 @@ CUE は、新入生が事前に登録した「興味パスポート」をもと�
 - 自動ガード: `.claude/hooks/`
   - `guard_git.py`: `main` / `develop` への直接push、force push、`git reset --hard`、
     `git clean -f`、`git branch -D` を拒否する
-  - `quality_gate.py`: `app/` に変更があるセッションの終了時に lint / unit test / build を実行する
+  - `quality_gate.py`: `app/` に変更があるときの終了時に lint / unit test / build を実行する
+- 権限設定: `.claude/settings.json` の `permissions.deny` が `.env`系ファイルと `.git/config` の
+  Readツールでの読み取りを拒否します（`app/.env.example` は読めます）。
+  Bash経由（`cat` など）は防げません。限界は `docs/agent_harness.md` §6・§9 を参照してください
 - hookの実行にはpython3が必要です。変更したら `python3 .claude/hooks/test_hooks.py` を実行してください
 - `.claude/settings.json` は共有設定です。個人設定は `.claude/settings.local.json`（git管理外）に書きます
 

@@ -122,7 +122,7 @@ UI変更では、少なくともスマートフォン幅で主要導線を確認
 2. スコープ外のファイルを変更していない
 3. `app/` 変更時: lint / unit test / build がローカルでgreen
 4. 変更内容に応じた追加検証を実行、または未実施として明示した
-5. 独立レビューを通し、Blockerが残っていない
+5. 独立レビュー（Standard以上で必須。Fastは自己レビュー）を通し、Blockerが残っていない
 6. secret・実在する個人情報・APIキーをコミットしていない
 7. feature branchへpushし、`develop` 向けPRを作成した
 8. CIがgreen、または赤の原因と対応方針をPRへ記録した

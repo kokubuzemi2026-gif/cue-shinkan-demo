@@ -17,6 +17,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 
 HOOKS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -106,6 +107,48 @@ DENY_CASES = (
     "/usr/bin/git push origin main",
     "git -c core.pager=cat push origin main",
     "echo start | git push origin main",
+    # gitが受理する長オプションの短縮形（`--har` は `--hard` として解釈される）
+    "git reset --har HEAD~1",
+    "git reset --ha",
+    "git reset --h",
+    "git clean --fo",
+    "git clean --for -d",
+    "git push --force-w origin feat/012-x",
+    "git push --force-with-le origin feat/012-x",
+    "git push --forc origin feat/012-x",
+    "git push --fo origin feat/012-x",
+    "git branch --delete --forc feat/012-x",
+    "git branch --del --force feat/012-x",
+    # ラッパーコマンド経由
+    "env git push origin main",
+    "env GIT_TRACE=1 git push origin main",
+    "sudo git push origin main",
+    "sudo -u someone git push origin main",
+    "nohup git push origin main",
+    "time git push origin main",
+    "command git push origin main",
+    "timeout 60 git push origin main",
+    "nice -n 10 git reset --hard",
+    "true && env git push origin main",
+    # シェル経由（-c の中身を再帰的に判定する）
+    "bash -c 'git push origin main'",
+    'sh -c "git push --force origin feat/012-x"',
+    "bash -lc 'git reset --hard'",
+    'eval "git push origin main"',
+    "bash -c 'npm run lint && git clean -fd'",
+    # シェル制御構文
+    "if true; then git push origin main; fi",
+    "for x in 1; do git push origin main; done",
+    "{ git push origin main; }",
+    "`git push origin main`",
+    # git alias
+    "git -c alias.p=push p origin main",
+    "git -c 'alias.yolo=push --force' yolo origin feat/012-x",
+    "git -c alias.nuke='reset --hard' nuke",
+    "git -c 'alias.sh=!git push origin main' sh",
+    # NUL文字による切り詰め回避
+    "git push origin main\x00-suffix",
+    "git reset --hard\x00x",
 )
 
 for command in DENY_CASES:
@@ -141,6 +184,22 @@ ALLOW_CASES = (
     "npm run test -- --run",
     "npm ci && npm run build",
     "cd app && npm run lint",
+    # 短縮形の前方一致で、無関係なオプションを巻き込まないこと
+    "git push --follow-tags origin feat/012-x",
+    "git push --atomic origin feat/012-x",
+    "git push --no-verify origin feat/012-x",
+    "git branch --list --all",
+    "git clean --dry-run",
+    # --dry-run 併用のcleanは実際には削除しないので許可する
+    "git clean -f -n",
+    "git clean -nfd",
+    "git clean --dry-run --force",
+    # 引用された文字列の中身は判定しない
+    'git commit -m "fix: git push --force と git reset --hard を禁止する"',
+    'python3 -c "print(\'git push origin main\')"',
+    # シェル経由でも、中身が危険でなければ許可する
+    "bash -c 'npm run lint && npm run build'",
+    'sh -c "git status"',
 )
 
 for command in ALLOW_CASES:
@@ -189,6 +248,41 @@ with tempfile.TemporaryDirectory() as tmpdir:
         "`git -C <mainのrepo>` 経由のpushが拒否されない",
     )
 
+    # リポジトリ設定のaliasを展開してから判定する
+    subprocess.run(
+        ["git", "-C", feature_repo, "config", "alias.pp", "push origin main"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    check(
+        guard_git.evaluate("git pp", feature_repo) is not None,
+        "設定されたgit aliasを展開して判定していない",
+    )
+
+
+# --------------------------------------------------------------------------
+# guard_git: ヒアドキュメント本文の誤検知と、解析時間の上限
+# --------------------------------------------------------------------------
+
+HEREDOC_BODY = """gh pr create --title "Task 012" --body "$(cat <<'EOF'
+このPRでは git push origin main を拒否します。
+`git reset --hard` と `git clean -fd` も拒否します。
+EOF
+)"
+"""
+check(
+    guard_git.evaluate(HEREDOC_BODY, os.getcwd()) is None,
+    "ヒアドキュメント本文のコマンド例を誤って拒否している",
+)
+
+# 解析不能かつ巨大な入力で、判定時間が発散しないこと（timeoutによるfail-open防止）
+_huge = 'echo "' + ("git push origin main " * 6000)
+_started = time.monotonic()
+guard_git.evaluate(_huge, os.getcwd())
+_elapsed = time.monotonic() - _started
+check(_elapsed < 2.0, f"巨大な入力の判定に時間がかかりすぎる（{_elapsed:.1f}秒）")
+
 
 # --------------------------------------------------------------------------
 # guard_git: hookとしての入出力契約
@@ -211,6 +305,28 @@ check(bool(specific.get("permissionDecisionReason")), "permissionDecisionReason�
 check(
     "git push origin main" not in denied.stdout,
     "拒否理由にコマンド全文が含まれている（secret露出の恐れ）",
+)
+
+# URLへ埋め込まれたトークンを拒否理由へ出さないこと
+# （ダミートークンは連結で組み立てる。理由はSECRET_SAMPLESのコメントを参照）
+_URL_TOKEN = "ghp" + "_TESTTOKENabcdefghij0123456789"
+token_push = _run_hook(
+    "guard_git.py",
+    {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Bash",
+        "tool_input": {"command": f"git push https://{_URL_TOKEN}@github.com/o/r.git main"},
+        "cwd": os.getcwd(),
+    },
+)
+check(token_push.returncode == 0, "URL付きpushの拒否でexit codeが0でない")
+check(
+    "deny" in token_push.stdout,
+    "URLで指定したremoteへの保護ブランチpushが拒否されない",
+)
+check(
+    _URL_TOKEN not in token_push.stdout and _URL_TOKEN not in token_push.stderr,
+    "拒否理由へURL埋め込みトークンが漏れている",
 )
 
 allowed = _run_hook(
@@ -237,15 +353,52 @@ check(quality_gate.should_skip_for_loop({"stop_hook_active": True}), "stop_hook_
 check(not quality_gate.should_skip_for_loop({"stop_hook_active": False}), "stop_hook_active falseを誤検出")
 check(not quality_gate.should_skip_for_loop({}), "stop_hook_active未指定を誤検出")
 
+# テスト用のダミートークンは、GitHubのpush protectionが実トークンと誤認しないよう
+# 連結で組み立てる（ファイル内に完全な形の文字列を置かない）。
+# 実際にSupabase PAT形式とSlack token形式がpushをブロックしたため、この形にしている。
+_GITHUB_PAT = "ghp" + "_1234567890abcdefghijABCDEFGHIJ1234"
+_GITHUB_OAUTH = "gho" + "_16C7e42F292c6912E7710c838347Ae178B4a"
+_GITHUB_FINE = "github" + "_pat_11ABCDEFG0aBcDeFgHiJkL_LmNoPqRsTuVwXyZ01234"
+_SUPABASE_PAT = "sbp" + "_0102030405060708090a0b0c0d0e0f1011121314"
+_SUPABASE_SECRET = "sb_secret" + "_abcdef123456"
+_SUPABASE_PUBLISHABLE = "sb_publishable" + "_abcdef123456"
+_RESEND_KEY = "re" + "_123456789_abcdefghijklmnopqrstuv"
+_ANTHROPIC_KEY = "sk-ant" + "-api03-abcdefghijklmnopqrstuvwxyz0123456789"
+_AWS_KEY = "AKIA" + "IOSFODNN7EXAMPLE"
+_SLACK_TOKEN = "xox" + "b-123456789012-abcdefghijklmnop"
+_NPM_TOKEN = "npm" + "_abcdefghijklmnop0123"
+_JWT = "eyJhbGciOiJIUzI1NiJ9." + "eyJzdWIiOiJ0ZXN0In0.QWxpY2VTaWduYXR1cmU"
+_PRIVATE_KEY = (
+    "-----BEGIN OPENSSH PRIVATE" + " KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n"
+    "-----END OPENSSH PRIVATE" + " KEY-----"
+)
+
 SECRET_SAMPLES = (
-    ("sb_secret_abcdef123456", "sb_secret_abcdef123456"),
-    ("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0ZXN0In0.QWxpY2VTaWduYXR1cmU", "eyJhbGciOiJIUzI1NiJ9"),
+    (_SUPABASE_SECRET, _SUPABASE_SECRET),
+    (_SUPABASE_PUBLISHABLE, _SUPABASE_PUBLISHABLE),
+    (_JWT, _JWT),
     ("postgresql://postgres:supersecret@127.0.0.1:54322/postgres", "supersecret"),
     ("SUPABASE_SERVICE_ROLE_KEY=xyz123abc", "xyz123abc"),
     ('{"password": "hunter2"}', "hunter2"),
+    # 値そのものが秘密になる形式（区切り文字に依存しない）
+    (f"remote: {_GITHUB_PAT}", _GITHUB_PAT),
+    (_GITHUB_FINE, _GITHUB_FINE),
+    (_GITHUB_OAUTH, _GITHUB_OAUTH),
+    (_SUPABASE_PAT, _SUPABASE_PAT),
+    (f"RESEND_API_KEY {_RESEND_KEY}", _RESEND_KEY),
+    (_ANTHROPIC_KEY, _ANTHROPIC_KEY),
+    (f"AWS key {_AWS_KEY} used", _AWS_KEY),
+    (_SLACK_TOKEN, _SLACK_TOKEN),
+    # ヘッダとURL埋め込み（userinfoが1要素の形も含む）
+    (f"Authorization: Bearer {_GITHUB_PAT}", _GITHUB_PAT),
+    ("Authorization: Bearer opaque-token-value-1234567890", "opaque-token-value-1234567890"),
+    (f"https://{_GITHUB_FINE}@github.com/o/r.git", _GITHUB_FINE),
+    (f"//registry.npmjs.org/:_authToken={_NPM_TOKEN}", _NPM_TOKEN),
+    (f"machine github.com login me password {_GITHUB_PAT}", _GITHUB_PAT),
+    (_PRIVATE_KEY, "b3BlbnNzaC1rZXktdjEAAAAA"),
 )
 for sample, secret in SECRET_SAMPLES:
-    check(secret not in quality_gate.redact(sample), f"secretがマスクされていない: {sample!r}")
+    check(secret not in quality_gate.redact(sample), f"secretがマスクされていない: {sample[:40]!r}")
 
 check("VITE_SUPABASE_URL" in quality_gate.redact("VITE_SUPABASE_URL=http://127.0.0.1:54321"), "通常の出力まで壊している")
 
