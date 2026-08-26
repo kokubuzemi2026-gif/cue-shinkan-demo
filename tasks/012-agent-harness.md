@@ -92,7 +92,7 @@
 - Python構文チェック: `python3 -m py_compile .claude/hooks/{guard_git,quality_gate,test_hooks}.py` → OK
 - settings.jsonのparse: OK（deny 10件 / PreToolUse matcher `Bash` / Stopはmatcherなし / timeout 30秒・1500秒）
 - subagentのfrontmatter: `claude plugin validate .claude/agents` → Validation passed（4件）
-- hookテスト: `python3 .claude/hooks/test_hooks.py` → **193 checks passed**
+- hookテスト: `python3 .claude/hooks/test_hooks.py` → **194 checks passed**
 - Stop hookの実挙動（本リポジトリ）:
   - `app/` 変更なし → exit 0（ゲート未実行）
   - `app/` に未追跡ファイルあり → lint / test / build を実行し7秒でexit 0
@@ -134,6 +134,7 @@
 | Blocker | `git clean -f -e -n` の `-n` は `-e`（--exclude）の値であり実際には削除されるのに、dry-runと誤認して許可していた | オプションの値を走査対象から除外 |
 | Non-blocker | 引用符が改行をまたぐ引数（複数行のcommit message）が必ず解析失敗し、本文の文字列だけで誤って拒否されていた | 解析に失敗した行は次行以降を連結して解析し直す方式へ変更 |
 | Non-blocker | lint/test/buildが不正なUTF-8バイトを出力すると `UnicodeDecodeError` でhookがクラッシュした | `errors="replace"` で読む |
+| Nit | 利用者が `status.showUntrackedFiles=no` を設定していると、新規作成ファイルだけの変更でゲートが素通りした | `--untracked-files=all` を明示。当該設定下での回帰テストを追加 |
 | Non-blocker | タイムアウト時にnpmの孫プロセスが孤児として残り、途中までの出力も捨てられて診断情報がゼロだった | プロセスグループごと停止し、途中出力をマスクして返す |
 | Non-blocker | Stop hookの発火タイミングの記述が公式仕様と食い違っていた（「セッション終了時」「1セッション1回」） | 「応答を終えるたび」「1回の継続につき1回」へ修正 |
 | Blocker（記載） | Test plan表のテスト件数が実物と不一致だった | 実数（拒否82件・許可39件・理由14件・secret 20形式）へ修正 |

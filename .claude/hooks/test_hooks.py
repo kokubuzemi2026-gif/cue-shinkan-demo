@@ -468,6 +468,24 @@ with tempfile.TemporaryDirectory() as tmpdir:
         handle.write("export const sample = 1;\n")
     check(quality_gate.app_changed(repo), "app/配下の変更を検出できない")
 
+    # 利用者の git 設定でゲートが素通りしないこと
+    subprocess.run(
+        ["git", "-C", repo, "config", "status.showUntrackedFiles", "no"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    check(
+        quality_gate.app_changed(repo),
+        "status.showUntrackedFiles=no のとき未追跡ファイルを検出できない",
+    )
+    subprocess.run(
+        ["git", "-C", repo, "config", "--unset", "status.showUntrackedFiles"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+
     skipped = _run_hook(
         "quality_gate.py",
         {"hook_event_name": "Stop", "stop_hook_active": True, "cwd": repo},

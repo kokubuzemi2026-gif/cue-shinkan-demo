@@ -139,7 +139,9 @@ def _base_ref(project_dir: str) -> str | None:
 
 def app_changed(project_dir: str) -> bool:
     """`app/` に未コミット変更、またはベースrefからの差分があるか。"""
-    status = _git(["status", "--porcelain", "--", "app"], project_dir)
+    # --untracked-files=all を明示する。利用者が status.showUntrackedFiles=no を
+    # 設定していると、新規作成したファイルが porcelain 出力に現れずゲートが素通りする。
+    status = _git(["status", "--porcelain", "--untracked-files=all", "--", "app"], project_dir)
     if status is None:
         return False
     if status.strip():
