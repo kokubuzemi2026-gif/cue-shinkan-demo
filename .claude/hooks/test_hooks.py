@@ -149,6 +149,20 @@ DENY_CASES = (
     # NUL文字による切り詰め回避
     "git push origin main\x00-suffix",
     "git reset --hard\x00x",
+    # ヒアドキュメント除去を悪用した回避（終端語が無い／引用符の中／算術のシフト）
+    'echo "<<EOF"\ngit push origin main',
+    "cat <<EOF\ngit push origin main",
+    'python3 -c "print(1 << 8)"\ngit push origin main',
+    "cat <<'EOF' > /tmp/note.txt\nただのメモ\nEOF\ngit push origin main",
+    # refspecを書かずに保護ブランチを更新できる設定
+    "git -c push.default=matching push origin",
+    "git -c remote.origin.push=+refs/heads/*:refs/heads/* push origin",
+    "git -c remote.origin.mirror=true push origin",
+    "git -c push.default=matching push",
+    # -e（--exclude）の値として現れた -n をdry-runと誤認しないこと
+    "git clean -f -e -n",
+    "git clean -f --exclude -n",
+    "git clean -fe -n",
 )
 
 for command in DENY_CASES:
@@ -189,7 +203,6 @@ ALLOW_CASES = (
     "git push --atomic origin feat/012-x",
     "git push --no-verify origin feat/012-x",
     "git branch --list --all",
-    "git clean --dry-run",
     # --dry-run 併用のcleanは実際には削除しないので許可する
     "git clean -f -n",
     "git clean -nfd",
@@ -200,11 +213,48 @@ ALLOW_CASES = (
     # シェル経由でも、中身が危険でなければ許可する
     "bash -c 'npm run lint && npm run build'",
     'sh -c "git status"',
+    # 引用符が改行をまたぐ引数（複数行のcommit message）
+    'git commit -m "1行目\n\n2行目: mainへ直接pushしない方針を明記する"',
+    'git commit -m "fix: git reset --hard を拒否する" -m "詳細は docs/agent_harness.md を参照"',
+    # ヒアドキュメント本文のコマンド例
+    "cat <<'EOF' > /tmp/note.txt\ngit push origin main は禁止\nEOF",
+    # -e の値ではない -n はdry-runとして扱う
+    "git clean -f -e '*.log' -n",
+    "git clean -n -e -f",
 )
 
 for command in ALLOW_CASES:
     reason = guard_git.evaluate(command, os.getcwd())
     check(reason is None, f"allow期待だが拒否された: {command!r} -> {reason}")
+
+check(len(set(DENY_CASES)) == len(DENY_CASES), "DENY_CASESに重複がある")
+check(len(set(ALLOW_CASES)) == len(ALLOW_CASES), "ALLOW_CASESに重複がある")
+
+
+# --------------------------------------------------------------------------
+# guard_git: どの規則で拒否したかまで検証する
+# （理由が別の規則へ入れ替わっても気づけるようにする）
+# --------------------------------------------------------------------------
+
+RULE_EXPECTATIONS = (
+    ("git push origin main", "保護ブランチ"),
+    ("git push origin develop", "保護ブランチ"),
+    ("git push --force origin feat/012-x", "force push"),
+    ("git push --force-w origin feat/012-x", "force push"),
+    ("git push origin +feat/012-x:feat/012-x", "+refspec"),
+    ("git push --all origin", "--all"),
+    ("git reset --har HEAD~1", "reset --hard"),
+    ("git clean -fd", "clean -f"),
+    ("git clean -f -e -n", "clean -f"),
+    ("git branch -D feat/012-x", "branch -D"),
+    ("git branch --delete --forc feat/012-x", "強制削除"),
+    ("git -c push.default=matching push origin", "push.default"),
+    ("bash -c 'git reset --hard'", "reset --hard"),
+    ("env git push origin main", "保護ブランチ"),
+)
+for command, expected in RULE_EXPECTATIONS:
+    reason = guard_git.evaluate(command, os.getcwd()) or ""
+    check(expected in reason, f"拒否理由が期待と異なる: {command!r} -> {reason!r}（期待: {expected}）")
 
 
 # --------------------------------------------------------------------------

@@ -57,6 +57,7 @@ Goal / Source of truth / In scope / Out of scope / Acceptance criteria / Test pl
 変更ファイル:
 受入条件への対応:
 実行した検証:
+独立レビューの結論と対応:
 PR / ブランチ / commit:
 CI:
 残る課題・リスク:

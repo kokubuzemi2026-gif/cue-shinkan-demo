@@ -31,6 +31,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 
@@ -114,7 +115,13 @@ def should_skip_for_loop(payload: dict) -> bool:
 def _git(args: list[str], cwd: str) -> str | None:
     try:
         result = subprocess.run(
-            ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=30, check=False
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=30,
+            check=False,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -159,30 +166,66 @@ def _block(message: str) -> int:
     return 2
 
 
+def _terminate_group(process: subprocess.Popen) -> None:
+    """プロセスグループごと終了させる（npmが起動した孫プロセスを残さない）。"""
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except (OSError, AttributeError):
+        try:
+            process.kill()
+        except OSError:
+            pass
+
+
+def _run_command(argv: list[str], cwd: str) -> tuple[int, str]:
+    """コマンドを引数配列で実行し、(終了コード, 標準出力+標準エラー) を返す。
+
+    - 不正なバイト列を出力してもクラッシュしないよう `errors="replace"` で読む
+    - タイムアウト時はプロセスグループごと停止し、途中までの出力を例外へ載せる
+    """
+    process = subprocess.Popen(
+        argv,
+        cwd=cwd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        errors="replace",
+        start_new_session=True,
+    )
+    try:
+        output, _ = process.communicate(timeout=COMMAND_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        _terminate_group(process)
+        try:
+            output, _ = process.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            output = ""
+        raise subprocess.TimeoutExpired(argv, COMMAND_TIMEOUT_SECONDS, output=output)
+    return process.returncode, output
+
+
 def run_gate(app_dir: str) -> tuple[bool, str]:
     """品質ゲートを実行し、(成功したか, 失敗時メッセージ) を返す。"""
     for label, argv in GATE_COMMANDS:
         try:
-            result = subprocess.run(
-                argv,
-                cwd=app_dir,
-                capture_output=True,
-                text=True,
-                timeout=COMMAND_TIMEOUT_SECONDS,
-                check=False,
-            )
-        except subprocess.TimeoutExpired:
+            returncode, command_output = _run_command(argv, app_dir)
+        except subprocess.TimeoutExpired as error:
+            partial = _tail(error.output or "")
             return False, (
                 f"[quality gate] `{label}` が {COMMAND_TIMEOUT_SECONDS} 秒でタイムアウトしました。\n"
+                f"--- 出力の末尾（最大{MAX_OUTPUT_LINES}行 / 既知形式のsecretはマスク済み。"
+                "転記する前に必ず目視で確認すること） ---\n"
+                f"{partial}\n"
+                "--- ここまで ---\n"
                 "無限ループ・未終了のwatchプロセス・巨大な入力を疑って原因を特定してください。"
             )
         except OSError as error:
             return False, f"[quality gate] `{label}` を起動できませんでした: {error}"
 
-        if result.returncode != 0:
-            output = _tail(f"{result.stdout}\n{result.stderr}")
+        if returncode != 0:
+            output = _tail(command_output)
             return False, (
-                f"[quality gate] `{label}` が失敗しました（exit {result.returncode}）。\n"
+                f"[quality gate] `{label}` が失敗しました（exit {returncode}）。\n"
                 f"--- 出力の末尾（最大{MAX_OUTPUT_LINES}行 / 既知形式のsecretはマスク済み。"
                 "転記する前に必ず目視で確認すること） ---\n"
                 f"{output}\n"

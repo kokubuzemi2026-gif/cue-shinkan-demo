@@ -21,7 +21,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard_git.py\"",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/guard_git.py\"",
             "timeout": 30
           }
         ]
@@ -32,7 +32,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"$CLAUDE_PROJECT_DIR/.claude/hooks/quality_gate.py\"",
+            "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/quality_gate.py\"",
             "timeout": 1500
           }
         ]

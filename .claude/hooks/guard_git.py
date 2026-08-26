@@ -65,6 +65,13 @@ _GLOBAL_OPTS_WITH_VALUE = frozenset(
 # （--force-with-lease は `=` 形式でしか値を取らないため含めない）
 _PUSH_OPTS_WITH_VALUE = frozenset({"--repo", "--receive-pack", "--exec", "--push-option"})
 
+# push先やforceの有無をrefspec以外の場所で決めてしまう設定キー。
+# `git -c push.default=matching push origin` のように、コマンドラインに
+# refspecが無くても保護ブランチを更新できるため、pushでは拒否する。
+_RISKY_PUSH_CONFIG_RE = re.compile(
+    r"^(push\.default|remote\.[^.]+\.(push|mirror))$", re.IGNORECASE
+)
+
 # alias探索をスキップしてよい既知のサブコマンド（設定参照の回数を抑えるため）
 _KNOWN_SUBCOMMANDS = frozenset(
     {
@@ -111,8 +118,6 @@ _FALLBACK_PATTERNS = (
 # 判定時間を入力長に対して有界にし、timeoutによるfail-openを防ぐ。
 _MAX_COMMAND_LENGTH = 20000
 
-_HEREDOC_RE = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\1")
-
 _HOW_TO_PROCEED = (
     "feature branch（feat/NNN-*, fix/NNN-*）へpushし、developへのPRで統合してください。"
     " 取り消しが必要な場合はrevert commitを使ってください。"
@@ -136,43 +141,84 @@ def _is_long_option(token: str, *candidates: str) -> bool:
     return any(candidate.startswith(name) for candidate in candidates)
 
 
-def _strip_heredocs(command: str) -> str:
-    """ヒアドキュメントの本文を取り除く（文書へコマンド例を書けるようにする）。"""
-    lines = command.splitlines()
+def _lex(text: str) -> list[str]:
+    """シェルに近い規則でトークン化する（引用符が閉じていなければ ValueError）。"""
+    lexer = shlex.shlex(text, posix=True, punctuation_chars=_PUNCTUATION)
+    lexer.whitespace_split = True
+    return list(lexer)
+
+
+def _extract_heredocs(tokens: list[str]) -> tuple[list[str], list[str]]:
+    """`<<` 演算子とその終端語をトークン列から取り除き、終端語の一覧を返す。
+
+    引用符の中の `<<EOF` や、算術の `1 << 8` は演算子トークンにならないため、
+    ここでヒアドキュメントと誤認することはない。
+    """
     kept: list[str] = []
+    terminators: list[str] = []
     index = 0
-    while index < len(lines):
-        line = lines[index]
-        kept.append(line)
-        terminators = [terminator for _, terminator in _HEREDOC_RE.findall(line)]
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "<<" and index + 1 < len(tokens):
+            word = tokens[index + 1].lstrip("-")
+            if word:
+                terminators.append(word)
+                index += 2
+                continue
+        kept.append(token)
         index += 1
-        for terminator in terminators:
-            while index < len(lines) and lines[index].strip() != terminator:
-                index += 1
-            if index < len(lines):
-                index += 1
-    return "\n".join(kept)
+    return kept, terminators
+
+
+def _skip_heredoc_body(lines: list[str], start: int, terminator: str) -> int | None:
+    """終端語が見つかればその次の行番号を返す。見つからなければ None（何も捨てない）。"""
+    for offset in range(start, len(lines)):
+        if lines[offset].strip() == terminator:
+            return offset + 1
+    return None
 
 
 def split_segments(command: str) -> list[list[str]] | None:
     """コマンド文字列を、演算子で区切った「1コマンド＝トークン列」の一覧へ分解する。
 
-    解析できない場合（引用符の不一致など）は None を返す。
+    - 行ごとに解析し、引用符が改行をまたぐ場合は次の行を連結して解析し直す
+      （複数行のcommit messageなどを誤って解析不能にしないため）
+    - ヒアドキュメントの本文は、終端語が実在するときだけ判定対象から外す
+      （終端語が無いときに残りの行を捨てると、ガードが丸ごと無効化されてしまう）
+
+    解析できない場合は None を返す。
     """
     # 行継続（バックスラッシュ+改行）を結合してから、行ごとに解析する。
     normalized = re.sub(r"\\\r?\n", " ", command)
+    lines = normalized.splitlines()
     segments: list[list[str]] = []
-    current: list[str] = []
+    index = 0
 
-    for line in normalized.splitlines():
-        if not line.strip():
+    while index < len(lines):
+        if not lines[index].strip():
+            index += 1
             continue
-        lexer = shlex.shlex(line, posix=True, punctuation_chars=_PUNCTUATION)
-        lexer.whitespace_split = True
-        try:
-            tokens = list(lexer)
-        except ValueError:
+
+        tokens: list[str] | None = None
+        consumed = 0
+        for end in range(index, len(lines)):
+            try:
+                tokens = _lex("\n".join(lines[index : end + 1]))
+            except ValueError:
+                continue
+            consumed = end - index + 1
+            break
+        if tokens is None:
             return None
+        index += consumed
+
+        tokens, terminators = _extract_heredocs(tokens)
+        for terminator in terminators:
+            resume = _skip_heredoc_body(lines, index, terminator)
+            if resume is not None:
+                index = resume
+
+        current: list[str] = []
         for token in tokens:
             if _is_operator(token):
                 if current:
@@ -182,7 +228,6 @@ def split_segments(command: str) -> list[list[str]] | None:
                 current.append(token)
         if current:
             segments.append(current)
-            current = []
 
     return segments
 
@@ -196,7 +241,9 @@ def _record_alias(aliases: dict[str, str], config_value: str) -> None:
         aliases[name] = value
 
 
-def _strip_git_globals(tokens: list[str]) -> tuple[list[str], str | None, dict[str, str]]:
+def _strip_git_globals(
+    tokens: list[str],
+) -> tuple[list[str], str | None, dict[str, str], bool]:
     """`git` の後ろのグローバルオプションを取り除く。
 
     戻り値は (残りのトークン, -Cの値, インライン定義されたalias)。
@@ -204,6 +251,14 @@ def _strip_git_globals(tokens: list[str]) -> tuple[list[str], str | None, dict[s
     index = 0
     chdir: str | None = None
     aliases: dict[str, str] = {}
+    risky_push_config = False
+
+    def record(config_value: str) -> None:
+        nonlocal risky_push_config
+        _record_alias(aliases, config_value)
+        if _RISKY_PUSH_CONFIG_RE.match(config_value.split("=", 1)[0]):
+            risky_push_config = True
+
     while index < len(tokens):
         token = tokens[index]
         if not token.startswith("-"):
@@ -213,11 +268,12 @@ def _strip_git_globals(tokens: list[str]) -> tuple[list[str], str | None, dict[s
 
         # `-calias.p=push` のように値が連結された形
         if name.startswith("-c") and name != "-c" and not name.startswith("--"):
-            _record_alias(aliases, token[2:])
+            record(token[2:])
             index += 1
             continue
         if name == "--config-env":
-            # 環境変数経由の設定は解決できないため、以降のalias展開を諦める
+            # 環境変数経由の設定は値を解決できない。キー名だけは判定する
+            record(inline_value if inline_value is not None else "")
             if inline_value is None:
                 index += 1
             index += 1
@@ -227,11 +283,11 @@ def _strip_git_globals(tokens: list[str]) -> tuple[list[str], str | None, dict[s
             if name == "-C":
                 chdir = value
             elif name == "-c":
-                _record_alias(aliases, value)
+                record(value)
             index += 2
             continue
         index += 1
-    return tokens[index:], chdir, aliases
+    return tokens[index:], chdir, aliases, risky_push_config
 
 
 def _current_branch(cwd: str) -> str | None:
@@ -242,7 +298,13 @@ def _current_branch(cwd: str) -> str | None:
     ):
         try:
             result = subprocess.run(
-                argv, cwd=cwd, capture_output=True, text=True, timeout=5, check=False
+                argv,
+                cwd=cwd,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                timeout=5,
+                check=False,
             )
         except (OSError, subprocess.SubprocessError):
             return None
@@ -261,6 +323,7 @@ def _config_alias(name: str, cwd: str) -> str | None:
             cwd=cwd,
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=5,
             check=False,
         )
@@ -344,13 +407,42 @@ def _check_reset(args: list[str]) -> str | None:
 
 
 def _check_clean(args: list[str]) -> str | None:
-    # --dry-run（-n）付きは実際には削除しないため許可する
-    for token in args:
+    """`git clean -f` を拒否する（--dry-run 併用時は実際に削除しないので許可）。
+
+    `-e <pattern>` / `--exclude <pattern>` の「値」は走査対象から外す。
+    値として現れた `-n` をdry-runと誤認すると、実際には削除されるコマンドを
+    許可してしまう（例: `git clean -f -e -n`）。
+    """
+    dry_run = False
+    forced = False
+    index = 0
+    while index < len(args):
+        token = args[index]
+        if token == "--":
+            break
+        if _is_long_option(token, "--exclude"):
+            if "=" not in token:
+                index += 1
+            index += 1
+            continue
+        if re.fullmatch(r"-[A-Za-z]*e", token):
+            # 短オプションの束ね（-fe など）。値は次のトークンにある
+            if "f" in token[1:]:
+                forced = True
+            if "n" in token[1:]:
+                dry_run = True
+            index += 2
+            continue
         if _is_long_option(token, "--dry-run") or re.fullmatch(r"-[A-Za-z]*n[A-Za-z]*", token):
-            return None
-    for token in args:
+            dry_run = True
         if _is_long_option(token, "--force") or re.fullmatch(r"-[A-Za-z]*f[A-Za-z]*", token):
-            return "`git clean -f` は禁止されています"
+            forced = True
+        index += 1
+
+    if dry_run:
+        return None
+    if forced:
+        return "`git clean -f` は禁止されています"
     return None
 
 
@@ -372,10 +464,20 @@ def _check_branch(args: list[str]) -> str | None:
 
 
 def _dispatch(
-    subcommand: str, args: list[str], cwd: str, aliases: dict[str, str], depth: int
+    subcommand: str,
+    args: list[str],
+    cwd: str,
+    aliases: dict[str, str],
+    depth: int,
+    risky_push_config: bool = False,
 ) -> str | None:
     """gitサブコマンドを判定する。未知のサブコマンドはaliasとして展開を試みる。"""
     if subcommand == "push":
+        if risky_push_config:
+            return (
+                "`-c push.default` / `-c remote.*.push` / `-c remote.*.mirror` を伴うpushは、"
+                "refspecを書かずに保護ブランチを更新できるため禁止されています"
+            )
         return _check_push(args, cwd)
     if subcommand == "reset":
         return _check_reset(args)
@@ -402,13 +504,20 @@ def _dispatch(
         return None
     if not expanded:
         return None
-    rest, chdir, inline_aliases = _strip_git_globals(expanded)
+    rest, chdir, inline_aliases, alias_risky_config = _strip_git_globals(expanded)
     if not rest:
         return None
     merged = dict(aliases)
     merged.update(inline_aliases)
     target_cwd = _resolve_cwd(cwd, chdir)
-    return _dispatch(rest[0], rest[1:] + args, target_cwd, merged, depth + 1)
+    return _dispatch(
+        rest[0],
+        rest[1:] + args,
+        target_cwd,
+        merged,
+        depth + 1,
+        risky_push_config or alias_risky_config,
+    )
 
 
 def _resolve_cwd(cwd: str, chdir: str | None) -> str:
@@ -418,10 +527,12 @@ def _resolve_cwd(cwd: str, chdir: str | None) -> str:
 
 
 def _check_git_invocation(tokens: list[str], cwd: str, depth: int) -> str | None:
-    rest, chdir, aliases = _strip_git_globals(tokens)
+    rest, chdir, aliases, risky_push_config = _strip_git_globals(tokens)
     if not rest:
         return None
-    return _dispatch(rest[0], rest[1:], _resolve_cwd(cwd, chdir), aliases, depth)
+    return _dispatch(
+        rest[0], rest[1:], _resolve_cwd(cwd, chdir), aliases, depth, risky_push_config
+    )
 
 
 def _check_shell_invocation(base: str, rest: list[str], cwd: str, depth: int) -> str | None:
@@ -464,12 +575,11 @@ def evaluate(command: str, cwd: str, depth: int = 0) -> str | None:
     # NUL文字は実行時にその位置で引数が切り詰められるため、
     # 「NUL以降のトークン」を落としてから判定する（`main\0-suffix` は `main` と等価）
     command = re.sub(r"\x00\S*", "", command)[:_MAX_COMMAND_LENGTH]
-    stripped = _strip_heredocs(command)
-    segments = split_segments(stripped)
+    segments = split_segments(command)
     if segments is None:
         # 解析できないコマンドは、既知の危険パターンだけを安全側で拒否する。
         for pattern, reason in _FALLBACK_PATTERNS:
-            if pattern.search(stripped):
+            if pattern.search(command):
                 return reason
         return None
 
