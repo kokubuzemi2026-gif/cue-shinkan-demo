@@ -90,6 +90,7 @@
 - ブランチ: `feat/012-agent-harness`（`develop` の最新 `b28d0ba` から作成）
 - Python構文チェック: `python3 -m py_compile .claude/hooks/{guard_git,quality_gate,test_hooks}.py` → OK
 - settings.jsonのparse: OK（deny 10件 / PreToolUse matcher `Bash` / Stopはmatcherなし / timeout 30秒・1500秒）
+- subagentのfrontmatter: `claude plugin validate .claude/agents` → Validation passed（4件）
 - hookテスト: `python3 .claude/hooks/test_hooks.py` → **162 checks passed**
 - Stop hookの実挙動（本リポジトリ）:
   - `app/` 変更なし → exit 0（ゲート未実行）
