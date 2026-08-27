@@ -272,23 +272,28 @@ test('Task 010: 通知設定の3択と、設定に応じたoutboxの積まれ方
       const before = execSql(
         `select count(*)::int from private.email_outbox where user_id = '${studentId}'`,
       )
-      // 2通目を運営相当のSQLで配信する（UIの操作はstep 4で確認済み）
-      execSql(
-        `select public.preview_offer_audience(` +
-          `(select id from public.organizations where name='${ORG_NAME}'), ` +
-          `'2通目-${RUN}', '説明文', '理由', '9月20日（土）', '大学会館', ` +
-          `array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate', ` +
-          `array['film']::public.interest_category[], ` +
-          `array['friends','challenge']::public.purpose[], 10, '2026-09-18')`,
-      )
-      execSql(
-        `select public.send_offer(` +
-          `(select id from public.organizations where name='${ORG_NAME}'), ` +
-          `'2通目-${RUN}', '説明文', '理由', '9月20日（土）', '大学会館', ` +
-          `array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate', ` +
-          `array['film']::public.interest_category[], ` +
-          `array['friends','challenge']::public.purpose[], 10, '2026-09-18')`,
-      )
+
+      // 2通目もUIから送る。RPCをpsqlで直接呼ぶと auth.uid() が無く not_authorized になるため
+      await pageB.getByRole('button', { name: '新しいオファーを作成' }).click()
+      await pageB.getByLabel('イベント名').fill(`2通目-${RUN}`)
+      await pageB.getByLabel('イベント紹介').fill('前回に続いて短編の上映会をします。')
+      await pageB.getByLabel('開催日時').fill('9月20日（土）18:00')
+      await pageB.getByLabel('場所').fill('大学会館ホール')
+      await pageB
+        .getByLabel('なぜこの人たちに届けたいか')
+        .fill('前回来られなかった新入生にも届けたいからです。')
+      await pageB.getByRole('button', { name: '映像・映画', exact: true }).click()
+      await pageB.getByRole('button', { name: '友達を作る' }).click()
+      await pageB.getByRole('button', { name: '土日', exact: true }).click()
+      await pageB.getByRole('button', { name: '対象を確認する' }).click()
+      await expect(pageB.getByRole('heading', { name: '送信内容の確認' })).toBeVisible({
+        timeout: 15_000,
+      })
+      await pageB.getByRole('button', { name: 'この内容で送信' }).click()
+      await expect(pageB.getByRole('heading', { name: /人の新入生へ配信しました/u })).toBeVisible({
+        timeout: 15_000,
+      })
+
       expect(
         execSql(`select count(*)::int from private.email_outbox where user_id = '${studentId}'`),
       ).toBe(before)

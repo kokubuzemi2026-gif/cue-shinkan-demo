@@ -76,7 +76,9 @@ begin
   )
   select cl.id,
          cl.kind,
-         u.email,
+         -- auth.users.email は Supabase では varchar(255)。戻り値の型（text）へ明示castする
+         -- （castが無いと "structure of query does not match function result type" になる）
+         u.email::text,
          case
            when cl.kind = 'daily_digest' then (
              -- まとめ: その日に届いた件数だけを返す（どの団体かは返さない）
