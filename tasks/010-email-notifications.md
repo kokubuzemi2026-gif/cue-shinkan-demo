@@ -61,22 +61,22 @@
 
 ## Acceptance criteria（受入条件）
 
-- [ ] 学生が通知設定を3種類（毎回 / 1日1回 / 通知しない）から選べ、いつでも変更できる
-- [ ] 設定が`off`の学生にはoutboxへ積まれない
-- [ ] オファー配信と同じトランザクションでoutboxへ積まれる
-- [ ] メール送信の失敗がオファー配信をrollbackさせない
-- [ ] 同じオファー・同じ学生の通知が二重に積まれない（idempotent）
-- [ ] 送信失敗はbackoff付きで再試行され、上限を超えたら`failed`として残る
-- [ ] `sent` / `failed` / 再試行中の状態を運用が確認できる
-- [ ] daily digestが1日1回だけ送られる
-- [ ] メール本文・件名・ログに、希望条件・団体の内部情報・返答状態・メールアドレス・secretが含まれない
-- [ ] outboxテーブルに宛先メールアドレスと本文が保存されない
-- [ ] 通知設定画面から通知を止められる導線が、メールからも辿れる
-- [ ] fake SMTP（Mailpit）またはmockによる自動テストがある
-- [ ] 設定済み環境での実メールE2Eがある（hostedはPhase Bで実施）
-- [ ] 運用runbookがある（送信失敗の確認・再送・停止）
-- [ ] anon・他の学生・団体からoutboxへ到達できない（pgTAPで検査）
-- [ ] `npm run lint` / `npm run test -- --run` / `npm run build` / pgTAP がgreen
+- [x] 学生が通知設定を3種類（毎回 / 1日1回 / 通知しない）から選べ、いつでも変更できる
+- [x] 設定が`off`の学生にはoutboxへ積まれない
+- [x] オファー配信と同じトランザクションでoutboxへ積まれる
+- [x] メール送信の失敗がオファー配信をrollbackさせない（送信はトランザクション外）
+- [x] 同じオファー・同じ学生の通知が二重に積まれない（idempotent）
+- [x] 送信失敗はbackoff付きで再試行され、上限を超えたら`failed`として残る
+- [x] `sent` / `failed` / 再試行中の状態を運用が確認できる（`email_outbox_health()`）
+- [x] daily digestが1日1回だけ送られる（1人1日1行・Asia/Tokyo 18時）
+- [x] メール本文・件名・ログに、希望条件・団体の内部情報・返答状態・メールアドレス・secretが含まれない
+- [x] outboxテーブルに宛先メールアドレスと本文が保存されない
+- [x] 通知設定画面から通知を止められる導線が、メールからも辿れる
+- [x] mockによる自動テストがある（`emailTemplate.test.ts` / pgTAP 24・25）
+- [ ] **設定済み環境での実メールE2E**（hosted staging・人間タスク。`docs/runbook_supabase_hosted.md` §6.1）
+- [x] 運用runbookがある（`docs/runbook_supabase_hosted.md` §6.1・`docs/notifications.md`）
+- [x] anon・他の学生・団体からoutboxへ到達できない（pgTAP 25で検査）
+- [x] `npm run lint` / `npm run test -- --run` / `npm run build` / pgTAP がgreen
 
 ## Test plan（テスト計画）
 
@@ -97,4 +97,37 @@
 
 ## Verification record（検証記録）
 
-実装後に記入する。
+- 実行モード: **Deep**（`app/supabase/**`・通知・PII・外部サービス連携に触れるため）
+- ブランチ: `feat/010-email-notifications`（`develop` の `ee08d12` から作成）
+- lint: green（指摘0件）
+- unit test: **345件 / 28ファイル**（Task 011後は335 / 27）
+- build: 成功
+- pgTAP: **377件 / 25ファイル**（Task 011後は337 / 23）
+- 並行テスト: 8件pass（回帰なし）
+- E2E: **ローカル未実施**（Dockerデーモンが無い）。`e2e/task010-notifications.spec.ts` をCIで担保
+- 送信ワーカーの実送信: **未検証**。DockerとDenoが無く `supabase functions serve` を起動できない
+
+### 設計上の判断
+
+- **`send_offer` を書き換えない**: `offer_recipients` への挿入を文レベルトリガにした。
+  Task 011で確定した送信の判定・原子性・並行制御（D036・D037）に手を入れずに済み、
+  既存のpgTAP 337件が無改修で通ることを確認した。
+- **outboxに宛先も本文も置かない**: 宛先は送信時に `auth.users` から引く。
+  outboxが漏えいしても、誰のどのアドレスへ何を送ったかが分からない。
+- **配信停止はワンクリック解除にしない**: 解除トークンをメールへ埋めると、
+  漏えい・誤操作・なりすましで第三者が通知を止められる。本人のログインを経由させる。
+- **既定値を2か所に持つ**: サーバー（enqueueの`coalesce`）とクライアント
+  （`DEFAULT_NOTIFICATION_MODE`）。片方だけ変えると通知が復活する事故を防ぐため、
+  単体テストで両者が `each` であることを固定した。
+
+### 残るリスク・未実施事項
+
+- **実メール送信が未検証**。`index.ts` はhosted stagingでの実機確認が必要
+  （`docs/runbook_supabase_hosted.md` §6.1）。純粋関数部分（本文・例外分類・ログ）は
+  Vitestで検証済み。
+- Edge Functionの外部依存（`denomailer`）はバージョン固定したが、実行での確認は未実施。
+- staging SMTPはGmailの個人アカウント（500宛先/日）。閉鎖βの規模では足りるが、
+  本番は独自ドメイン+専用プロバイダが必要。
+- 古いoutbox行の削除経路が無い（Task 017へ引き継ぐ）。
+- 送信ワーカーのスケジュール設定は人間タスク。
+- 独立レビュー（reviewer / security-reviewer）: 実施予定。
