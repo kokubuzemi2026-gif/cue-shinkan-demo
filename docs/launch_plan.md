@@ -51,7 +51,7 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 | 完成像 | 状態 | 担当Task |
 |---|---|---|
 | 個人アカウント認証・組織と権限の分離 | ✅ | 008 |
-| 確認済み団体だけが配信できる | ⚠️ verified判定はあるが、**verified化の運営経路と停止・再開が未実装** | 013 |
+| 確認済み団体だけが配信できる | ✅ 運営RPCでの確認・停止・再開と、配信行トリガでの強制（D043・D045） | 013 |
 | 公式窓口・担当者・オファーの管理 | ⚠️ 窓口とオファーは可。**担当者の削除・role変更・脱退が未実装** | 014 |
 | 個人を特定できない**粗い**対象規模だけを確認できる | ✅ | 011 |
 | 匿名性を満たす対象へだけ配信できる | ✅ | 011 |
@@ -62,9 +62,9 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 
 | 完成像 | 状態 | 担当Task |
 |---|---|---|
-| 団体の確認・停止・再開 | ❌ | 013 |
-| オファーの停止・kill switch | ❌ | 013 |
-| 監査記録 | ❌ | 013/014 |
+| 団体の確認・停止・再開 | ✅ `admin_set_organization_status`（service_role専用） | 013 |
+| オファーの停止・kill switch | ✅ `admin_set_offer_stopped` / `admin_set_delivery_paused` | 013 |
+| 監査記録 | ⚠️ 運営操作は`private.admin_audit_log`へ記録（PII無し）。認証・配信の監査は017 | 013/017 |
 | 障害・メール送信失敗・quota異常の把握 | ⚠️ `email_outbox_health()` はある。quota・障害の手順は017 | 010/017 |
 | backup・復旧・rollback・incident runbook | ⚠️ `runbook_supabase_hosted.md` §8にrollbackのみ | 017 |
 | service role key・SMTP認証情報をクライアントへ出さない | ✅ 維持（010で再確認） | 010/017 |
@@ -95,7 +95,7 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 |---|---|---|---|---|
 | 011 | 匿名性（k=5・区分preview・10–5ファネル）・並行quota・入力検証 | **完了（developへmerge済み `ee08d12`）** | [#12](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/12) | — |
 | 010 | メール通知（outbox・digest・設定・unsubscribe） | **完了（developへmerge済み `18c1e3a`）。実メール送信のみhosted待ち** | [#13](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/13) | 011 |
-| 013 | 団体確認（pending/verified/suspended）・停止・kill switch・監査 | **実装中** | — | — |
+| 013 | 団体確認（pending/verified/suspended）・停止・kill switch・監査 | **実装完了・レビュー中** | — | — |
 | 014 | アカウント・データライフサイクル（削除・脱退・孤児データ） | 未着手（仕様は `tasks/014-*.md`） | — | 013 |
 | 015 | プライバシー・同意・利用規約draft・同意バージョン | 未着手（仕様は `tasks/015-*.md`） | — | — |
 | 016 | UX・アクセシビリティ・完全E2E | 未着手（仕様は `tasks/016-*.md`） | — | 010〜015 |

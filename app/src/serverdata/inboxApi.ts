@@ -68,6 +68,8 @@ export function inboxRowToItem(row: InboxRow): InboxItem {
     response,
     read,
     status: deriveOfferStatus(read, response),
+    // D044: 運営が停止したオファー。受信箱には残すが返答導線と窓口を閉じる
+    stopped: row.stopped,
   }
 }
 

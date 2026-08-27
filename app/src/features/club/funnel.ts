@@ -25,6 +25,8 @@ export type CampaignView = {
   funnel: FunnelCounts | DisclosedFunnel
   // 集計の基準日（サーバー由来のときだけ入る。1日1回の安定したsnapshot・D037）
   snapshotDate?: string
+  // 運営が停止したオファー（D044）。ローカルデモの配信は常にfalse
+  stopped?: boolean
 }
 
 export function buildFunnel(

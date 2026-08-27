@@ -99,6 +99,19 @@ PR・チャットへ置かない。**
    - `email_outbox_health()` をservice_roleで呼び、`failed_count` が0であることを確認する
    - 確認後、検証用のauthユーザーとデータを削除する
 
+## 6.2 Task 013（運営操作）の人間タスク
+
+運営RPCは**service_role専用**のため、Dashboardの SQL Editor から実行する。
+手順とSQLは`docs/operations.md`が正本。
+
+1. staging/本番で、**閉鎖βに参加する団体を確認して`verified`にする**
+   （`docs/operations.md` §2）。確認手順（部室・代表者・大学の団体登録など）は
+   運営が定める。`actor_label`・`reason`に氏名・メールを書かない。
+2. 緊急停止が効くことを、**公開前に一度試す**（`docs/operations.md` §5）。
+   止める → 団体側から送信して`delivery_paused`になる → 戻す → 送信できる、まで確認し、
+   確認後は必ず戻す。
+3. `select * from public.admin_list_audit(100);` で、1・2の操作が記録されていることを確認する。
+
 ## 7. 料金・運用上の注意（残余リスク）
 
 - **Free projectは約1週間非アクティブでpauseされ得る**。Phase B実施前にプロジェクトが稼働中か確認し、停止時はダッシュボードからRestoreする。
@@ -120,4 +133,12 @@ PR・チャットへ置かない。**
   切り戻しには`20260825054005_0009_offer_rpcs.sql`の該当3関数の定義を再適用したうえで、
   0011で追加した3テーブル（`student_delivery_quota` / `offer_preview_cache` / `offer_funnel_snapshots`）と
   ヘルパー関数をdropする。3テーブルはいずれも再生成可能な派生データで、正本（配信・受信者・既読・返答）は失われない。
+- Task 013のmigrationも同様に注意が必要: `list_my_inbox` / `list_org_campaigns` /
+  `respond_to_offer` を**drop→create（または create or replace）で置き換えている**ため、
+  単純なdropでは前の版に戻らない。切り戻しには`20260827040004_0011_funnel_suppression.sql`の
+  `list_org_campaigns`、`20260825054005_0009_offer_rpcs.sql`の`list_my_inbox`・`respond_to_offer`を
+  再適用したうえで、0013で追加した運営RPC 4本・`private.cancel_offer_mail`・
+  `private.assert_delivery_allowed()`とトリガ・2テーブル（`platform_controls` / `admin_audit_log`）・
+  `offer_deliveries`の2列をdropする。**停止済みのオファーは`stopped_at`列とともに消えるため、
+  切り戻し前に停止対象を控えておく**（正本の配信・受信者・既読・返答は失われない）。
 - Auth設定: テンプレート・OTP設定を既定へ戻し、テストで作成したauthユーザーを削除する。

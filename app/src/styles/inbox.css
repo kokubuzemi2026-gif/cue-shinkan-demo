@@ -461,3 +461,38 @@
 .reason-list li {
   min-width: 0;
 }
+
+/* ---- 停止されたオファー（D044） ---- */
+/* 色だけに意味を持たせない: 文言「募集終了」と枠線でも区別できるようにする */
+
+.offer-closed-chip {
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-ink);
+  background: var(--color-cream);
+  border: 1px solid rgba(23, 33, 43, 0.28);
+  border-radius: var(--radius-pill);
+}
+
+.offer-closed-notice {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.6;
+  background: var(--color-cream);
+  border: 1px solid rgba(23, 33, 43, 0.18);
+  border-radius: var(--radius-m);
+}
+
+.response-closed-note {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.7;
+}

@@ -214,6 +214,41 @@ export type Database = {
           organization_name: string
         }[]
       }
+      admin_list_audit: {
+        Args: { max_rows: number }
+        Returns: {
+          action: string
+          actor_label: string
+          created_at: string
+          new_value: string
+          previous_value: string
+          reason: string
+          target_delivery_id: string
+          target_organization_id: string
+        }[]
+      }
+      admin_set_delivery_paused: {
+        Args: { actor_label: string; paused: boolean; reason: string }
+        Returns: undefined
+      }
+      admin_set_offer_stopped: {
+        Args: {
+          actor_label: string
+          delivery_id: string
+          reason: string
+          stopped: boolean
+        }
+        Returns: undefined
+      }
+      admin_set_organization_status: {
+        Args: {
+          actor_label: string
+          new_status: Database["public"]["Enums"]["org_status"]
+          org_id: string
+          reason: string
+        }
+        Returns: undefined
+      }
       claim_email_batch: {
         Args: { batch_size: number }
         Returns: {
@@ -293,6 +328,7 @@ export type Database = {
           responded_at: string
           response_choice: Database["public"]["Enums"]["response_choice"]
           score: number
+          stopped: boolean
           target_categories: Database["public"]["Enums"]["interest_category"][]
           target_purposes: Database["public"]["Enums"]["purpose"][]
         }[]
@@ -319,6 +355,7 @@ export type Database = {
           planned_count: number
           reason_note: string
           snapshot_date: string
+          stopped: boolean
           target_categories: Database["public"]["Enums"]["interest_category"][]
           target_purposes: Database["public"]["Enums"]["purpose"][]
           viewed_count: number

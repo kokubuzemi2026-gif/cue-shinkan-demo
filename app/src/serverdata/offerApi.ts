@@ -36,6 +36,8 @@ export type ServerCampaign = {
   offer: ClubOffer
   funnel: DisclosedFunnel
   snapshotDate: string
+  // 運営が停止したオファー（D044）。停止理由の本文はサーバーが返さない
+  stopped: boolean
 }
 
 type OfferRpcArgs = Database['public']['Functions']['send_offer']['Args']
@@ -119,6 +121,7 @@ export function campaignRowToView(organizationId: string, row: CampaignRow): Ser
       planned: nullableCount(row.planned_count),
     },
     snapshotDate: row.snapshot_date,
+    stopped: row.stopped,
   }
 }
 
