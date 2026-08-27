@@ -202,7 +202,8 @@ test('Task 013: 団体確認・オファー停止・緊急停止が画面へ正�
         timeout: 15_000,
       })
 
-      await expect(pageOwner.getByText('審査待ち')).toBeVisible()
+      // 「審査待ち」は状態チップと説明文の両方に出るため、チップだけを完全一致で見る
+      await expect(pageOwner.getByText('審査待ち', { exact: true })).toBeVisible()
       await expect(pageOwner.getByRole('button', { name: '新しいオファーを作成' })).toHaveCount(0)
       await expectNoHorizontalScroll(pageOwner, '団体ホーム(審査待ち・390px)')
 
@@ -242,7 +243,8 @@ test('Task 013: 団体確認・オファー停止・緊急停止が画面へ正�
       )
       await pageOwner.getByRole('button', { name: 'ダッシュボードへもどる' }).click()
       await expect(pageOwner.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible()
-      await expect(pageOwner.getByText('配信済み')).toBeVisible()
+      // 見出し「配信済みキャンペーン」と区別するため完全一致で見る
+      await expect(pageOwner.getByText('配信済み', { exact: true })).toBeVisible()
 
       deliveryId = execSql(
         `select id::text from private.offer_deliveries where event_name = '新歓ライブ-${RUN}'`,
@@ -261,7 +263,7 @@ test('Task 013: 団体確認・オファー停止・緊急停止が画面へ正�
           `org_contact_handle = '@cue_music_demo' where id = '${deliveryId}'`,
       )
 
-      await pageStudent.getByRole('button', { name: '受信箱' }).click()
+      await pageStudent.getByRole('button', { name: '受信箱', exact: true }).click()
       await expect(pageStudent.getByText(`新歓ライブ-${RUN}`)).toBeVisible({ timeout: 15_000 })
       await pageStudent.getByRole('button', { name: new RegExp(`新歓ライブ-${RUN}`, 'u') }).click()
       await expect(pageStudent.getByRole('heading', { name: `新歓ライブ-${RUN}` })).toBeVisible()
@@ -276,10 +278,10 @@ test('Task 013: 団体確認・オファー停止・緊急停止が画面へ正�
       )
 
       await pageStudent.reload()
-      await pageStudent.getByRole('button', { name: '受信箱' }).click()
+      await pageStudent.getByRole('button', { name: '受信箱', exact: true }).click()
       // 受信箱から消さない（何が起きたか分かるように残す）
       await expect(pageStudent.getByText(`新歓ライブ-${RUN}`)).toBeVisible({ timeout: 15_000 })
-      await expect(pageStudent.getByText('募集終了').first()).toBeVisible()
+      await expect(pageStudent.getByText('募集終了', { exact: true }).first()).toBeVisible()
 
       await pageStudent.getByRole('button', { name: new RegExp(`新歓ライブ-${RUN}`, 'u') }).click()
       await expect(
@@ -298,7 +300,7 @@ test('Task 013: 団体確認・オファー停止・緊急停止が画面へ正�
       await expect(pageOwner.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible({
         timeout: 15_000,
       })
-      await expect(pageOwner.getByText('停止中')).toBeVisible()
+      await expect(pageOwner.getByText('停止中', { exact: true })).toBeVisible()
       const ownerText = await pageOwner.locator('.app-main').innerText()
       expect(ownerText.includes('内容の確認中')).toBe(false)
     })
@@ -310,10 +312,14 @@ test('Task 013: 団体確認・オファー停止・緊急停止が画面へ正�
       expect(execSql(`select delivery_paused from private.platform_controls`)).toBe('t')
 
       await composeAndSend(pageOwner, `緊急停止中ライブ-${RUN}`, '音楽')
-      // 送信は拒否され、配信行も残らない
+      // 「通信環境を確認して」ではなく、停止の理由が伝わる（Task 013で追加）
+      await expect(
+        pageOwner.getByText('現在、システム全体で配信を一時停止しています。', { exact: false }),
+      ).toBeVisible({ timeout: 15_000 })
       await expect(pageOwner.getByRole('heading', { name: /人の新入生へ配信しました/u })).toHaveCount(
         0,
       )
+      // 配信行も残らない（部分的な副作用が無い）
       expect(
         execSql(
           `select count(*)::int from private.offer_deliveries ` +

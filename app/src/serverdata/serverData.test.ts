@@ -300,6 +300,19 @@ describe('apiText', () => {
     expect(serverErrorCode({ message: 'not_student' })).toBe('not_student')
   })
 
+  // Task 013 / D044・D045: 意図的な停止を汎用文言（通信環境を確認して…）にすると、
+  // 利用者は原因を誤解して再試行を繰り返す。理由が伝わることを固定する
+  it('運営による停止は「通信環境の問題」ではなく理由が伝わる', () => {
+    const paused = serverErrorMessage({ message: 'delivery_paused' })
+    expect(paused).toContain('配信を一時停止')
+    expect(paused).not.toContain('通信環境')
+    const stopped = serverErrorMessage({ message: 'offer_stopped' })
+    expect(stopped).toContain('募集を終了')
+    expect(stopped).not.toContain('通信環境')
+    expect(serverErrorCode({ message: 'delivery_paused' })).toBe('delivery_paused')
+    expect(serverErrorCode({ message: 'offer_stopped' })).toBe('offer_stopped')
+  })
+
   it('未知のエラーは内容を出さず汎用文言になる', () => {
     expect(serverErrorCode({ message: 'stack trace with secret@stu.kobe-u.ac.jp' })).toBe('unknown')
     const text = serverErrorMessage({ message: 'stack trace with secret@stu.kobe-u.ac.jp' })

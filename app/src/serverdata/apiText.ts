@@ -11,6 +11,12 @@ export function serverErrorMessage(error: unknown): string {
       return '大学メールで認証されたアカウントだけが利用できます。'
     case 'org_not_verified':
       return 'オファーの配信は、運営の認証が完了した団体だけが利用できます。'
+    // Task 013: 意図的な停止を「通信環境を確認して」と案内すると、
+    // 何度も再試行させたうえに原因を誤解させる。理由をそのまま伝える
+    case 'delivery_paused':
+      return '現在、システム全体で配信を一時停止しています。運営の対応が終わるまでお待ちください。'
+    case 'offer_stopped':
+      return 'この案内は募集を終了したため、返答できません。'
     case 'duplicate_event':
       return '同じイベントはすでに配信済みのため、再送できません'
     case 'weekly_limit_reached':
@@ -49,6 +55,8 @@ export function serverErrorCode(error: unknown): string {
     'not_authorized',
     'not_university_user',
     'org_not_verified',
+    'delivery_paused',
+    'offer_stopped',
     'duplicate_event',
     'weekly_limit_reached',
     'no_recipients',
