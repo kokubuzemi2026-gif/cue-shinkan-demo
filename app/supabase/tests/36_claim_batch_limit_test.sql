@@ -5,7 +5,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(11);
+select plan(12);
 
 -- ---- 準備: 送信期限が来ている6件 ----
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at)
@@ -26,8 +26,9 @@ select 'offer_arrival',
        'cb-' || n, 'pending', now() - interval '1 minute'
 from generate_series(1, 6) as n;
 
--- RPCの呼び出しだけ service_role で行い、private の確認は所有者で行う
--- （service_role は private スキーマへ USAGE を持たない）
+-- 呼び出しは所有者（postgres）のまま行う。関数は security definer なので
+-- 実行結果はロールに依らない。service_role からの実行可否そのものは
+-- 25_notification_privacy_test.sql が固定している
 -- ---- 契約: 返る行数も、sendingへ進む行数も batch_size まで ----
 select is(
   (select count(*)::int from public.claim_email_batch(3)),
@@ -91,6 +92,15 @@ select ok(
      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname = 'claim_email_batch'),
   'T1: 掴む行の確定が `as materialized` のCTEで1度だけ評価される'
+);
+-- 同着順の決定性も固定する（契約4・D055）。同着順の不安定さは
+-- CI事象の成立条件の一つで、`, c.id` だけが黙って消える回帰を検出できないと
+-- 二重防御の一方が失われる（`c.id` を外した変異体が11件全部通ることを実測した）
+select ok(
+  (select pg_get_functiondef(p.oid) like '%order by c.next_attempt_at, c.id%'
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname = 'claim_email_batch'),
+  'T1: 同着順が `order by c.next_attempt_at, c.id` で決定的である'
 );
 
 select * from finish();
