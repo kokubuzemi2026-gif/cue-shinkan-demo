@@ -282,7 +282,7 @@ Task 018のsmoke testも全滅する。
 | E2 | **Authログの保持期間が短い** | 認証障害の事後調査ができない | 発生当日中に調査する |
 | E3 | 実メール送信がhosted未検証 | 本番で届かない可能性 | H9 で確認する |
 | E4 | 外部の監視サービスを使っていない | 障害に気づくのが遅れる | `platform_health()` を毎日見る運用（`runbook_operations.md` §8）。**有料サービスは承認なしに追加しない** |
-| E5 | **`email_outbox` の古い行を消す経路が無い** | `user_id` を持つ行が無期限に増える | Task 010が017へ引き継いだ項目だが、017では**実装していない**（監査とpreviewだけ剪定した）。次のタスクで対応する |
+| E5 | ~~`email_outbox` の古い行を消す経路が無い~~ **対応済み（Task 019）** | — | `private.prune_email_outbox(retain_days)`（既定90日）を追加。**pending・sending は消さない**。定期作業へ登録した（`runbook_operations.md` §8） |
 | E6 | **staging のSMTPは個人のGmail（1日500宛先）** | 本番の規模で頭打ちになる。送信元ドメインも借り物 | 本番は独自ドメイン＋専用プロバイダが必要（`runbook_supabase_hosted.md` §7）。**H6と同時に判断する** |
 | E7 | denomailer 1.6.0 のSTARTTLS挙動が未確認 | 465以外のポートで平文送信になる可能性 | hosted stagingで実配信を確認するときに、ポートと暗号化を目視する（H9） |
 

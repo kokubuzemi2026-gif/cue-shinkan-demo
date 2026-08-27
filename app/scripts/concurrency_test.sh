@@ -29,6 +29,7 @@ ORG_D='並行検証団体D'
 ORG_LEAVE='並行脱退検証団体'
 LEAVE_1='00000000-0000-0000-0000-0000000cc801'
 LEAVE_2='00000000-0000-0000-0000-0000000cc802'
+WORKER_TAG='demo-worker-'
 FAILURES=0
 
 note() { printf '%s\n' "$1"; }
@@ -46,6 +47,7 @@ cleanup() {
 delete from public.organizations where name in ('$ORG_A', '$ORG_B', '$ORG_C', '$ORG_D', '$ORG_LEAVE');
 delete from auth.users where email like 'demo-conc-%@stu.kobe-u.ac.jp';
 delete from auth.users where email like 'demo-leave-%@stu.kobe-u.ac.jp';
+delete from auth.users where email like '${WORKER_TAG}%@stu.kobe-u.ac.jp';
 SQL
 }
 trap cleanup EXIT
@@ -255,8 +257,76 @@ LEAVE_REJECTED="$(grep -l 'ERROR:  last_owner' "$LEAVE_OUT"/* 2>/dev/null | wc -
 check '2人目の脱退は last_owner で拒否される' '1' "$LEAVE_REJECTED"
 rm -rf "$LEAVE_OUT"
 
+# ---- Task 017: 送信ワーカーの並行取り出し ----
+# claim_email_batch は `for update skip locked` を使う。2つのワーカーが同時に
+# 走っても (1) 同じ行を二重に掴まない (2) 相手のロック待ちで止まらない、
+# の2点を実際に並行させて確かめる。
+# pgTAPは1ファイル=1セッションなので、この2点はpgTAPでは検証できない。
+note 'Task 017 ワーカー並行テスト: 準備'
+"${PSQL[@]}" >/dev/null <<SQL
+insert into auth.users (id, email, email_confirmed_at, created_at, updated_at)
+select ('00000000-0000-0000-0000-0000000cc9' || to_char(n, 'FM00'))::uuid,
+       '${WORKER_TAG}' || n || '@stu.kobe-u.ac.jp', now(), now(), now()
+from generate_series(1, 6) as n;
+insert into public.student_accounts (user_id)
+select ('00000000-0000-0000-0000-0000000cc9' || to_char(n, 'FM00'))::uuid
+from generate_series(1, 6) as n;
+insert into public.student_notification_settings (user_id, mode)
+select ('00000000-0000-0000-0000-0000000cc9' || to_char(n, 'FM00'))::uuid, 'each'
+from generate_series(1, 6) as n;
+-- 送信期限が来ている6件を積む
+insert into private.email_outbox (kind, user_id, dedupe_key, status, next_attempt_at)
+select 'offer_arrival',
+       ('00000000-0000-0000-0000-0000000cc9' || to_char(n, 'FM00'))::uuid,
+       'worker-' || n, 'pending', now() - interval '1 minute'
+from generate_series(1, 6) as n;
+SQL
+
+claim_sql() { # claim_sql <batch size>
+  cat <<SQL
+set local role service_role;
+select count(*) as claimed from public.claim_email_batch($1);
+reset role;
+SQL
+}
+
+note 'Task 017 ワーカー並行テスト: 2つのワーカーを同時に走らせる'
+WORKER_OUT="$(mktemp -d)"
+# A: 3件掴んで3秒握ったままにする
+{
+  printf 'begin;\n'
+  claim_sql 3
+  printf 'select pg_sleep(3);\ncommit;\n'
+} | "${PSQL[@]}" >"$WORKER_OUT/a" 2>&1 &
+WORKER_A=$!
+sleep 1
+# B: Aがロックを握っている最中に走る。skip lockedなら待たずに残りを掴める
+B_START=$(date +%s%N)
+{
+  printf 'begin;\n'
+  claim_sql 3
+  printf 'commit;\n'
+} | "${PSQL[@]}" >"$WORKER_OUT/b" 2>&1
+B_ELAPSED_MS=$(( ($(date +%s%N) - B_START) / 1000000 ))
+wait "$WORKER_A" || true
+
+note 'Task 017 ワーカー並行テスト: 検証'
+A_CLAIMED="$(tr -d ' \n' <"$WORKER_OUT/a" | head -c 1)"
+B_CLAIMED="$(tr -d ' \n' <"$WORKER_OUT/b" | head -c 1)"
+check 'ワーカーAは3件掴む' '3' "$A_CLAIMED"
+check 'ワーカーBも3件掴む（Aが握っている行を飛ばして残りを取る）' '3' "$B_CLAIMED"
+# ロック待ちなら、Aのcommit（3秒）まで返らない
+if [ "$B_ELAPSED_MS" -lt 2000 ]; then B_NOT_BLOCKED=yes; else B_NOT_BLOCKED=no; fi
+check "ワーカーBはAのロックを待たない（skip locked。実測 ${B_ELAPSED_MS}ms）" 'yes' "$B_NOT_BLOCKED"
+WORKER_SENDING="$("${PSQL[@]}" -c "select count(*)::int from private.email_outbox where dedupe_key like 'worker-%' and status = 'sending'")"
+check '6件すべてがsendingへ進む' '6' "$WORKER_SENDING"
+# 二重に掴まれた行があれば attempts が2になる
+WORKER_MAX_ATTEMPTS="$("${PSQL[@]}" -c "select coalesce(max(attempts), 0)::int from private.email_outbox where dedupe_key like 'worker-%'")"
+check '同じ行を二重に掴んでいない（attemptsが1を超えない＝二重送信しない）' '1' "$WORKER_MAX_ATTEMPTS"
+rm -rf "$WORKER_OUT"
+
 if [ "$FAILURES" -gt 0 ]; then
   note "並行テスト: FAIL（$FAILURES 件）"
   exit 1
 fi
-note '並行テスト: PASS（10件）'
+note '並行テスト: PASS（15件）'

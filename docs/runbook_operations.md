@@ -171,6 +171,7 @@ restoreは**最後の手段**。実行前に、緊急停止（`docs/operations.m
 | 週1 | ドメイン外identityの掃除 | `docs/runbook_supabase_hosted.md` §7 |
 | 週1 | ログインの生存確認 | 合成アカウントの大学メールでOTPを1往復させる。**`platform_health()` ではAuthの生存を確認できない**（DBからAuth APIを叩けない）ので、人間が実際に通す（`docs/runbook_incident.md` §2.5） |
 | 月1 | 退会済みauth identityの掃除 | `docs/operations.md` §9 |
+| 月1 | 送信し終えたメール行の掃除 | `select private.prune_email_outbox(90);`（DB管理者権限）。**pending・sending は消えない**（消すと通知が届かなくなる・D053） |
 | 月1 | 期限切れpreviewの掃除 | `select private.prune_preview_cache(48);`（DB管理者権限）。24時間で無効になる行を残し続けないため（D052） |
 | 年1 | 監査ログの剪定 | `select * from private.prune_audit_logs(365);`（DB管理者権限） |
 | 年1 | secret rotation | §6 |
