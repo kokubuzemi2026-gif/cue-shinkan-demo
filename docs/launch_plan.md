@@ -83,7 +83,7 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 | 認証・RLS・RPC・匿名性・E2Eの自動テスト | ✅ pgTAP 636件（35ファイル）/ 並行15件 / unit 365件 / E2E | 008〜019 |
 | staging実環境検証 | ⚠️ **008のみ完了。009以降は未実施**（H1・H9） | Phase B |
 | release PRと公開後smoke test | ⚠️ 手順は用意済み（production用A・staging用Bに分割）。**実行は公開後**（H6〜H8待ち） | 018 |
-| P0/P1既知不具合ゼロ | ⚠️ §7.1 へ重大度を付与。**P0は0件・P1は5件**（公開判断で受容が要る） | 018 |
+| P0/P1既知不具合ゼロ | ⚠️ §7.1 の28件へ重大度を付与。**P0は0件・P1は6件**（公開判断で受容が要る） | 018 |
 
 ## 3. Task一覧と依存関係
 
@@ -189,7 +189,7 @@ decision番号は既存D001〜D035。新規はD036以降。
 | 条件 | 状態 | 根拠・残る作業 |
 |---|---|---|
 | Task 010・011・013〜018がすべて`develop`へmerge済み | **達成**（+019） | 008〜017・019がmerge済み。018は本タスク |
-| P0/P1の既知不具合ゼロ | **一部** | §7.1 に重大度を付与した結果、**P0は0件、P1は5件**（A1法令未確認 / B1 auth identity残存 / B7 Attack Protection未設定 / C1 WCAG 1.4.11未達 / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る** |
+| P0/P1の既知不具合ゼロ | **一部** | §7.1 の28件へ重大度を付与した結果、**P0は0件、P1は6件**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection未設定 / C1 WCAG 1.4.11未達 / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る**。2件（B6・E5）は対応済み |
 | 未解決の認証・RLS・privacy blockerゼロ | **達成** | 各タスクの独立レビュー・security-reviewerでBlocker 0 |
 | 全CI green | **達成** | quality / db-tests / e2e / audit |
 | staging E2E green | **未達** | H1・H9。Supabaseアカウントが要る |
@@ -271,11 +271,11 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 | # | 重大度 | 内容 | 影響 | いまの扱い |
 |---|---|---|---|---|
 | B1 | **P1** | **退会後もauth identity（大学メール）が残る**（D047） | 削除したはずのメールがDBに残る | 運営が `admin_delete_auth_identity` で消す運用。自動化されていない。画面で「ログイン情報の削除は運営が行う」と伝えている |
-| B2 | **P1** | `admin_delete_auth_identity` の監査記録は**対象を持たない** | service_role keyが漏れた場合の事後追跡ができない | 「誰を消したか」を残さない設計の代償。Supabase側のログ（保持期間短）に依存 |
+| B2 | **P2** | `admin_delete_auth_identity` の監査記録は**対象を持たない** | service_role keyが漏れた場合の事後追跡ができない | 「誰を消したか」を残さない設計の代償。Supabase側のログ（保持期間短）に依存 |
 | B3 | **P1** | 本番Supabaseでの `auth.users` 削除の挙動が未検証 | 子テーブル・`auth.audit_log_entries` にメールが残る可能性 | H10 で確認する |
-| B4 | **P1** | 運営操作は**SQL Editorから**行う（運営画面UIが無い） | 人間の操作ミスを機械的に防げない。`actor_label` の正しさは運用依存 | 手順を `docs/operations.md` に固定 |
-| B5 | **P1** | 対象人数の `0` と `1–4` を区別する（D036の残余リスク） | 小集団の在・不在が観測できる | 受容済み。preview条件数の上限と24時間固定で回数を制限 |
-| B6 | **P1** | E2Eの失敗アーティファクトに入力値が残り得た | OTP・招待URLの露出 | `PLAYWRIGHT_NO_COPY_PROMPT` で停止（D051・PR #19でdevelopへmerge済み）。`test-results/` はgitignore、CIに `upload-artifact` は無い。**`toMatchAriaSnapshot` の失敗は環境変数で止まらない**ため、OTP・招待URLが出ている画面では使わない |
+| B4 | **P2** | 運営操作は**SQL Editorから**行う（運営画面UIが無い） | 人間の操作ミスを機械的に防げない。`actor_label` の正しさは運用依存 | 手順を `docs/operations.md` に固定 |
+| B5 | **P2** | 対象人数の `0` と `1–4` を区別する（D036の残余リスク） | 小集団の在・不在が観測できる | 受容済み。preview条件数の上限と24時間固定で回数を制限 |
+| B6 | **—** | E2Eの失敗アーティファクトに入力値が残り得た | OTP・招待URLの露出 | `PLAYWRIGHT_NO_COPY_PROMPT` で停止（D051・PR #19でdevelopへmerge済み）。`test-results/` はgitignore、CIに `upload-artifact` は無い。**`toMatchAriaSnapshot` の失敗は環境変数で止まらない**ため、OTP・招待URLが出ている画面では使わない |
 | B7 | **P1** | **Auth の Attack Protection（CAPTCHA・レート制限）が既定のまま**。D030は緩和策をTask 011へ委ねたが、011のscopeに入っておらず未実施 | publishable keyは公開バンドルに必ず入るため、公開後は誰でもAuth APIを直接呼べる。任意アドレスへOTPを送らせられ、(a) 新歓期間中に実在の新入生がログインできない (b) 送信元Gmailが停止する（E6と複合） | **公開前にDashboardで設定する（H11）**。設定するまで公開しない |
 
 ### C. アクセシビリティ・UX
