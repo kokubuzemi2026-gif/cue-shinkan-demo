@@ -38,6 +38,9 @@ insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) v
 
 -- ---- A: 大学ユーザーはT1どおり通過し、自分のstudent_accountを作成・参照できる ----
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000000a","role":"authenticated"}', true);
+-- Task 015: 同意ゲートを通すため、作成済みの全ユーザーへ同意を記録する（テスト用）
+insert into public.student_consents (user_id, consent_version)
+  select id, private.current_consent_version() from auth.users on conflict (user_id) do nothing;
 set local role authenticated;
 select ok(public.is_university_user(), 'F2: 大学ドメイン+確認済みはtrue');
 select lives_ok(

@@ -97,8 +97,8 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 | 011 | 匿名性（k=5・区分preview・10–5ファネル）・並行quota・入力検証 | **完了（developへmerge済み `ee08d12`）** | [#12](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/12) | — |
 | 010 | メール通知（outbox・digest・設定・unsubscribe） | **完了（developへmerge済み `18c1e3a`）。実メール送信のみhosted待ち** | [#13](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/13) | 011 |
 | 013 | 団体確認（pending/verified/suspended）・停止・kill switch・監査 | **完了（developへmerge済み `e8b333c`）** | [#14](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/14) | — |
-| 014 | アカウント・データライフサイクル（削除・脱退・孤児データ） | **実装完了・レビュー中** | — | 013 |
-| 015 | プライバシー・同意・利用規約draft・同意バージョン | 未着手（仕様は `tasks/015-*.md`） | — | — |
+| 014 | アカウント・データライフサイクル（削除・脱退・孤児データ） | **完了（developへmerge済み `7da6919`）** | [#15](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/15) | 013 |
+| 015 | プライバシー・同意・利用規約draft・同意バージョン | **実装完了・独立レビュー2本を反映済み・CI確認中** | [#16](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/16) | — |
 | 016 | UX・アクセシビリティ・完全E2E | 未着手（仕様は `tasks/016-*.md`） | — | 010〜015 |
 | 017 | 運用（structured logging・health・runbook・secret rotation） | 未着手（仕様は `tasks/017-*.md`） | — | 010 |
 | 018 | リリース（release notes・smoke test・staging記録・main PR） | 未着手（仕様は `tasks/018-*.md`） | — | 全部 |
@@ -222,6 +222,10 @@ decision番号は既存D001〜D035。新規はD036以降。
 | 2026-08-27 | 独立レビュー2本でBlocker（送信経路の差分攻撃oracle）を検出・修正。
   PR #12をdevelopへsquash merge（`ee08d12`）。merge後のdevelopで再検証し全green
   （pgTAP 337 / unit 329 / 並行8 / hook 201 / CI 3ジョブ）。Task 010着手 |
+
+| 2026-08-27 | Task 013完了（PR #14 `e8b333c`）→ Task 014完了（PR #15 `7da6919`）。
+  Task 015実装。独立レビュー2本が同じギャップ（未同意の担当者が招待経由で団体を操作できる）を
+  指摘、自分で再現して同意ゲートを2→8 RPCへ拡張。pgTAP 591件 |
 
 ## 9. 次回再開時の開始点
 

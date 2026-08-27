@@ -39,7 +39,6 @@ export function AuthenticatedShell({
   // wizard・オファー作成などの集中モード中は、コンテキスト切替と権限追加を隠して
   // 入力中の喪失を防ぐ（Phase 1のRoleSwitcher非表示と同趣旨）
   const [focusMode, setFocusMode] = useState(false)
-
   // アカウント再読込（団体追加・脱退など）後に、選択中コンテキストの有効性を再解決する
   useEffect(() => {
     setActive((current) => resolveActiveContext(deriveContexts(account), current))

@@ -35,6 +35,9 @@ select ('00000000-0000-0000-0000-0000000cc1' || to_char(n, 'FM00'))::uuid,
 from generate_series(1, 6) as n;
 
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000cc001","role":"authenticated"}', true);
+-- Task 015: 同意ゲートを通すため、作成済みの全ユーザーへ同意を記録する（テスト用）
+insert into public.student_consents (user_id, consent_version)
+  select id, private.current_consent_version() from auth.users on conflict (user_id) do nothing;
 set local role authenticated;
 create temp table qorg_a as select public.create_organization('枠テスト団体A') as id;
 create temp table qorg_b as select public.create_organization('枠テスト団体B') as id;

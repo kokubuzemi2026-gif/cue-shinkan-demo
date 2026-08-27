@@ -46,6 +46,11 @@ export function serverErrorMessage(error: unknown): string {
       return '興味パスポートはすでに削除されています。'
     case 'nothing_to_delete':
       return '削除できるデータがありません。すでに削除されています。'
+    // Task 015: 同意（D050）
+    case 'consent_required':
+      return '利用規約とプライバシーポリシーへの同意が必要です。同意してからお試しください。'
+    case 'consent_version_mismatch':
+      return '規約が更新されています。最新の内容を確認して、もう一度同意してください。'
     case 'invalid_org_contact':
       return '公式窓口は表示名50文字・連絡先100文字以内で入力してください。'
     default:
@@ -82,6 +87,8 @@ export function serverErrorCode(error: unknown): string {
     'not_member',
     'passport_not_found',
     'nothing_to_delete',
+    'consent_required',
+    'consent_version_mismatch',
   ]
   return known.includes(message) ? message : 'unknown'
 }

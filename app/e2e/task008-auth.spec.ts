@@ -79,6 +79,24 @@ async function fetchOtpMail(
 }
 
 // メール入力→OTP受信→検証ログインまで（登録とログインの統合導線）
+// Task 015: 同意画面が出たら同意して進む（初回・版更新時）
+async function passConsentIfPresent(page: Page) {
+  const consentCheck = page.getByRole('checkbox', { name: /同意します/u })
+  const onboarding = page.getByRole('heading', { name: '利用方法を選ぶ' })
+  const signedIn = page.getByRole('button', { name: 'ログアウト' })
+  // locator.isVisible() は待たない（即時判定）。ログイン直後はまだ遷移中で
+  // 必ずfalseになるため、まず「同意画面 / 権限選択 / シェル」のどれかが
+  // 出るまで待ってから判定する
+  await expect(consentCheck.or(onboarding).or(signedIn).first()).toBeVisible({
+    timeout: 20_000,
+  })
+  if (await consentCheck.isVisible()) {
+    await consentCheck.check()
+    await page.getByRole('button', { name: '同意して進む', exact: true }).click()
+    await expect(consentCheck).toBeHidden({ timeout: 15_000 })
+  }
+}
+
 async function signInWithOtp(
   page: Page,
   request: APIRequestContext,
@@ -97,6 +115,8 @@ async function signInWithOtp(
   const mail = await fetchOtpMail(request, expectedAddress)
   await codeInput.fill(mail.code)
   await page.getByRole('button', { name: 'ログインする' }).click()
+  // Task 015: 登録の前に同意画面を通す（D050）
+  await passConsentIfPresent(page)
   await expect(page.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
     timeout: 15_000,
   })

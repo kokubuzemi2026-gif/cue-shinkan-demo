@@ -40,6 +40,9 @@ select uid,
 from dpop;
 
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000a0001","role":"authenticated"}', true);
+-- Task 015: 同意ゲートを通すため、作成済みの全ユーザーへ同意を記録する（テスト用）
+insert into public.student_consents (user_id, consent_version)
+  select id, private.current_consent_version() from auth.users on conflict (user_id) do nothing;
 set local role authenticated;
 create temp table dorg as select public.create_organization('差分攻撃テスト団体') as id;
 reset role;

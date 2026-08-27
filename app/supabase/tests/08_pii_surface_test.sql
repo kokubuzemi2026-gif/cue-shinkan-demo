@@ -46,6 +46,9 @@ insert into public.student_accounts (user_id) values ('00000000-0000-0000-0000-0
 
 -- 601が団体を作成し、602もメンバーに加える（postgres・運営相当）
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000601","role":"authenticated"}', true);
+-- Task 015: 同意ゲートを通すため、作成済みの全ユーザーへ同意を記録する（テスト用）
+insert into public.student_consents (user_id, consent_version)
+  select id, private.current_consent_version() from auth.users on conflict (user_id) do nothing;
 set local role authenticated;
 create temp table porg as select public.create_organization('PIIテスト団体') as id;
 reset role;
