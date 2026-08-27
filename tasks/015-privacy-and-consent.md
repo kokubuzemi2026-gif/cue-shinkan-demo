@@ -76,6 +76,8 @@
 | 唯一の代表者は団体から脱退できない | `protect_last_owner`（D048・`32_membership_leave_test.sql`） |
 | 削除の記録は個人を特定できない日次集計 | `deletion_audit_log`（D046・`31`） |
 | 同意前は登録できない・版更新で再同意 | `save_student_passport`/`create_organization`の`consent_required`・`my_consent`（D050・`33_consent_test.sql`） |
+| 団体担当者も規約に拘束される（§3・§5） | 担当者になる経路と団体側の書込・プレビュー計8 RPCが`consent_required`（D050・`33_consent_test.sql` T2） |
+| 断る・止める・消す操作は妨げられない | `respond_to_offer`・`save_notification_settings`・`delete_student_passport`・`leave_organization`は同意ゲート対象外（D050・`33` T2） |
 
 ## Verification record
 
@@ -87,7 +89,9 @@
   再同意させる。「同意前は登録できない」を画面の出し分けだけに頼らず、
   `save_student_passport`・`create_organization`のRPC内で構造的に止める
 - 利用規約は新入生と団体担当者の両方に及ぶため、パスポート保存と団体作成の両方を
-  同意必須にした（AC「同意前にパスポートを登録できない」の honest な拡張。報告に明記）
+  同意必須にした（AC「同意前にパスポートを登録できない」の honest な拡張。報告に明記）。
+  独立レビューの指摘を受けて、**担当者になる経路と団体側の書込・プレビュー計8 RPC**へ広げた
+  （下記「独立レビューの結論と対応」）
 - アカウント削除で同意記録も消す。`student_consents`は`auth.users`を参照するため
   `student_accounts`のcascadeでは落ちず、`delete_my_account`の全テーブル走査が
   これを検出した（走査型テストが意図どおり機能した実例）→ 明示的に削除する
@@ -96,7 +100,7 @@
 
 | 検証 | 結果 |
 |---|---|
-| pgTAP | 33ファイル **576テスト PASS**（Task 014時点の555から+21） |
+| pgTAP | 33ファイル **591テスト PASS**（Task 014時点の555から+36） |
 | 並行テスト | 10件 PASS |
 | oxlint / tsc / vitest / vite build | すべてgreen（ユニット362テスト。同意画面の要点4件を追加） |
 | E2E typecheck | green（既存6specのログイン後に同意通過を追加。実行はCI） |
@@ -107,6 +111,9 @@
 |---|---|
 | `save_student_passport`の同意ゲートを削除 | 33: 2件 |
 | `record_consent`の版一致チェックを削除 | 33: 3件 |
+| `send_offer`の同意ゲートを削除 | 33: 2件（うち1件はゲート一覧の固定テスト） |
+| `accept_invitation`の同意ゲートを削除 | 33: 3件 |
+| `has_current_consent`が常にtrueを返す | 33: **10件** |
 
 ### CIで見つけて直したもの
 
@@ -117,6 +124,27 @@
   受入条件「同意前にパスポートを登録できない」を画面側で満たしていない
   （DB側のゲートは効いていたので、団体作成は `consent_required` で失敗していた）
   → 同意ゲートを `AppRoot` の権限分岐より前へ移動した。招待の承諾よりも前に出る
+
+### 独立レビューの結論と対応
+
+**reviewer / security-reviewer の指摘を自分で再現したうえで修正した。**
+両者が独立に同じ一貫性ギャップ（NB-2 / Medium-1）を指摘した。
+
+| 指摘 | 深刻度 | 再現内容 | 対応 |
+|---|---|---|---|
+| Medium-1 / NB-2（団体側が同意ゲートの外） | Medium | 未同意の利用者が招待を`accept_invitation`で承諾し、`update_organization_profile`で団体名を、`update_organization_contact`で公式窓口を書き換え、`create_invitation`で新しい招待まで発行できることを、ローカルDBで実際に成功させた。画面は同意を最前段に置いているが、authenticatedはPostgREST経由でRPCを直接呼べるためUIの順序は防御にならない。版更新時の再同意も、団体側は一切かからなかった | 同意ゲートを**8 RPC**へ広げた（担当者になる経路＋団体側の書込・プレビュー）。本文はカタログ定義（`pg_get_functiondef`）から生成し、差分をガード4行だけに限定した。ゲート対象の一覧を`set_eq`で固定（増減どちらでも落ちる）。D050を更新 |
+| Low-1（権限固定テストの穴） | Low | `private`の同意2関数について、PUBLIC・anonのEXECUTE不在は検査していたが**authenticated不在を検査していない**。本番Supabaseは`ALTER DEFAULT PRIVILEGES`で新規関数へauthenticatedを付けうる | 33へauthenticated不在の検査を追加 |
+| NB-1（E2E未コミット） | Non-blocker | 指摘時点でE2E修正が未コミット | コミット済み（`c24f2b0`）。CIで確認 |
+
+**ゲートしない側を意図的に決めた**（D050）。断る・止める・消す操作
+（`respond_to_offer`・`mark_offer_read`・`save_notification_settings`・
+`delete_student_passport`・`leave_organization`・`delete_my_account`・`revoke_invitation`）は、
+版が上がっても同意を条件にしない。同意を人質にして「見送る」「受信を止める」を
+妨げることは、CUEの約束そのものを壊すため。33のT2でこれを**明示的に検査**している。
+
+なお受信の**一時停止**は`save_student_passport`経由のため、版更新後は再同意しないと
+変更できない。ただし`delete_student_passport`（完全停止）は常に開いているので、
+止める手段は失われない（D050に記録）。
 
 ### 残る課題
 

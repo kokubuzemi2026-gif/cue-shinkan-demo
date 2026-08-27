@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(21);
+select plan(36);
 
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('00000000-0000-0000-0000-00000000c101', 'demo-cn-a@stu.kobe-u.ac.jp', now(), now(), now()),
@@ -174,6 +174,183 @@ select is(
   ),
   0,
   'T1: 同意まわりの関数にPUBLIC・anonのEXECUTEは無い'
+);
+-- privateの2関数はauthenticatedからも呼べてはならない。
+-- 本番Supabaseは ALTER DEFAULT PRIVILEGES で新規関数へ authenticated を付けうるため、
+-- revoke行を1行落とした将来の退行をここで止める
+select is(
+  (
+    select count(*)::int
+    from pg_proc p
+    join pg_namespace n on n.oid = p.pronamespace
+    cross join lateral aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+    where n.nspname = 'private'
+      and p.proname in ('current_consent_version', 'has_current_consent')
+      and a.privilege_type = 'EXECUTE'
+      and a.grantee = 'authenticated'::regrole
+  ),
+  0,
+  'T1: privateの同意関数はauthenticatedからも実行できない'
+);
+
+-- ===================================================================
+-- T2: 団体側の操作も同意を必須にする（D050 / 独立レビューの指摘）
+-- 画面の順序ではなく、DB側で「参加を作る・広げる」操作を止める。
+-- 逆に「露出を減らす」操作（返答・通知設定・パスポート削除・脱退）は、
+-- 版が上がっても止めない
+-- ===================================================================
+create or replace function private.current_consent_version()
+returns integer language sql immutable set search_path = '' as $ver$ select 1 $ver$;
+
+insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
+  ('00000000-0000-0000-0000-00000000c103', 'demo-cn-owner@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('00000000-0000-0000-0000-00000000c110', 'demo-cn-invitee@stu.kobe-u.ac.jp', now(), now(), now());
+insert into auth.users (id, email, email_confirmed_at, created_at, updated_at)
+select ('00000000-0000-0000-0000-00000000c1' || lpad(n::text, 2, '0'))::uuid,
+       'demo-cn-s' || n || '@stu.kobe-u.ac.jp', now(), now(), now()
+  from generate_series(4, 9) as n;
+insert into public.student_accounts (user_id)
+select ('00000000-0000-0000-0000-00000000c1' || lpad(n::text, 2, '0'))::uuid from generate_series(4, 9) as n;
+insert into public.student_passports (
+  user_id, interests, purposes, style, frequency, available_days, experience,
+  max_fee_per_event_yen, reception_paused, reception_categories, reception_weekly_limit
+)
+select ('00000000-0000-0000-0000-00000000c1' || lpad(n::text, 2, '0'))::uuid,
+  array['outdoor']::public.interest_category[], array['friends']::public.purpose[],
+  'moderate', 'monthly_1_2', array['weekend']::public.day_slot[], 'none',
+  2000, false, array['outdoor']::public.interest_category[], 3
+  from generate_series(4, 9) as n;
+-- 団体側（c103）と学生（c104〜c109）だけが同意済み。招待される c110 は未同意
+insert into public.student_consents (user_id, consent_version)
+select id, private.current_consent_version() from auth.users
+ where id <> '00000000-0000-0000-0000-00000000c110'
+   and id::text like '00000000-0000-0000-0000-00000000c1%'
+on conflict (user_id) do nothing;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000c103","role":"authenticated"}', true);
+set local role authenticated;
+create temp table corg as select public.create_organization('同意テスト団体', '説明文') as id;
+create temp table ctoken as select token from public.create_invitation((select id from corg), 'admin');
+reset role;
+grant select on corg, ctoken to public;
+update public.organizations set status = 'verified' where id = (select id from corg);
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000c103","role":"authenticated"}', true);
+set local role authenticated;
+select public.preview_offer_audience(
+    (select id from corg), '同意テストイベント', '説明文', '理由', '9月13日（土）9:00', '六甲ケーブル下',
+    array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+    array['outdoor']::public.interest_category[], array['friends']::public.purpose[],
+    12, '2026-09-11');
+create temp table cdelivery as
+  select s.delivery_id as id from public.send_offer(
+    (select id from corg), '同意テストイベント', '説明文', '理由', '9月13日（土）9:00', '六甲ケーブル下',
+    array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+    array['outdoor']::public.interest_category[], array['friends']::public.purpose[],
+    12, '2026-09-11') s;
+reset role;
+grant select on cdelivery to public;
+
+-- ---- 未同意のまま担当者にはなれない ----
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000c110","role":"authenticated"}', true);
+set local role authenticated;
+select throws_ok(
+  $$select public.accept_invitation((select token from ctoken))$$,
+  'P0001', 'consent_required',
+  'T2: 未同意の利用者は招待を承諾して担当者になれない'
+);
+select lives_ok(
+  $$select public.record_consent(1)$$,
+  'T2: 招待された利用者も同意できる'
+);
+select lives_ok(
+  $$select public.accept_invitation((select token from ctoken))$$,
+  'T2: 同意後は招待を承諾できる'
+);
+reset role;
+
+-- ---- 版が上がると、団体側の操作は再同意まで止まる ----
+create or replace function private.current_consent_version()
+returns integer language sql immutable set search_path = '' as $ver$ select 2 $ver$;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000c103","role":"authenticated"}', true);
+set local role authenticated;
+select throws_ok(
+  $$select public.send_offer(
+      (select id from corg), '別イベント', '説明文', '理由', '9月20日（土）9:00', '摩耶山',
+      array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+      array['outdoor']::public.interest_category[], array['friends']::public.purpose[],
+      12, '2026-09-18')$$,
+  'P0001', 'consent_required',
+  'T2: 版が上がると、再同意するまでオファーを送れない'
+);
+select throws_ok(
+  $$select public.preview_offer_audience(
+      (select id from corg), '別イベント', '説明文', '理由', '9月20日（土）9:00', '摩耶山',
+      array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+      array['outdoor']::public.interest_category[], array['friends']::public.purpose[],
+      12, '2026-09-18')$$,
+  'P0001', 'consent_required',
+  'T2: 版が上がると、対象人数のプレビューもできない'
+);
+select throws_ok(
+  $$select public.create_invitation((select id from corg), 'member')$$,
+  'P0001', 'consent_required',
+  'T2: 版が上がると、新しい招待を発行できない'
+);
+select throws_ok(
+  $$select public.update_organization_profile((select id from corg), '改名', '説明')$$,
+  'P0001', 'consent_required',
+  'T2: 版が上がると、団体名を変更できない'
+);
+select throws_ok(
+  $$select public.update_organization_contact((select id from corg), 'Instagram', '@after_bump')$$,
+  'P0001', 'consent_required',
+  'T2: 版が上がると、公式窓口を変更できない'
+);
+reset role;
+
+-- ---- 版が上がっても、利用者が自分の露出を減らす操作は止めない ----
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000c104","role":"authenticated"}', true);
+set local role authenticated;
+select lives_ok(
+  $$select public.mark_offer_read((select id from cdelivery))$$,
+  'T2: 版が上がっても、届いたオファーを既読にできる'
+);
+select lives_ok(
+  $$select public.respond_to_offer((select id from cdelivery), 'skip')$$,
+  'T2: 版が上がっても、見送ると返答できる（断る操作を人質に取らない）'
+);
+select lives_ok(
+  $$select public.save_notification_settings('off')$$,
+  'T2: 版が上がっても、メール通知を止められる'
+);
+select lives_ok(
+  $$select public.delete_student_passport()$$,
+  'T2: 版が上がっても、興味パスポートを削除できる'
+);
+reset role;
+
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000c110","role":"authenticated"}', true);
+set local role authenticated;
+select lives_ok(
+  $$select public.leave_organization((select id from corg))$$,
+  'T2: 版が上がっても、団体から脱退できる'
+);
+reset role;
+
+-- ---- ゲート対象を固定する（増えても減っても落ちる） ----
+select set_eq(
+  $$select p.proname::text
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.prokind = 'f'
+       and pg_get_functiondef(p.oid) like '%has_current_consent%'$$,
+  array['save_student_passport', 'create_organization', 'accept_invitation',
+        'create_invitation', 'update_organization_profile', 'update_organization_contact',
+        'preview_offer_audience', 'send_offer'],
+  'T2: 同意ゲートを持つRPCの一覧が固定されている（参加を作る・広げる操作だけ）'
 );
 
 select * from finish();
