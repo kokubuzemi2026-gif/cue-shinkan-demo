@@ -64,7 +64,7 @@
 
 | ファイル | 内容 |
 |---|---|
-| `supabase/migrations/20260827120000_0013_admin_controls.sql` | `platform_controls`（単一行のkill switch）・`admin_audit_log`・`offer_deliveries.stopped_at/stopped_reason`・配信行のBEFORE INSERTトリガ |
+| `supabase/migrations/20260827120000_0013_admin_controls.sql` | `platform_controls`（単一行のkill switch）・`admin_audit_log`・`offer_deliveries.stopped_at/stopped_reason`・配信行とpreviewキャッシュのBEFORE INSERTトリガ（ともに`ENABLE ALWAYS`） |
 | `supabase/migrations/20260827120002_0013_admin_rpcs.sql` | 運営RPC 4本（service_role専用）・`private.cancel_offer_mail`・`list_my_inbox`/`list_org_campaigns`へ`stopped`列追加・`respond_to_offer`の`offer_stopped` |
 | `supabase/tests/27_〜29_*.sql` | 状態遷移・kill switch・越権/PIIの3ファイル（+68テスト） |
 | `supabase/tests/16_org_funnel_pii_test.sql` | `list_org_campaigns`の戻り列allowlistへ`stopped`を追加 |
@@ -79,7 +79,7 @@
 
 | 検証 | 結果 |
 |---|---|
-| pgTAP（ローカルPostgres 16 + Supabase相当スキャフォールド） | 29ファイル **470テスト PASS**（Task 012時点の399から+71） |
+| pgTAP（ローカルPostgres 16 + Supabase相当スキャフォールド） | 29ファイル **477テスト PASS**（Task 012時点の399から+78） |
 | 並行配信テスト（`npm run db:test:concurrency`） | 8件 PASS（Task 013のトリガ追加後も不変） |
 | oxlint / tsc / vitest / vite build | すべてgreen（ユニット346テスト） |
 | E2E typecheck | green（実行はCIのローカルSupabaseスタック上） |
@@ -93,8 +93,36 @@
 | 停止時の公式窓口非開示を無効化 | 27: 2件 |
 | 団体停止時のoffer一括停止を削除 | 27: 2件 |
 | 運営RPCを`authenticated`へgrant | 29: 5件 |
+| 緊急停止中のpreview拒否を削除（L1） | 28: 3件 |
+| `pending`でオファーを止めない（L2） | 27: 2件 |
+| トリガを`ENABLE ALWAYS`から戻す（L3） | 28: 1件 |
 | offer停止時のメール取り消しを削除 | 27: 2件 |
 | 団体停止時のメール取り消しを削除 | 27: 1件 |
+
+### 独立レビューの結論と対応
+
+- **security-reviewer**: Blocker 0 / Critical・High・Medium 0。権限昇格・kill switch迂回・
+  停止オファーからの窓口回収・監査記録からの個人特定・差分攻撃の復活・DoSを実ロールで
+  実行し、すべて防がれることを確認。指摘は Low 3件。
+- **Low 3件はいずれも自分で再現したうえで、文書化ではなく構造で直した**:
+  - L1: 緊急停止がpreviewを止めない（停止中に区分`5-9`が返ることを再現）
+    → previewキャッシュへの挿入トリガで、**新しい条件**の評価を止める。
+      24時間以内に答えた同一条件は返す（既に団体が知っている値で、新しい情報を渡さない）
+  - L2: `pending`へ戻しても配信中オファーが止まらない（停止後も返答でき、
+    公式窓口`@repro`が開示され続けることを再現）
+    → `verified`以外へ変える操作すべてで配信中オファーを止める
+  - L3: トリガが既定の`ENABLE`（`session_replication_role='replica'`で不発になり得る）
+    → 両トリガを`ENABLE ALWAYS`にする
+- **reviewer**: （結果を追記する）
+
+### CIで見つけて直したもの
+
+- e2eの`getByText('審査待ち')`がstrict mode violation（状態チップと説明文の2要素に一致）。
+  調査中に、`delivery_paused` / `offer_stopped` が `serverErrorMessage` の既知コードに無く、
+  「通信環境を確認して…」という誤解を招く汎用文言になっていたことを発見して修正
+- e2eの「団体側にも停止が見える」が失敗。`OrgOffersPanel`が`ServerCampaign`→`CampaignView`を
+  1項目ずつ書き写す形で`stopped`を落としていた。`CampaignView.stopped`をoptionalにしていた
+  ためtscが検出できなかった → **必須**にして、書き忘れがコンパイルエラーになることを確認
 
 ### 残る課題
 

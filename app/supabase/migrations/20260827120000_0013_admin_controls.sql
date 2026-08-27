@@ -98,3 +98,38 @@ revoke execute on function private.assert_delivery_allowed() from authenticated;
 create trigger trg_assert_delivery_allowed
   before insert on private.offer_deliveries
   for each row execute function private.assert_delivery_allowed();
+-- ENABLE ALWAYS: 既定の ENABLE だと session_replication_role='replica' で不発になる。
+-- 現状そのGUCはsuperuser専用でクライアントから到達できないが、
+-- 将来のレプリカ・ダンプ復元経路でも確実に発火させる（防御の多層化）
+alter table private.offer_deliveries enable always trigger trg_assert_delivery_allowed;
+
+-- ---- 緊急停止中は「新しい条件」の対象規模も答えない ----
+-- 緊急停止の目的は誤配信・不正利用を止めること。不正利用がpreviewでの
+-- 探索そのものである場合、配信だけを止めても探索は続けられる（独立レビューL1）。
+-- 判定はキャッシュへの**挿入**（＝新しい条件の評価）に置く。
+-- 24時間以内の同一条件（キャッシュ命中）は既に団体が知っている値で、
+-- 返しても新しい情報を渡さないため止めない
+create function private.assert_preview_allowed()
+returns trigger
+language plpgsql
+volatile
+set search_path = ''
+as $$
+declare
+  v_paused boolean;
+begin
+  select c.delivery_paused into v_paused from private.platform_controls c where c.id;
+  if coalesce(v_paused, false) then
+    raise exception 'delivery_paused';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function private.assert_preview_allowed() from public;
+revoke execute on function private.assert_preview_allowed() from anon;
+revoke execute on function private.assert_preview_allowed() from authenticated;
+
+create trigger trg_assert_preview_allowed
+  before insert on private.offer_preview_cache
+  for each row execute function private.assert_preview_allowed();
+alter table private.offer_preview_cache enable always trigger trg_assert_preview_allowed;

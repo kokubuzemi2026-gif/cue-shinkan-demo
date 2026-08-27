@@ -58,12 +58,16 @@ begin
      set status = admin_set_organization_status.new_status
    where o.id = admin_set_organization_status.org_id;
 
-  -- 停止したら、その団体の配信中オファーもまとめて止める。
-  -- 「誤配信・不正利用時に止められる」ためには、新規配信の遮断だけでは足りない
-  if admin_set_organization_status.new_status = 'suspended' then
+  -- verified から外したら、その団体の配信中オファーもまとめて止める。
+  -- 「誤配信・不正利用時に止められる」ためには、新規配信の遮断だけでは足りない。
+  -- suspended だけでなく pending へ戻す場合も止めるのは、運営が「疑わしいので
+  -- 審査中へ戻す」操作をしたときに配信済みの案内が生き続け、学生が返答でき
+  -- 公式窓口まで開示され続けるのを防ぐため（独立レビューL2）。
+  -- 「確認済みでない団体の案内は届いたままにしない」を一貫させる
+  if admin_set_organization_status.new_status <> 'verified' then
     update private.offer_deliveries d
        set stopped_at = now(),
-           stopped_reason = coalesce(admin_set_organization_status.reason, '団体の利用停止に伴う停止')
+           stopped_reason = coalesce(admin_set_organization_status.reason, '団体の確認状態の変更に伴う停止')
      where d.organization_id = admin_set_organization_status.org_id
        and d.stopped_at is null;
 

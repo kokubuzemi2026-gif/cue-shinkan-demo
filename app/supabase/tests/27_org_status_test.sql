@@ -4,7 +4,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(29);
+select plan(32);
 
 -- ---- 種（団体オーナー1人 + 受信学生6人） ----
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
@@ -251,6 +251,33 @@ select is(
   0,
   'T1: この検証では送信済みメールは無い（取り消し対象は送信待ちだけ）'
 );
+
+-- ---- verified から外す操作は pending でも配信中オファーを止める ----
+-- 「疑わしいので審査中へ戻す」操作で案内が生き続けると、学生は返答でき、
+-- 「行ってみたい」で公式窓口まで開示され続ける（独立レビューL2）
+set local role service_role;
+select public.admin_set_organization_status((select id from sorg), 'verified', 'ops-3', '再確認');
+reset role;
+select lives_ok(
+  $$select public.admin_set_offer_stopped((select id from d2), false, 'ops-3', '再開')$$,
+  'T1: 検証のためd2の停止を解除する'
+);
+set local role service_role;
+select public.admin_set_organization_status((select id from sorg), 'pending', 'ops-3', '再審査');
+reset role;
+select isnt(
+  (select stopped_at from private.offer_deliveries where id = (select id from d2)),
+  null,
+  'T1: pending へ戻す操作でも配信中オファーが止まる（suspendedと同じ扱い）'
+);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000e1002","role":"authenticated"}', true);
+set local role authenticated;
+select throws_ok(
+  $$select public.respond_to_offer((select id from d2), 'interested')$$,
+  'P0001', 'offer_stopped',
+  'T1: pending へ戻したあとは学生も返答できない'
+);
+reset role;
 
 -- ---- 他団体は巻き込まれない ----
 set local role service_role;

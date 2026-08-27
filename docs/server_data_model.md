@@ -143,11 +143,15 @@ migrationは`app/supabase/migrations/20260827040000〜20260827040004_0011_*.sql`
 | `private.admin_audit_log` | 運営操作の記録。学生を指す列を**構造として持たない** |
 | `private.offer_deliveries.stopped_at` / `.stopped_reason` | 個別オファーの停止（D044） |
 | `private.assert_delivery_allowed()` | 配信行のBEFORE INSERTトリガ。緊急停止と団体状態を確認する |
+| `private.assert_preview_allowed()` | previewキャッシュのBEFORE INSERTトリガ。緊急停止中は**新しい条件**の対象規模を答えない（キャッシュ命中は答える） |
 | `private.cancel_offer_mail(uuid)` | 停止した案内の送信待ちメールを`cancelled`にする |
 | `admin_set_organization_status` / `admin_set_offer_stopped` / `admin_set_delivery_paused` / `admin_list_audit` | **service_role専用**の運営RPC 4本 |
 
 - 配信可否の判定を**トリガへ置く**のが要点。RPCの中だけに書くと、将来別の挿入経路が
   できたときに素通りする。`send_offer`側の既存verified判定はそのまま残し、二重に守る。
+  両トリガとも`ENABLE ALWAYS`（既定の`ENABLE`は`session_replication_role='replica'`で不発になる）。
+- `admin_set_organization_status`は、`verified`**以外**へ変える操作すべて（`pending`へ戻す場合も）で
+  その団体の配信中オファーを止める。
 - `list_my_inbox` / `list_org_campaigns`は末尾に`stopped boolean`を1列追加した。
   どちらも`drop`→`create`で置き換えているため、切り戻しには前の版の再適用が必要（`docs/runbook_supabase_hosted.md` §8）。
 - `respond_to_offer`は停止済みの案内に対して`offer_stopped`を送出する。`mark_offer_read`は妨げない

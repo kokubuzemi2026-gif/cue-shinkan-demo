@@ -5,7 +5,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(16);
+select plan(20);
 
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000e2001', 'demo-ks-owner@stu.kobe-u.ac.jp', now(), now(), now());
@@ -131,6 +131,56 @@ select throws_ok(
       10, '2026-09-25', 'bypass-fingerprint-ks')$$,
   'P0001', 'delivery_paused',
   'T2: RPCを通さない直接insertも緊急停止で止まる（構造で止める）'
+);
+
+-- ---- 緊急停止中は「新しい条件」の対象規模も答えない（独立レビューL1） ----
+-- 不正利用がpreviewでの探索そのものである場合、配信だけを止めても探索は続く
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000e2001","role":"authenticated"}', true);
+set local role authenticated;
+select throws_ok(
+  $$select public.preview_offer_audience(
+      (select id from korg), '停止中の下見', '説明文', '理由', '10月4日（土）', '音楽室',
+      array['weekday_night']::public.day_slot[], 'weekly_1', 2000, false, 'serious',
+      array['music']::public.interest_category[], array['creation']::public.purpose[],
+      10, '2026-10-01')$$,
+  'P0001', 'delivery_paused',
+  'T2: 緊急停止中は新しい条件の対象規模を答えない'
+);
+reset role;
+select is(
+  (select count(*)::int from private.offer_preview_cache c
+     where c.organization_id = (select id from korg)
+       and c.band is not null and c.access_count = 1
+       and c.first_computed_at > now() - interval '1 minute'
+       and c.audience_fingerprint <> (
+         select c2.audience_fingerprint from private.offer_preview_cache c2
+          where c2.organization_id = (select id from korg) limit 1)),
+  0,
+  'T2: 拒否された条件はキャッシュへ残らない（後で再利用できない）'
+);
+-- 既に答えた条件（24時間以内）は、団体が既に知っている値なので止めない。
+-- ここで止めると、緊急停止のたびに正常な団体の確認画面まで壊れる
+select set_config('request.jwt.claims',
+  '{"sub":"00000000-0000-0000-0000-0000000e2001","role":"authenticated"}', true);
+set local role authenticated;
+select lives_ok(
+  $$select public.preview_offer_audience(
+      (select id from korg), '停止前の音楽会', '説明文', '届けたい理由', '9月27日（土）', '音楽室',
+      array['weekend']::public.day_slot[], 'monthly_1_2', 1000, true, 'relaxed',
+      array['music']::public.interest_category[], array['creation']::public.purpose[],
+      10, '2026-09-25')$$,
+  'T2: 24時間以内に答えた同一条件は緊急停止中でも返す（新しい情報を渡さない）'
+);
+reset role;
+
+-- ---- トリガはENABLE ALWAYS（レプリカ経路でも発火する） ----
+select is(
+  (select string_agg(t.tgname || '=' || t.tgenabled::text, ',' order by t.tgname)
+     from pg_trigger t
+    where t.tgname in ('trg_assert_delivery_allowed', 'trg_assert_preview_allowed')),
+  'trg_assert_delivery_allowed=A,trg_assert_preview_allowed=A',
+  'T2: 停止判定のトリガは ENABLE ALWAYS（session_replication_roleで不発にならない）'
 );
 
 -- ---- 解除 ----
