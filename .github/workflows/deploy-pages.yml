@@ -52,7 +52,17 @@ jobs:
         # 置き換わるため、deployの前にここで止める。
         # deployが失敗しても既に公開されているページはそのまま残る
         # （壊れたものが公開されるより、古いものが残るほうがよい）。
-        # `set -x` を使わないこと（展開後の値がログへ出る）
+        # `set -x` を使わないこと（展開後の値がログへ出る）。
+        # なお **runnerは各stepの冒頭に `env:` マップを値ごと出力する**。
+        # `secrets.*` はマスクされるが `vars.*` はマスクされない。
+        # ここの2値は公開前提（バンドルへ入る値そのもの）なので出てよい。
+        # **このstepへ本物のsecretを足さないこと。**
+        #
+        # **URLとkeyの両方を照合する。** URLだけを見ていると、keyが空白のみ・
+        # 誤った値のときにこのステップが通ってしまい、deployされた公開URLが
+        # 「接続設定が必要です」になる（実際に再現した）。
+        # `-e` はvariableが `-` で始まるときに値がオプション扱いされるのを防ぐ。
+        # keyは公開値（バンドルへ入る値そのもの）なので、照合しても新たな露出は無い
         env:
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
@@ -61,11 +71,61 @@ jobs:
           if [ -z "${VITE_SUPABASE_URL:-}" ] || [ -z "${VITE_SUPABASE_PUBLISHABLE_KEY:-}" ]; then
             echo "VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY が未設定です。" >&2
             echo "Settings -> Secrets and variables -> Actions -> Variables で設定してください" >&2
-            echo "（docs/launch_plan.md §7 H7）。" >&2
+            echo "（リポジトリのVariables。Environmentsの変数はこのjobから読めません）。" >&2
+            echo "docs/launch_plan.md §7 H7 を参照。" >&2
             exit 1
           fi
-          if ! grep -rqF "$VITE_SUPABASE_URL" dist/assets; then
-            echo "ビルド成果物へSupabaseの接続設定が入っていません。" >&2
+          # **値そのものを検査する。** 「バンドルに入っているか」だけでは足りない:
+          # 空白だけの値はbuildがそのまま埋め込み、minifyされたJSにも空白は
+          # いくらでもあるのでgrepが通ってしまう（実際に再現した）。
+          # URLもkeyも空白を含まないので、空白の混入は貼り付けミスとして落とす
+          URL_TRIM="$(printf '%s' "$VITE_SUPABASE_URL" | tr -d '[:space:]')"
+          KEY_TRIM="$(printf '%s' "$VITE_SUPABASE_PUBLISHABLE_KEY" | tr -d '[:space:]')"
+          if [ -z "$URL_TRIM" ] || [ -z "$KEY_TRIM" ]; then
+            echo "variableが空白だけです（docs/launch_plan.md §7 H7）。" >&2
+            exit 1
+          fi
+          if [ "$URL_TRIM" != "$VITE_SUPABASE_URL" ] || [ "$KEY_TRIM" != "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then
+            echo "variableに空白が混ざっています。貼り付け時の前後の空白を消してください。" >&2
+            exit 1
+          fi
+          case "$VITE_SUPABASE_URL" in
+            https://*.supabase.co|https://*.supabase.co/) ;;
+            *) echo "VITE_SUPABASE_URL が Project URL の形式ではありません" >&2
+               echo "（https://<project ref>.supabase.co。project refだけを貼っていませんか）。" >&2
+               exit 1 ;;
+          esac
+          # **鍵の種類を検査する。** ここが最後の関門で、この先はdeployして世界公開になる。
+          # SupabaseのAPI keys画面は `sb_publishable_...` と `sb_secret_...` を並べて出し、
+          # どちらも `sb_` で始まる。secret keyはRLSを迂回するため、貼り間違えたまま
+          # 公開すると全学生のデータが誰からでも読み書きできる（実際にビルドへ
+          # 埋め込まれることを再現した）。revertでは戻せない。
+          # 許可リスト方式にして、想定外の値はすべて落とす。
+          # 旧形式のJWT鍵（`eyJ...`）を許さないのは、anon と service_role が
+          # **どちらも `eyJ` で始まり、prefixでは区別できない**ため
+          case "$VITE_SUPABASE_PUBLISHABLE_KEY" in
+            sb_publishable_*) ;;
+            *) echo "VITE_SUPABASE_PUBLISHABLE_KEY が publishable key の形式ではありません。" >&2
+               echo "**sb_secret_... を貼っていませんか。** secret keyは公開ビルドへ入れてはいけません" >&2
+               echo "（旧形式のJWT鍵 eyJ... も、anonとservice_roleを区別できないため受け付けません）。" >&2
+               exit 1 ;;
+          esac
+          # 途中で切れた貼り付けを弾く。publishable keyは実際にはこれよりずっと長い
+          if [ "${#VITE_SUPABASE_PUBLISHABLE_KEY}" -lt 20 ]; then
+            echo "VITE_SUPABASE_PUBLISHABLE_KEY が短すぎます（途中で切れていませんか）。" >&2
+            exit 1
+          fi
+          if [ ! -d dist/assets ]; then
+            echo "dist/assets がありません。buildが成果物を出していません。" >&2
+            exit 1
+          fi
+          if ! grep -rqF -e "$VITE_SUPABASE_URL" dist/assets; then
+            echo "ビルド成果物へ VITE_SUPABASE_URL が入っていません。" >&2
+            exit 1
+          fi
+          if ! grep -rqF -e "$VITE_SUPABASE_PUBLISHABLE_KEY" dist/assets; then
+            echo "ビルド成果物へ VITE_SUPABASE_PUBLISHABLE_KEY が入っていません。" >&2
+            echo "（別プロジェクトの値を渡していませんか）" >&2
             exit 1
           fi
           echo "接続設定はビルド成果物へ入っています（値は出力しません）"
