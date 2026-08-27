@@ -92,14 +92,14 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 
 | Task | 内容 | 状態 | PR | 依存 |
 |---|---|---|---|---|
-| 011 | 匿名性（k=5・区分preview・10–5ファネル）・並行quota・入力検証 | 実装中 | — | — |
-| 010 | メール通知（outbox・digest・設定・unsubscribe） | 未着手 | — | 011 |
-| 013 | 団体確認（pending/verified/suspended）・停止・kill switch・監査 | 未着手 | — | — |
-| 014 | アカウント・データライフサイクル（削除・脱退・孤児データ） | 未着手 | — | 013 |
-| 015 | プライバシー・同意・利用規約draft・同意バージョン | 未着手 | — | — |
-| 016 | UX・アクセシビリティ・完全E2E | 未着手 | — | 010〜015 |
-| 017 | 運用（structured logging・health・runbook・secret rotation） | 未着手 | — | 010 |
-| 018 | リリース（release notes・smoke test・staging記録・main PR） | 未着手 | — | 全部 |
+| 011 | 匿名性（k=5・区分preview・10–5ファネル）・並行quota・入力検証 | **実装完了・CI green・レビュー中** | [#12](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/12) | — |
+| 010 | メール通知（outbox・digest・設定・unsubscribe） | 未着手（仕様は `tasks/010-*.md`） | — | 011 |
+| 013 | 団体確認（pending/verified/suspended）・停止・kill switch・監査 | 未着手（仕様は `tasks/013-*.md`） | — | — |
+| 014 | アカウント・データライフサイクル（削除・脱退・孤児データ） | 未着手（仕様は `tasks/014-*.md`） | — | 013 |
+| 015 | プライバシー・同意・利用規約draft・同意バージョン | 未着手（仕様は `tasks/015-*.md`） | — | — |
+| 016 | UX・アクセシビリティ・完全E2E | 未着手（仕様は `tasks/016-*.md`） | — | 010〜015 |
+| 017 | 運用（structured logging・health・runbook・secret rotation） | 未着手（仕様は `tasks/017-*.md`） | — | 010 |
+| 018 | リリース（release notes・smoke test・staging記録・main PR） | 未着手（仕様は `tasks/018-*.md`） | — | 全部 |
 
 番号の重複回避: 既存Task番号は000〜009・012。013以降を新規に使う（010・011は既存の意味を保持）。
 decision番号は既存D001〜D035。新規はD036以降。
@@ -164,10 +164,17 @@ decision番号は既存D001〜D035。新規はD036以降。
 |---|---|---|
 | lint / unit test / build | ✅ 実行する | ✅ |
 | pgTAP | ✅ PostgreSQL 16 + Supabase相当スキャフォールド（`auth.users` / `auth.uid()` / anon・authenticated・service_role / pgcrypto / pgtap）へ全migrationを適用して実行 | ✅ 本物のSupabaseスタック |
+| 並行テスト（psql複数プロセス） | ✅ `npm run db:test:concurrency` | ✅ `db-tests` ジョブ |
 | E2E（Playwright） | ❌ 実行不可（Supabase API/Authが必要） | ✅ `e2e` ジョブ |
 | hosted staging | 人間操作が必要な項目のみ§7へ | — |
 
 ローカルのスキャフォールドは**CIの代替ではなく前倒し検証**であり、最終判定はCIで行う。
+
+### スキャフォールドとSupabaseの差（Task 011で判明）
+
+ローカルのスキャフォールドはsuperuser（`postgres`）で動くが、**Supabaseのローカルスタックでは
+`postgres` はsuperuserではない**。superuser限定の機能（`dblink_connect_u` など）は
+ローカルで通ってもCIで落ちる。DB側のテストを書くときは、superuser前提の機能に依存しないこと。
 
 ## 6. 完了条件（Definition of Done for v1.0）
 
@@ -204,6 +211,9 @@ decision番号は既存D001〜D035。新規はD036以降。
 | 日付 | 内容 |
 |---|---|
 | 2026-08-27 | 現状調査・gap analysis・本書作成。Task 011着手 |
+| 2026-08-27 | Task 011実装完了。PR #12作成、CI（quality / db-tests / e2e）green。
+  pgTAP 229→316件、unit 317→328件、並行テスト8件を追加。独立レビュー実施中 |
+| 2026-08-27 | Task 010・013〜018のタスク仕様を `tasks/` へ作成 |
 
 ## 9. 次回再開時の開始点
 
