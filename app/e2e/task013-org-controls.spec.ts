@@ -109,9 +109,17 @@ async function signInWithOtp(page: Page, request: APIRequestContext, address: st
   await page.getByRole('button', { name: 'ログインする' }).click()
 }
 
+// 意図的に拒否される要求（緊急停止中の確認・送信）を数えるためのフラグ。
+// ブラウザは失敗した要求について response とは別に console へも
+// 「Failed to load resource」を出すため、同じ基準で除外しないと
+// 「拒否されたこと」自体を失敗として数えてしまう
+let expectRejection = false
+
 function watchPage(page: Page, sink: string[], label: string) {
   page.on('console', (message) => {
-    if (message.type() === 'error') sink.push(`${label} console: ${message.text()}`)
+    if (message.type() !== 'error') return
+    if (expectRejection && message.text().startsWith('Failed to load resource')) return
+    sink.push(`${label} console: ${message.text()}`)
   })
   page.on('pageerror', (error) => {
     sink.push(`${label} pageerror: ${error.message}`)
@@ -123,13 +131,21 @@ function watchPage(page: Page, sink: string[], label: string) {
     // 未登録パスポート・通知設定のmaybeSingle取得は仕様上406を返す
     if (url.includes('/rest/v1/student_passports') && status === 406) return
     if (url.includes('/rest/v1/student_notification_settings') && status === 406) return
-    // 緊急停止中の送信拒否はRPCが400を返すのが正しい挙動
-    if (url.includes('/rest/v1/rpc/send_offer') && status === 400) return
+    // 緊急停止中の確認・送信拒否はRPCが400を返すのが正しい挙動
+    if (expectRejection && url.includes('/rest/v1/rpc/send_offer') && status === 400) return
+    if (expectRejection && url.includes('/rest/v1/rpc/preview_offer_audience') && status === 400) {
+      return
+    }
     sink.push(`${label} http ${status}: ${url}`)
   })
 }
 
-async function composeAndSend(page: Page, eventName: string, category: string) {
+async function composeAndSend(
+  page: Page,
+  eventName: string,
+  category: string,
+  dayLabel = '土日',
+) {
   await page.getByRole('button', { name: '新しいオファーを作成' }).click()
   await page.getByLabel('イベント名').fill(eventName)
   await page.getByLabel('イベント紹介').fill('はじめての方でも参加できる新歓イベントです。')
@@ -140,8 +156,12 @@ async function composeAndSend(page: Page, eventName: string, category: string) {
     .fill('最初の一歩を踏み出したい新入生に届けたいからです。')
   await page.getByRole('button', { name: category, exact: true }).click()
   await page.getByRole('button', { name: '友達を作る' }).click()
-  await page.getByRole('button', { name: '土日', exact: true }).click()
+  await page.getByRole('button', { name: dayLabel, exact: true }).click()
   await page.getByRole('button', { name: '対象を確認する' }).click()
+}
+
+// 確認画面まで進んでから送信する（previewが通る条件でだけ使う）
+async function confirmAndSend(page: Page) {
   await expect(page.getByRole('heading', { name: '送信内容の確認' })).toBeVisible({
     timeout: 15_000,
   })
@@ -238,6 +258,7 @@ test('Task 013: 団体確認・オファー停止・緊急停止が画面へ正�
       })
 
       await composeAndSend(pageOwner, `新歓ライブ-${RUN}`, '音楽')
+      await confirmAndSend(pageOwner)
       await expect(pageOwner.getByRole('heading', { name: /人の新入生へ配信しました/u })).toBeVisible(
         { timeout: 15_000 },
       )
@@ -311,7 +332,23 @@ test('Task 013: 団体確認・オファー停止・緊急停止が画面へ正�
       )
       expect(execSql(`select delivery_paused from private.platform_controls`)).toBe('t')
 
+      expectRejection = true
+
+      // 6a: 新しい条件の対象規模は答えない（D045・独立レビューL1）。
+      //     曜日を平日夜に変えると対象条件のfingerprintが変わり、キャッシュに無い
+      await composeAndSend(pageOwner, `停止中の下見-${RUN}`, '音楽', '平日夜')
+      await expect(
+        pageOwner.getByText('現在、システム全体で配信を一時停止しています。', { exact: false }),
+      ).toBeVisible({ timeout: 15_000 })
+      await expect(pageOwner.getByRole('heading', { name: '送信内容の確認' })).toHaveCount(0)
+      await pageOwner.getByRole('button', { name: '入力へもどる' }).click()
+      await pageOwner.getByRole('button', { name: 'やめる' }).click()
+      await expect(pageOwner.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible()
+
+      // 6b: 24時間以内に答えた同一条件は確認画面まで進める（既に知っている値）が、
+      //     送信そのものは止まる
       await composeAndSend(pageOwner, `緊急停止中ライブ-${RUN}`, '音楽')
+      await confirmAndSend(pageOwner)
       // 「通信環境を確認して」ではなく、停止の理由が伝わる（Task 013で追加）
       await expect(
         pageOwner.getByText('現在、システム全体で配信を一時停止しています。', { exact: false }),
@@ -329,6 +366,9 @@ test('Task 013: 団体確認・オファー停止・緊急停止が画面へ正�
     })
 
     await test.step('7: 緊急停止を解除すると、再び配信できる', async () => {
+      // 拒否を許す範囲はここで閉じる（consoleイベントがresponseより遅れて届いても
+      // 取りこぼさないよう、ステップ6の末尾ではなく次のステップの先頭で戻す）
+      expectRejection = false
       execAdminSql(`select public.admin_set_delivery_paused(false, 'ops-e2e', null);`)
       expect(execSql(`select delivery_paused from private.platform_controls`)).toBe('f')
 
@@ -337,6 +377,7 @@ test('Task 013: 団体確認・オファー停止・緊急停止が画面へ正�
         timeout: 15_000,
       })
       await composeAndSend(pageOwner, `解除後ライブ-${RUN}`, '音楽')
+      await confirmAndSend(pageOwner)
       await expect(pageOwner.getByRole('heading', { name: /人の新入生へ配信しました/u })).toBeVisible(
         { timeout: 15_000 },
       )

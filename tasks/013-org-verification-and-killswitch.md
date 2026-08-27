@@ -120,6 +120,9 @@
 - e2eの`getByText('審査待ち')`がstrict mode violation（状態チップと説明文の2要素に一致）。
   調査中に、`delivery_paused` / `offer_stopped` が `serverErrorMessage` の既知コードに無く、
   「通信環境を確認して…」という誤解を招く汎用文言になっていたことを発見して修正
+- e2eの最終検査（console errorが無いこと）が失敗。意図的に拒否される要求について、
+  ブラウザは`response`とは別に console へも「Failed to load resource」を出すため、
+  「拒否されたこと」自体を失敗として数えていた → 拒否を許す区間をフラグで明示する
 - e2eの「団体側にも停止が見える」が失敗。`OrgOffersPanel`が`ServerCampaign`→`CampaignView`を
   1項目ずつ書き写す形で`stopped`を落としていた。`CampaignView.stopped`をoptionalにしていた
   ためtscが検出できなかった → **必須**にして、書き忘れがコンパイルエラーになることを確認
