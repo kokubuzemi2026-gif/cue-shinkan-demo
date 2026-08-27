@@ -352,8 +352,19 @@ note 'Task 017 ワーカー並行テスト: 検証'
 # 先頭1文字ではなく最初の数値行を取る（batch sizeが10以上でも壊れない）
 A_CLAIMED="$(grep -oE '^[0-9]+$' "$WORKER_OUT/a" | head -1)"
 B_CLAIMED="$(grep -oE '^[0-9]+$' "$WORKER_OUT/b" | head -1)"
+BEFORE_FAIL=$FAILURES
 check 'ワーカーAは3件掴む' '3' "$A_CLAIMED"
 check 'ワーカーBも3件掴む（Aが握っている行を飛ばして残りを取る）' '3' "$B_CLAIMED"
+if [ "$FAILURES" -ne "$BEFORE_FAIL" ]; then
+  # 掴んだ件数が想定と違うときだけ、原因を追えるだけの情報を出す。
+  # 出るのは件数・状態・試行回数だけで、宛先や本文は含まない
+  note '  --- 診断（この出力に宛先・本文は含まれない） ---'
+  note "  A_HOLDING=$A_HOLDING  B_ELAPSED_MS=$B_ELAPSED_MS"
+  note "  ワーカーAの生出力: $(tr '\n' '|' <"$WORKER_OUT/a")"
+  note "  ワーカーBの生出力: $(tr '\n' '|' <"$WORKER_OUT/b")"
+  note "  outboxの状態: $("${PSQL[@]}" -c "select status || '=' || count(*) || ' attempts=' || coalesce(max(attempts),0) from private.email_outbox group by status" | tr '\n' ' ')"
+  note "  worker行以外のoutbox: $("${PSQL[@]}" -c "select count(*)::int from private.email_outbox where dedupe_key not like 'worker-%'")"
+fi
 # ロック待ちなら、Aのcommit（5秒）まで返らない。
 # 正常系の実測は50ms前後、ロック待ちは5000ms前後なので、1000msなら
 # どちら側にも十分な余裕がある（2000msだと検出側の余裕が数%しかなかった）
