@@ -31,7 +31,7 @@
 - [x] フォーカスリングが見える。画面遷移でフォーカスが適切な位置へ移る
 - [x] すべての入力にラベルがある
 - [x] 色だけに意味を依存させていない
-- [x] コントラスト比が基準を満たす（測定結果を記録する）
+- [x] コントラスト比が基準を満たす（測定結果を記録する）※本文（1.4.3）は全組み合わせで4.5以上。**細線の枠（1.4.11）は未達**で、残る課題へ記録した
 - [x] バリデーションメッセージが具体的で、どこを直せばよいか分かる
 - [x] 二重送信が防止されている
 - [x] ブラウザバック・再読み込み・セッション切れで壊れない
@@ -197,8 +197,13 @@ CSSに直書きされている背景は3種類あり、下地（white / cream / 
 |---|---|
 | oxlint / tsc / vitest / vite build | すべてgreen（ユニット362テスト） |
 | E2E typecheck | green |
-| E2E 実行（CI） | **9テスト green**（既存7 + 本タスクの2） |
-| CI 3ジョブ（quality / db-tests / e2e） | green（`6ac94dc`） |
+| E2E 実行（CI） | **9テスト green**（既存7 + 本タスクの2）。オファー作成〜送信のキーボード操作を含む |
+| CI 3ジョブ（quality / db-tests / e2e） | green |
+
+**途中でdb-testsが赤になった**が、原因は本タスクの変更ではなく
+`26_notification_control_test.sql` の時限式だった（`develop` でも赤）。
+別PR #18 で修正して `develop` へmergeし、本ブランチへ取り込んでいる
+（経緯は `tasks/010-email-notifications.md`「後日みつかった不具合」）。
 
 本環境にはDockerが無く、Playwrightとローカルsupabaseスタックを起動できない。
 E2Eの実行はCIでのみ確認している（`docs/launch_plan.md` §5の制約）。
@@ -219,6 +224,24 @@ E2Eの実行はCIでのみ確認している（`docs/launch_plan.md` §5の制�
 | N7（bandラベル依存） | Non-blocker | `/人の新入生へ配信しました/u` は band が `50人以上` だとマッチしない | `/新入生へ配信しました/u` へ |
 | N6（e2eが恒常的な型検査の網に無い） | Non-blocker | `tsc -b` は `e2e/` を見ない | **別PR**（`tsconfig` はIn scope外） |
 | Nit（引数名 `step`） | Nit | wizardのstepと紛らわしい | `screenKey` へ改名 |
+
+**reviewer（再レビュー）**: コード差分について**Blockerゼロ**。B1・B2の解消を、
+同じ列挙・全数照合の方法で独立に確認した。
+
+- 前景の網羅: ink23 / muted46 / white3 / danger1 / inherit1。`color: var(--color-coral)` は**0件**
+- 背景の網羅: white27 / mint20 / cream16 / ink3 / coral2 / transparent系4 / 半透明3種。
+  **面の集合が閉じている**ことを確認
+- 危険なペア（muted・danger を ink / coral / 合成背景の上に、white を非ink背景の上に）が
+  実際に描画されないことを、CSSとTSXの突合で全11ルール個別に追跡
+- カスケードの穴（基底が色+背景を持ち派生が背景だけ差し替える型）も検査。
+  `.status-chip`/`.status-pending` は両方とも背景と文字色をセットで持つため混ざらない
+- `--color-muted` は `color:` 専用（border/background/shadowでの使用0件）＝暗くした副作用なし
+- B2は「再マウントされない・`campaignState.status` が変わらない」条件下で
+  `organizationId` の変化により effect が再実行され、`headingRef.current` が
+  生きている見出しを指すことをトレースで確認。pending→verified、verified→pending、
+  学生⇄団体の4遷移すべてで二重移動が起きないことも確認
+- N3のTab順がDOM順と単調増加で噛み合い、最大ホップ15 Tab（上限60）で成立することを
+  `OfferComposer.tsx` と定数の個数から確認
 
 **security-reviewer**: Blocker 0件（承認可）。指摘はすべて自分で確認したうえで対応した。
 
@@ -245,8 +268,16 @@ E2Eの実行はCIでのみ確認している（`docs/launch_plan.md` §5の制�
 - **`PLAYWRIGHT_NO_COPY_PROMPT` の設定は別PR**（本タスクのIn scope外。上記N1）
 - **`e2e/` を恒常的な型検査へ入れるのも別PR**（`tsconfig` はIn scope外。reviewer N6）。
   現状は一時tsconfigで手元検査しているだけで、CIには網が無い
-- **透過が絡む合成色は未計算**（`rgba(23,33,43,0.08)` の枠線、`opacity: 0.45` の
-  disabled など）。トークン同士の組み合わせだけを保証している
+- **細線の枠は1.4.11（非テキスト3:1）を満たしていない**（再レビューで指摘・自分でも計算した）。
+  `.choice-chip` `rgba(23,33,43,0.16)` / `.text-input` `0.18` / `.club-input` `0.24` /
+  `.status-pending` `0.25` は、白地に対して **1.39〜1.68** しかない。
+  3:1に届かせるには **alpha 0.50** が必要で、アプリ全体の枠線の見え方が変わる。
+  Task 016のOut of scope（デザインの全面刷新）に触れるため**本タスクでは変えず**、
+  Task 017の既知リスク一覧へ送る。入力欄の枠は1.4.11の対象になり得るため、
+  公開前に運営者の判断が必要
+- `.button-primary` の coral 背景と周囲の境界も white 2.79 / cream 2.65 で 1.4.11 未満。
+  `box-shadow` と ink 太字ラベルがあるため識別自体は可能（既存・差分外）
+- `opacity: 0.45` の disabled は WCAG 1.4.3 の対象外（無効コントロール）
 - レビュー中にブランチが5回動いた。reviewerは最終状態（`2600ad6`）で判定しているが、
   **B1・B2の修正はその後**なので、修正内容そのものは独立レビューを通していない
 - セッションの**期限切れ**と**別端末でのログアウト**は未検証（上記N2）
