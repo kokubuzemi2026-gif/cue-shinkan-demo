@@ -58,6 +58,11 @@ jobs:
         run: npx supabase start
       - name: Run pgTAP tests
         run: npx supabase test db
+      # Task 011: 学生の週間受信枠が団体をまたぐ並行配信で破れないことを、
+      # psqlを2プロセス以上起動して実際に並行するトランザクションで検証する
+      # （pgTAPは1ファイル=1セッションのため本物の競合を作れない）
+      - name: Run concurrency test
+        run: npm run db:test:concurrency
       - name: Check generated types drift (informational)
         # 生成型（src/lib/database.types.ts）と実DBの差分を表示する。
         # 差分があってもこのステップは失敗させない（警告として出力）

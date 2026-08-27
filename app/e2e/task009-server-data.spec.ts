@@ -27,16 +27,18 @@ const EVENT_NAME = `E2Eハイク-${RUN}`
 test.describe.configure({ mode: 'serial' })
 
 // ---- 運営相当のSQL実行（psql→supabase dbコンテナの順で試す） ----
+// psqlの `-q` はコマンドタグ（"UPDATE 1"）の出力を抑止する。
+// 付けないと `update ... returning id` の戻り値に改行とタグが混ざる
 function execSql(sql: string): string {
   const escaped = sql.replaceAll('"', '\\"')
   try {
-    return execSync(`psql "${DB_URL}" -tA -c "${escaped}"`, {
+    return execSync(`psql "${DB_URL}" -q -tA -c "${escaped}"`, {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim()
   } catch {
     return execSync(
-      `docker exec supabase_db_cue-shinkan-demo psql -U postgres -tA -c "${escaped}"`,
+      `docker exec supabase_db_cue-shinkan-demo psql -U postgres -q -tA -c "${escaped}"`,
       { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] },
     ).trim()
   }

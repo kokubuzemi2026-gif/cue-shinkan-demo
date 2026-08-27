@@ -24,16 +24,18 @@ const ORG_NAME = `匿名性E2E会-${RUN}`
 
 test.describe.configure({ mode: 'serial' })
 
+// psqlの `-q` はコマンドタグ（"UPDATE 1"）の出力を抑止する。
+// 付けないと `update ... returning id` の戻り値に改行とタグが混ざる
 function execSql(sql: string): string {
   const escaped = sql.replaceAll('"', '\\"')
   try {
-    return execSync(`psql "${DB_URL}" -tA -c "${escaped}"`, {
+    return execSync(`psql "${DB_URL}" -q -tA -c "${escaped}"`, {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim()
   } catch {
     return execSync(
-      `docker exec supabase_db_cue-shinkan-demo psql -U postgres -tA -c "${escaped}"`,
+      `docker exec supabase_db_cue-shinkan-demo psql -U postgres -q -tA -c "${escaped}"`,
       { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] },
     ).trim()
   }
@@ -181,9 +183,10 @@ test('Task 011: 対象規模の区分表示・最小5人の配信拒否・ファ
     })
 
     await test.step('2: 対象4人では区分 1〜4人 が表示され、送信できない（k=5・D036）', async () => {
-      // 写真カテゴリの合成学生を4人だけ用意する
-      seedStudentPool(`${RUN}p`, 4, 'photo')
-      await composeOffer(page, `写真散歩-${RUN}`, '写真')
+      // このspec専用のカテゴリを使う。E2Eは同じDBを共有して直列実行されるため、
+      // 他のspec（task009はアウトドア）と母集団が混ざらないようにする
+      seedStudentPool(`${RUN}t`, 4, 'travel')
+      await composeOffer(page, `気軽な旅の下見-${RUN}`, '旅行')
 
       // 正確な人数ではなく区分が表示される
       await expect(page.locator('.audience-count-number')).toHaveText('1〜4人')
@@ -201,8 +204,8 @@ test('Task 011: 対象規模の区分表示・最小5人の配信拒否・ファ
     })
 
     await test.step('3: 対象12人では区分 10〜24人 で送信でき、生の人数は画面に出ない', async () => {
-      seedStudentPool(`${RUN}o`, 12, 'outdoor')
-      await composeOffer(page, `六甲山ハイク-${RUN}`, 'アウトドア')
+      seedStudentPool(`${RUN}s`, 12, 'sports')
+      await composeOffer(page, `はじめてのスポーツ体験-${RUN}`, 'スポーツ')
 
       await expect(page.locator('.audience-count-number')).toHaveText('10〜24人')
       // 「12人」のような確定人数が確認画面のどこにも現れない
@@ -236,11 +239,11 @@ test('Task 011: 対象規模の区分表示・最小5人の配信拒否・ファ
     })
 
     await test.step('5: 配信10人未満のofferはファネルを一切開示しない', async () => {
-      // 音楽カテゴリで6人の配信を作る。
-      // 写真カテゴリを再利用しないのは、同一条件のpreviewが24時間固定される（D038）ため。
+      // ボランティアカテゴリで6人の配信を作る。
+      // 旅行カテゴリを再利用しないのは、同一条件のpreviewが24時間固定される（D038）ため。
       // 対象条件を変えない限り、母集団が増えても区分は動かない
-      seedStudentPool(`${RUN}m`, 6, 'music')
-      await composeOffer(page, `音楽サークル体験-${RUN}`, '音楽')
+      seedStudentPool(`${RUN}v`, 6, 'volunteer')
+      await composeOffer(page, `地域清掃の見学-${RUN}`, 'ボランティア')
       await expect(page.locator('.audience-count-number')).toHaveText('5〜9人')
       await page.getByRole('button', { name: 'この内容で送信' }).click()
       await expect(
@@ -251,7 +254,7 @@ test('Task 011: 対象規模の区分表示・最小5人の配信拒否・ファ
 
       // 新しいキャンペーンが先頭。配信6人（10人未満）は全セルが非表示
       const firstCard = page.locator('.campaign-card').first()
-      await expect(firstCard.getByText(`音楽サークル体験-${RUN}`)).toBeVisible()
+      await expect(firstCard.getByText(`地域清掃の見学-${RUN}`)).toBeVisible()
       const smallFunnel = await firstCard.locator('.funnel-value').allInnerTexts()
       expect(smallFunnel).toEqual(['—', '—', '—', '—'])
       await expect(firstCard.getByText('集計に必要な人数未満')).toBeVisible()
