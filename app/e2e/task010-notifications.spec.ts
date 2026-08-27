@@ -231,6 +231,9 @@ test('Task 010: 通知設定の3択と、設定に応じたoutboxの積まれ方
       await expect(pageB.getByRole('heading', { name: /人の新入生へ配信しました/u })).toBeVisible({
         timeout: 15_000,
       })
+      // 送信完了画面からダッシュボードへ戻す。戻さないと次の作成ボタンが現れない
+      await pageB.getByRole('button', { name: 'ダッシュボードへもどる' }).click()
+      await expect(pageB.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible()
 
       // daily の学生Aにはまとめが1行だけ積まれ、オファーごとの通知は積まれない
       expect(
@@ -293,6 +296,8 @@ test('Task 010: 通知設定の3択と、設定に応じたoutboxの積まれ方
       await expect(pageB.getByRole('heading', { name: /人の新入生へ配信しました/u })).toBeVisible({
         timeout: 15_000,
       })
+      await pageB.getByRole('button', { name: 'ダッシュボードへもどる' }).click()
+      await expect(pageB.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible()
 
       expect(
         execSql(`select count(*)::int from private.email_outbox where user_id = '${studentId}'`),
