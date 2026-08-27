@@ -266,3 +266,75 @@
 .shell-actions {
   margin-top: var(--space-4);
 }
+
+/* ---- 取り消せない操作（Task 014・D046〜D048） ---- */
+/* 危険さを色だけに依存させない。見出し・文言・枠線でも区別できるようにする */
+
+.danger-card {
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  background: var(--color-white);
+  border: 1.5px solid rgba(23, 33, 43, 0.18);
+  border-radius: var(--radius-m);
+}
+
+.danger-card--open {
+  border-color: var(--color-coral);
+  border-width: 2px;
+}
+
+.danger-heading {
+  margin: 0 0 var(--space-2);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.danger-subheading {
+  margin: var(--space-3) 0 var(--space-2);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-muted);
+}
+
+.danger-list {
+  margin: 0;
+  padding-left: 1.2em;
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.danger-note {
+  margin: 0 0 var(--space-3);
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+.danger-note--strong {
+  font-weight: 700;
+  color: var(--color-ink);
+}
+
+.danger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.danger-actions .button {
+  flex: 1 1 auto;
+}
+
+.danger-button {
+  min-height: var(--tap-target);
+  border: 1.5px solid var(--color-coral);
+  color: var(--color-coral);
+  font-weight: 700;
+}
+
+.danger-done {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.7;
+}

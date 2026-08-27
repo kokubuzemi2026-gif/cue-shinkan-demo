@@ -214,6 +214,10 @@ export type Database = {
           organization_name: string
         }[]
       }
+      admin_delete_auth_identity: {
+        Args: { actor_label: string; target_user_id: string }
+        Returns: undefined
+      }
       admin_list_audit: {
         Args: { max_rows?: number }
         Returns: {
@@ -278,6 +282,8 @@ export type Database = {
         Args: { org_description?: string; org_name: string }
         Returns: string
       }
+      delete_my_account: { Args: never; Returns: undefined }
+      delete_student_passport: { Args: never; Returns: undefined }
       email_outbox_health: {
         Args: Record<PropertyKey, never>
         Returns: {
@@ -290,6 +296,7 @@ export type Database = {
         }[]
       }
       is_university_user: { Args: never; Returns: boolean }
+      leave_organization: { Args: { org_id: string }; Returns: undefined }
       list_invitations: {
         Args: { org_id: string }
         Returns: {

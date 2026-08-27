@@ -165,3 +165,33 @@ migrationは`app/supabase/migrations/20260827040000〜20260827040004_0011_*.sql`
 （Task 008の9本 + Task 009の8本 + Task 010の`save_notification_settings`）。
 **Task 013で追加した4本は`service_role`専用で、この18本には入らない。**
 `list_my_inbox`と`list_org_campaigns`は列が1つ増えただけで、権限は変わらない。
+
+
+## 12. Task 014で追加した削除の経路（D046〜D048）
+
+| オブジェクト | 役割 |
+|---|---|
+| `private.deletion_audit_log` | 本人による削除の記録。主体は`user_id`のSHA-256のみ |
+| `private.subject_hash(uuid)` | 削除監査用の一方向ハッシュ |
+| `delete_student_passport()` | 興味パスポートだけを消す（受信済みは残る・D023） |
+| `delete_my_account()` | `student_accounts`と`organization_memberships`を消す（残りはcascade） |
+| `leave_organization(uuid)` | 自分の所属を外す（最後のownerはトリガが止める） |
+| `admin_delete_auth_identity(uuid, text)` | **service_role専用**。CUEのデータが無いauth identityを消す |
+
+### 削除がcascadeで届く範囲
+
+```
+auth.users            --CASCADE--> student_accounts, organization_memberships
+student_accounts      --CASCADE--> student_passports, student_notification_settings,
+                                   student_delivery_quota, email_outbox, offer_recipients
+offer_recipients      --CASCADE--> offer_reads, offer_responses
+organization_memberships --SET NULL--> offer_deliveries.created_by_membership_id,
+                                       organization_invitations.created_by/used_by
+```
+
+- `student_accounts`の行を消すだけで学生側のデータがすべて落ちる。**孤児データが
+  構造的に発生しない**ため、削除RPCは起点の行だけを消す。
+- 団体側の配信snapshot（`offer_deliveries`）は担当者が消えても残る（D023）。
+  `created_by_membership_id`はNULLになる。
+- 検証（`31_account_delete_test.sql`）はテーブルを列挙せず、`user_id`列を持つ
+  `public`・`private`の全テーブルを**動的に走査**する。テーブルが増えても自動的に対象になる。

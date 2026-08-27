@@ -168,6 +168,32 @@ select * from public.admin_list_audit(100);
 **全体を戻す前に、原因の団体・案内を個別に止めておく**のが基本です。
 全体停止を戻すと、止めていた団体以外の配信は即座に再開します。
 
+## 9. 退会したアカウントの仕上げ（auth identityの削除）
+
+利用者が自分でアカウントを削除すると、CUEが保存していたデータ（`public`・`private`
+スキーマ）はすべて消えます。**ただし大学メールを持つauth identityは残ります。**
+本人のRPCからは`auth`スキーマへ到達できないためで、運営が仕上げます（D047）。
+
+```sql
+-- 対象を探す（CUEのデータが無いauth identity）
+select u.id, u.created_at
+  from auth.users u
+ where not exists (select 1 from public.student_accounts sa where sa.user_id = u.id)
+   and not exists (select 1 from public.organization_memberships m where m.user_id = u.id)
+ order by u.created_at;
+
+-- 削除する（service_role）
+select public.admin_delete_auth_identity('<user id>'::uuid, 'ops-<運営担当の識別子>');
+```
+
+- CUEのデータが1件でも残っていると`account_data_remains`で拒否されます。
+  順序を守らせるためで、先に本人の削除が完了している必要があります。
+- 上の抽出は、**まだ利用方法を選んでいない登録直後の利用者も含みます。**
+  作成から日が経っている（例: 30日以上）ものだけを対象にしてください。
+- ドメイン外identityの掃除（`runbook_supabase_hosted.md` §7）も同じRPCで行えます。
+- 実行は`private.admin_audit_log`へ`auth_identity_deleted`として記録されます
+  （対象のIDは記録しません）。
+
 ## 8. この設計で守れていないこと（残余リスク）
 
 - **運営画面UIが無い**。操作はSQL Editorから行うため、service_role権限を持つ
@@ -178,5 +204,8 @@ select * from public.admin_list_audit(100);
   保持しない設計のためで、本文に団体名・イベント名を含まないため誤解は生みませんが、
   停止直後に「受信箱に新しい案内があります」が届くことはあります。
 - **監査記録の保持期間・削除方針が未定**です。Task 017で決めます。
+- **退会後もauth identity（大学メール）が残ります**（§9）。運営が定期的に消す運用に
+  依存しており、自動化されていません。本人には「ログイン情報の削除は運営が行う」と
+  画面で伝えています。
 - **緊急停止は配信済みの案内を止めません**（新規配信とpreviewだけを止めます）。
   配信済みのものを止めるには§3または§4を使います。

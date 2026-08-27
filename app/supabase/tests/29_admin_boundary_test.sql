@@ -5,7 +5,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(28);
+select plan(29);
 
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000e4001', 'demo-ab-a@stu.kobe-u.ac.jp', now(), now(), now()),
@@ -91,8 +91,8 @@ select is(
   (select count(*)::int from pg_proc p
      join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and p.proname like 'admin\_%'),
-  4,
-  'T3: 運営RPCは4本だけ（意図しない公開関数が増えていない）'
+  5,
+  'T3: 運営RPCは5本だけ（意図しない公開関数が増えていない）'
 );
 
 -- ---- クライアントロールからは呼べない ----
@@ -117,6 +117,12 @@ select throws_ok(
   $$select * from public.admin_list_audit(10)$$,
   '42501', null,
   'T3: authenticated: 監査記録の閲覧は permission denied'
+);
+select throws_ok(
+  $$select public.admin_delete_auth_identity(
+      '00000000-0000-0000-0000-0000000e4002'::uuid, 'me')$$,
+  '42501', null,
+  'T3: authenticated: 他人のauth identity削除は permission denied'
 );
 
 -- ---- 団体は自分の状態も直接は変えられない（自己verified化の禁止） ----
