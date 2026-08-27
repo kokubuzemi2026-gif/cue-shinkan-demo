@@ -12,12 +12,13 @@
 
 | 項目 | 値 |
 |---|---|
-| `develop` | `f28d834`（PR #11 merge後） |
+| `develop` | `ee08d12`（PR #12 merge後。本書作成時点は `f28d834`） |
 | `main` | `646278f`（Phase 1公開デモ・凍結中） |
 | 完了Task | 000〜009, 012, 013(hook fix) |
-| migration | 8本（0008×4・0009×4）。`20260824111223`〜`20260825054008` |
-| unit test | 317件 / 24ファイル |
-| pgTAP | 229件 / 16ファイル |
+| migration | 11本（0008×4・0009×4・0011×3）。`20260824111223`〜`20260827040004` |
+| unit test | 329件 / 26ファイル（Task 011前は317 / 24） |
+| pgTAP | 337件 / 23ファイル（Task 011前は229 / 16） |
+| 並行テスト | 8件（`npm run db:test:concurrency`） |
 | hookテスト | 201件 |
 | lint / build / CI | green |
 | hosted staging | Supabase `cue-shinkan-staging`（`ap-northeast-1`）。0008・0009のmigration適用済み、Task 008 Phase B完了 |
@@ -92,8 +93,8 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 
 | Task | 内容 | 状態 | PR | 依存 |
 |---|---|---|---|---|
-| 011 | 匿名性（k=5・区分preview・10–5ファネル）・並行quota・入力検証 | **実装完了・CI green・レビュー中** | [#12](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/12) | — |
-| 010 | メール通知（outbox・digest・設定・unsubscribe） | 未着手（仕様は `tasks/010-*.md`） | — | 011 |
+| 011 | 匿名性（k=5・区分preview・10–5ファネル）・並行quota・入力検証 | **完了（developへmerge済み `ee08d12`）** | [#12](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/12) | — |
+| 010 | メール通知（outbox・digest・設定・unsubscribe） | **実装中** | — | 011 |
 | 013 | 団体確認（pending/verified/suspended）・停止・kill switch・監査 | 未着手（仕様は `tasks/013-*.md`） | — | — |
 | 014 | アカウント・データライフサイクル（削除・脱退・孤児データ） | 未着手（仕様は `tasks/014-*.md`） | — | 013 |
 | 015 | プライバシー・同意・利用規約draft・同意バージョン | 未着手（仕様は `tasks/015-*.md`） | — | — |
@@ -214,6 +215,9 @@ decision番号は既存D001〜D035。新規はD036以降。
 | 2026-08-27 | Task 011実装完了。PR #12作成、CI（quality / db-tests / e2e）green。
   pgTAP 229→316件、unit 317→328件、並行テスト8件を追加。独立レビュー実施中 |
 | 2026-08-27 | Task 010・013〜018のタスク仕様を `tasks/` へ作成 |
+| 2026-08-27 | 独立レビュー2本でBlocker（送信経路の差分攻撃oracle）を検出・修正。
+  PR #12をdevelopへsquash merge（`ee08d12`）。merge後のdevelopで再検証し全green
+  （pgTAP 337 / unit 329 / 並行8 / hook 201 / CI 3ジョブ）。Task 010着手 |
 
 ## 9. 次回再開時の開始点
 
