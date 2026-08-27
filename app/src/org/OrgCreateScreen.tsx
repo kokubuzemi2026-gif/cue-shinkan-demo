@@ -1,5 +1,6 @@
 import { useState, type FormEvent } from 'react'
 
+import { useScreenFocus } from '../a11y/useScreenFocus'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
 import { createOrganization, orgApiErrorText } from './orgApi'
 
@@ -12,6 +13,7 @@ type OrgCreateScreenProps = {
 // 団体作成。サーバーRPC（create_organization）が団体とowner所属を原子的に作成する。
 // 作成された団体はpending（審査待ち）で始まり、statusをここから変えることはできない
 export function OrgCreateScreen({ client, onCreated, onCancel }: OrgCreateScreenProps) {
+  const headingRef = useScreenFocus<HTMLHeadingElement>('org-create')
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
@@ -35,7 +37,9 @@ export function OrgCreateScreen({ client, onCreated, onCancel }: OrgCreateScreen
 
   return (
     <main className="auth-main">
-      <h1 className="page-title">新しい団体を作る</h1>
+      <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+        新しい団体を作る
+      </h1>
       <section className="auth-card" aria-label="団体情報の入力">
         <form className="auth-form" onSubmit={(event) => void handleSubmit(event)}>
           <label className="field-label" htmlFor="org-name">

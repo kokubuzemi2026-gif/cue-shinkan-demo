@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { useScreenFocus } from './a11y/useScreenFocus'
 import { RoleOnboarding } from './account/RoleOnboarding'
 import { ConsentScreen } from './legal/ConsentScreen'
 import { serverErrorMessage } from './serverdata/apiText'
@@ -106,6 +107,18 @@ function SignedInApp({
     })()
   }
 
+  // 失敗・利用不可の画面も「画面の切替」なので見出しへフォーカスを移す。
+  // 3つは同時に出ないので1つのrefを使い回す
+  const blockedScreen =
+    state.status === 'error'
+      ? 'account-error'
+      : state.status === 'loaded' && !state.account.isUniversityUser
+        ? 'not-university'
+        : consent === 'error'
+          ? 'consent-error'
+          : 'none'
+  const blockedHeadingRef = useScreenFocus<HTMLHeadingElement>(blockedScreen)
+
   if (state.status === 'loading') {
     return <LoadingScreen label="アカウント情報を読み込んでいます…" />
   }
@@ -113,7 +126,9 @@ function SignedInApp({
   if (state.status === 'error') {
     return (
       <main className="auth-main">
-        <h1 className="page-title">読み込みに失敗しました</h1>
+        <h1 className="page-title" tabIndex={-1} ref={blockedHeadingRef}>
+          読み込みに失敗しました
+        </h1>
         <section className="auth-card" aria-label="再試行の案内">
           <p className="auth-text">
             アカウント情報を取得できませんでした。通信環境を確認して再試行してください。
@@ -139,7 +154,9 @@ function SignedInApp({
   if (!account.isUniversityUser) {
     return (
       <main className="auth-main">
-        <h1 className="page-title">このアカウントでは利用できません</h1>
+        <h1 className="page-title" tabIndex={-1} ref={blockedHeadingRef}>
+          このアカウントでは利用できません
+        </h1>
         <section className="auth-card" aria-label="利用条件の案内">
           <p className="auth-text">
             CUEを利用できるのは、神戸大学の学生メール（@stu.kobe-u.ac.jp）で確認済みのアカウントだけです。
@@ -164,7 +181,9 @@ function SignedInApp({
   if (consent === 'error') {
     return (
       <main className="auth-main">
-        <h1 className="page-title">はじめる前に</h1>
+        <h1 className="page-title" tabIndex={-1} ref={blockedHeadingRef}>
+          はじめる前に
+        </h1>
         <section className="auth-card" aria-label="再試行の案内">
           <p className="auth-text">
             確認情報を読み込めませんでした。通信環境を確認して再試行してください。

@@ -331,7 +331,9 @@ button {
 }
 
 .bottom-nav-item[aria-current='page'] .bottom-nav-icon {
-  color: var(--color-coral);
+  /* coralは背景専用にする（文字色では白背景2.79）。選択中はラベルの
+     ink+太字と aria-current で示す */
+  color: var(--color-ink);
 }
 
 /* ---- 押下フィードバックと選択抑止（Task 006） ---- */
@@ -362,4 +364,17 @@ button {
   .demo-badge-button:active .demo-badge {
     transform: none;
   }
+}
+
+/* Task 016: 画面切替でフォーカスを受け取る見出し。
+   ルーターを持たないためJSでフォーカスを移しており、キーボード利用者が
+   「いまどこに居るか」を見失わないよう、控えめな枠を出す。
+   :focus-visible なのでマウス操作では出ない */
+.page-title[tabindex='-1']:focus-visible,
+.wizard-heading[tabindex='-1']:focus-visible,
+.danger-heading[tabindex='-1']:focus-visible,
+.auth-card-title[tabindex='-1']:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 4px;
+  border-radius: 4px;
 }

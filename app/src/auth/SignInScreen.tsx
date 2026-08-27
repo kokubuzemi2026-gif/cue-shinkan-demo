@@ -1,5 +1,6 @@
 import { useEffect, useReducer, useState, type FormEvent } from 'react'
 
+import { useScreenFocus } from '../a11y/useScreenFocus'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
 import { canResend, initialAuthUiState, reduceAuthUi } from './authMachine'
 import { AUTH_TEXT, mapOtpSendError } from './errorMessages'
@@ -25,6 +26,11 @@ export function SignInScreen({ client, hasPendingInvite }: SignInScreenProps) {
   const [rawEmail, setRawEmail] = useState('')
   const [code, setCode] = useState('')
   const [nowMs, setNowMs] = useState(() => Date.now())
+  // メール入力 <-> コード入力の切替でだけ見出しへフォーカスを移す
+  // （再送クールダウンの毎秒再描画では動かさない）
+  const headingRef = useScreenFocus<HTMLHeadingElement>(
+    ui.step === 'enterEmail' || ui.step === 'sendingOtp' ? 'email' : 'code',
+  )
 
   const normalizedEmail = normalizeUniversityEmail(rawEmail)
   const emailValid = isUniversityEmail(normalizedEmail)
@@ -90,7 +96,9 @@ export function SignInScreen({ client, hasPendingInvite }: SignInScreenProps) {
     const sending = ui.step === 'sendingOtp'
     return (
       <main className="auth-main">
-        <h1 className="page-title">大学メールでログイン</h1>
+        <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+          大学メールでログイン
+        </h1>
         <section className="auth-card" aria-label="メールアドレスの入力">
           <p className="auth-text">
             登録とログインは共通です。大学メールへ届く6桁コードで本人確認します。
@@ -145,7 +153,9 @@ export function SignInScreen({ client, hasPendingInvite }: SignInScreenProps) {
   const verifying = ui.step === 'verifying'
   return (
     <main className="auth-main">
-      <h1 className="page-title">コードを入力</h1>
+      <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+        コードを入力
+      </h1>
       <section className="auth-card" aria-label="6桁コードの入力">
         <p className="auth-text">{AUTH_TEXT.otpSentNotice}</p>
         <form className="auth-form" onSubmit={handleCodeSubmit}>

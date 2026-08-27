@@ -153,7 +153,9 @@
 .context-switcher-button[aria-pressed='true'] {
   color: var(--color-ink);
   background: var(--color-white);
-  border-color: var(--color-coral);
+  /* 選択中を示す主要な手がかり。coralは白・creamに対して2.79しかなく
+     1.4.11（非テキスト3:1）を満たさないため ink にする */
+  border-color: var(--color-ink);
 }
 
 .context-switcher-button:focus-visible {
@@ -279,7 +281,7 @@
 }
 
 .danger-card--open {
-  border-color: var(--color-coral);
+  border-color: var(--color-danger);
   border-width: 2px;
 }
 
@@ -327,8 +329,8 @@
 
 .danger-button {
   min-height: var(--tap-target);
-  border: 1.5px solid var(--color-coral);
-  color: var(--color-coral);
+  border: 1.5px solid var(--color-danger);
+  color: var(--color-danger);
   font-weight: 700;
 }
 
