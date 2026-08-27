@@ -122,9 +122,22 @@ async function fetchOtpCode(request: APIRequestContext, address: string): Promis
   return otpMatch![1]
 }
 
-// マウスを一切使わずログインする。同意画面もキーボードだけで通す
-async function signInByKeyboardOnly(page: Page, request: APIRequestContext, address: string) {
+// マウスを一切使わずログインする。同意画面もキーボードだけで通す。
+// Task 020: 最初の入口選択（新入生／団体担当者）もキーボードだけで通す
+async function signInByKeyboardOnly(
+  page: Page,
+  request: APIRequestContext,
+  address: string,
+  entry: '新入生としてはじめる' | '団体担当者としてはじめる' = '新入生としてはじめる',
+) {
   await page.goto(BASE)
+  // 画面表示で入口画面の見出しへフォーカスが移る
+  await expectFocusOnHeading(page, 'CUEをはじめる')
+  await expectNoHorizontalScroll(page, '入口画面(390px)')
+  const entryButton = page.getByRole('button', { name: entry, exact: true })
+  await tabTo(page, entryButton, `${entry}ボタン`)
+  await page.keyboard.press('Enter')
+  // 入口選択後はログイン画面の見出しへフォーカスが移る
   await expectFocusOnHeading(page, '大学メールでログイン')
 
   const emailInput = page.getByLabel('大学メールアドレス')
@@ -150,7 +163,10 @@ async function signInByKeyboardOnly(page: Page, request: APIRequestContext, addr
 
   // 同意画面（初回は必ず出る）をキーボードだけで通す
   const consentCheck = page.getByRole('checkbox', { name: /同意します/u })
-  const onboarding = page.getByRole('heading', { name: '利用方法を選ぶ' })
+  // Task 020: 初回ログインは入口で絞った見出し（新入生としてはじめる）になる
+  const onboarding = page.getByRole('heading', {
+    name: /利用方法を選ぶ|新入生としてはじめる|団体担当者としてはじめる/,
+  })
   await expect(consentCheck.or(onboarding).first()).toBeVisible({ timeout: 20_000 })
   if (await consentCheck.isVisible()) {
     await expectFocusOnHeading(page, 'はじめる前に')
@@ -176,9 +192,9 @@ test('1: 新入生の完全導線を、キーボードだけ・390px・フォー
 }) => {
   await test.step('1-1: ログインと同意（マウスを使わない）', async () => {
     await signInByKeyboardOnly(page, request, EMAIL_STUDENT)
-    // 同意のあと、権限選択の見出しへフォーカスが移る
-    await expectFocusOnHeading(page, '利用方法を選ぶ')
-    await expectNoHorizontalScroll(page, '権限選択(390px)')
+    // 同意のあと、入口で絞った登録画面の見出しへフォーカスが移る（Task 020）
+    await expectFocusOnHeading(page, '新入生としてはじめる')
+    await expectNoHorizontalScroll(page, '入口別の初回登録画面(390px)')
   })
 
   await test.step('1-2: 新入生として登録し、ホームの見出しへフォーカスが移る', async () => {
@@ -289,19 +305,20 @@ test('1: 新入生の完全導線を、キーボードだけ・390px・フォー
       }
     })
     await page.reload()
-    await expect(page.getByRole('heading', { name: '大学メールでログイン' })).toBeVisible({
+    // Task 020: 未ログインの最初の画面は入口選択。意図は持ち越されない
+    await expect(page.getByRole('heading', { name: 'CUEをはじめる' })).toBeVisible({
       timeout: 20_000,
     })
-    await expectNoHorizontalScroll(page, 'セッション切れ後のログイン画面(390px)')
+    await expectNoHorizontalScroll(page, 'セッション切れ後の入口画面(390px)')
   })
 })
 
 test('2: 団体の完全導線でも、フォーカスと390pxが破綻しない', async ({ page, request }) => {
   seedStudentPool(`a11y-${RUN}`, 8, 'outdoor')
 
-  await test.step('2-1: ログイン→同意→権限選択（キーボードのみ）', async () => {
-    await signInByKeyboardOnly(page, request, EMAIL_OWNER)
-    await expectFocusOnHeading(page, '利用方法を選ぶ')
+  await test.step('2-1: ログイン→同意→入口別の登録画面（キーボードのみ）', async () => {
+    await signInByKeyboardOnly(page, request, EMAIL_OWNER, '団体担当者としてはじめる')
+    await expectFocusOnHeading(page, '団体担当者としてはじめる')
   })
 
   await test.step('2-2: 団体作成の画面でフォーカスが見出しへ移る', async () => {

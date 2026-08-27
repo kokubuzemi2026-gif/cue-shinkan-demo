@@ -3,8 +3,10 @@ import { useEffect, useState } from 'react'
 import {
   deriveContexts,
   findMembership,
+  initialContextForIntent,
   resolveActiveContext,
   type AccountContext,
+  type EntryIntent,
   type MyAccount,
 } from '../account/contextModel'
 import { registerStudentAccount } from '../account/useMyAccount'
@@ -18,6 +20,10 @@ type AuthenticatedShellProps = {
   client: CueSupabaseClient
   userId: string
   account: MyAccount
+  // Task 020: 入口意図。**初期コンテキストの決定にだけ**使う（D056）。
+  // 以後の切替は既存のContextSwitcherが担い、意図は初回表示で消費する
+  entryIntent?: EntryIntent | null
+  onEntryIntentConsumed?: () => void
   reloadAccount: () => void
   signOut: () => Promise<void>
 }
@@ -28,11 +34,24 @@ export function AuthenticatedShell({
   client,
   userId,
   account,
+  entryIntent = null,
+  onEntryIntentConsumed,
   reloadAccount,
   signOut,
 }: AuthenticatedShellProps) {
   const contexts = deriveContexts(account)
-  const [active, setActive] = useState<AccountContext | null>(() => resolveActiveContext(contexts, null))
+  // 初期コンテキスト: 入口意図が示す側（サーバーが返したcontextsの中に限る）。
+  // 意図なしなら従来どおり resolveActiveContext(contexts, null) と同値
+  const [active, setActive] = useState<AccountContext | null>(() =>
+    resolveActiveContext(contexts, initialContextForIntent(contexts, entryIntent)),
+  )
+  // 意図は初回表示で消費する。残したままにすると、唯一の団体を脱退したとき等に
+  // ゲートが再成立して登録導線へ追い出される（初期値はinitializerで確定済みのため、
+  // ここで消しても初期表示には影響しない）
+  useEffect(() => {
+    onEntryIntentConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- マウント時に1回だけ
+  }, [])
   const [creatingOrg, setCreatingOrg] = useState(false)
   const [addStudentBusy, setAddStudentBusy] = useState(false)
   const [addStudentFailed, setAddStudentFailed] = useState(false)

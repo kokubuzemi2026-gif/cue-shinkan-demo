@@ -12,9 +12,9 @@
 
 | 項目 | 値 |
 |---|---|
-| `develop` | `423b2c3`（PR #24 merge後） |
+| `develop` | `2d4fc9f`（PR #22 merge後） |
 | `main` | `646278f`（Phase 1公開デモ・**公開中**・凍結） |
-| 完了Task | 000〜017・019（**018は本PR #22でレビュー中**） |
+| 完了Task | 000〜019（**020を実装中**） |
 | migration | **20本**（0008×4・0009×4・0011×3・0010×2・0013×2・0014・0015・0017・0018・0019） |
 | unit test | **365件 / 31ファイル** |
 | pgTAP | **653件 / 36ファイル** |
@@ -108,7 +108,8 @@ Phase 2の**実装はTask 019まで完了**している。学生の登録・パ�
 | 016 | UX・アクセシビリティ・完全E2E | **完了（developへmerge済み `623f85a`）** | [#17](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/17) | 010〜015 |
 | 017 | 運用（structured logging・health・runbook・secret rotation） | **完了（developへmerge済み `cebabdd`）** | [#20](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/20) | 010 |
 | 019 | outboxの剪定・ワーカー並行検証・生成型の同期 | **完了（developへmerge済み `05e2701`）** | [#21](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/21) | 017 |
-| 018 | リリース（release notes・smoke test・deploy設定・main PR） | **レビュー中** | [#22](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/22) | 全部 |
+| 018 | リリース（release notes・smoke test・deploy設定・main PR） | **完了（developへmerge済み `2d4fc9f`）** | [#22](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/22) | 全部 |
+| 020 | 入口分離（新入生／団体担当者の入口とログイン後の初期表示・D056） | **実装中** | — | 016 |
 
 番号の重複回避: 既存Task番号は000〜009・012。013以降を新規に使う（010・011は既存の意味を保持）。
 decision番号は **D055まで使用済み**（D054は本PR＝Task 018、D055はPR #24）。新規はD056以降。migrationの連番は **0019まで**（0012・0016は欠番）。
@@ -510,6 +511,9 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
 | H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | 実メールが1通も飛ばない |
 | **H11** | **Auth の Attack Protection 設定** | 公開後にOTP送信を濫用されうる（§7.1 B7・**P1**） |
 | H10 | 退会後の `auth.users` 削除の挙動確認 | 退会したのに大学メールが残る |
+
+**ソフトウェア側のrelease blocker**: Task 020（入口分離・D056）が `develop` へ
+mergeされるまで公開しない（H項目ではなく実装側の条件。人間の操作は不要）。
 
 H6〜H8（新規プロジェクトの場合はH3も）が揃うまで **`main` へmergeしない**。**H9（送信ワーカーのデプロイ）と H11（Attack Protection）は公開前に必ず済ませる**（§7.1 E3・B7）。
 
