@@ -8,7 +8,7 @@
 
 ## Source of truth（正本）
 
-- `docs/decisions.md`: D026〜D031（Phase 2の前提）、本タスクでD032を追加
+- `docs/decisions.md`: D026〜D031（Phase 2の前提）、本タスクでD035を追加
 - `CLAUDE.md` / `AGENTS.md`: 既存の作業規則（プロダクト仕様・技術制約・安全要件は保持する）
 - Claude Code公式ドキュメント: settings / hooks / subagents の現行構文
   - hookの `timeout` は秒（ミリ秒ではない）
@@ -19,7 +19,7 @@
 ## In scope（変更してよい範囲）
 
 - `CLAUDE.md`、`AGENTS.md`、`README.md`、`.gitignore`
-- `docs/agent_harness.md`（新規）、`docs/decisions.md`（D032の追記）
+- `docs/agent_harness.md`（新規）、`docs/decisions.md`（D035の追記）
 - `tasks/_template.md`（新規）、`tasks/012-agent-harness.md`（新規）
 - `prompts/autonomous_task.md`（新規）、`prompts/task_prompt_template.md`
 - `prompts/002-execution-sequence.md`（Phase 1の記録である旨の注記のみ。手順本体は変更しない）
@@ -29,7 +29,7 @@
 
 - `app/**`（アプリ実装・テスト・依存関係）
 - `.github/workflows/**`（CIの構成は変更しない）
-- `tasks/000-*.md`〜`tasks/009-*.md`、`docs/` の既存文書（D032の追記を除く）
+- `tasks/000-*.md`〜`tasks/009-*.md`、`docs/` の既存文書（D035の追記を除く）
 - Task 009のPR（PR #9）とそのブランチ、staging環境の状態
 - `main` / `develop` への直接push、自動マージ
 
@@ -112,7 +112,7 @@
 |---|---|---|
 | Blocker | gitが長オプションの短縮形を受理するため `git reset --har` / `git clean --fo` / `git push --force-w` が素通り | `_is_long_option()` による前方一致判定へ変更。テスト10件追加 |
 | Blocker | `env` / `sudo` / `bash -c` / `eval` / シェル制御構文 / `git -c alias.x=push x` 経由で素通り | セグメント内の全トークンを走査する方式へ変更。シェル `-c` と alias を再帰的に展開。テスト22件追加 |
-| Blocker | `AGENTS.md` の節番号繰り下げにより、subagent 3ファイルの「§4」参照がプライバシー節ではなくエスカレーション節を指していた | 節番号参照をやめ、見出し名参照へ変更。security-reviewerの決定参照をD007・D026〜D032へ更新 |
+| Blocker | `AGENTS.md` の節番号繰り下げにより、subagent 3ファイルの「§4」参照がプライバシー節ではなくエスカレーション節を指していた | 節番号参照をやめ、見出し名参照へ変更。security-reviewerの決定参照をD007・D026〜D035へ更新 |
 | Blocker | `redact()` が `ghp_` / `github_pat_` / `sbp_` / `re_` / `Bearer` / `https://<token>@host` を素通しするのに「secretはマスク済み」と断定していた | パターンを11形式追加し、文言を「既知形式のみ。転記前に目視確認」へ変更。テスト21形式へ拡充 |
 | Non-blocker | fallback正規表現の判定時間が入力長に対して急激に増加し（レビュー時の実測で125KB入力が41秒。別の追試ではさらに遅く、増加の次数は特定していない）、hook timeout（30秒）超過でfail-openする経路があった | 量指定子を有界化し、入力長を20000文字で打ち切り。約120KBの入力が2秒以内に判定されることをテストで固定 |
 | Non-blocker | NUL文字で引数を切り詰めると判定を回避できる | NUL以降のトークンを落としてから判定。テスト2件追加 |
@@ -140,7 +140,7 @@
 | Non-blocker | Stop hookの発火タイミングの記述が公式仕様と食い違っていた（「セッション終了時」「1セッション1回」） | 「応答を終えるたび」「1回の継続につき1回」へ修正 |
 | Blocker（記載） | Test plan表のテスト件数が実物と不一致だった | 実数（拒否82件・許可39件・理由14件・secret 20形式）へ修正 |
 | Non-blocker（記載） | 「O(n²)・41秒」という計算量の断定が追試で再現しなかった | 実測値の引用と「次数は特定していない」旨へ修正 |
-| Nit | D032に `permissions.deny` の記載漏れ／完了報告テンプレートに独立レビュー欄がない／Best-of-Nの適用条件が不一致／`$CLAUDE_PROJECT_DIR` の波括弧なし形式 | すべて修正 |
+| Nit | D035に `permissions.deny` の記載漏れ／完了報告テンプレートに独立レビュー欄がない／Best-of-Nの適用条件が不一致／`$CLAUDE_PROJECT_DIR` の波括弧なし形式 | すべて修正 |
 | 棄却 | 13件（既知の限界として明記済み・実出力では到達しない経路・修正が回帰を生むもの） | 反証結果を根拠に対応せず |
 
 ### 実装中に判明した制約（記録）

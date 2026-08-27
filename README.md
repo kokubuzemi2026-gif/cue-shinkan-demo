@@ -85,7 +85,8 @@ Phase 1（2026年8月22日のメンバー持ち寄りデモ）は完了し、`ma
 - 公開デモ（凍結中・mainのlocalStorage版）: https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/
 - Phase 2の技術: Supabase Auth（メールOTP）+ PostgreSQL + RLS
 - ブランチ運用: `main`は凍結。Task 008〜011は`develop`をbaseにしたPRで進め、`main`へはマージしない
-- 認証・権限の正本: `docs/auth_and_authorization.md`、決定は`docs/decisions.md`（D026〜D031）
+- 認証・権限の正本: `docs/auth_and_authorization.md`、決定は`docs/decisions.md`（D026〜D034）
+- サーバーデータ（パスポート・オファー配信・受信箱・ファネル）の正本: `docs/server_data_model.md`（Task 009）
 - hosted環境（staging）の構築・確認手順: `docs/runbook_supabase_hosted.md`
 
 Phase 1の実装順序は `docs/implementation_plan.md`（凍結済みの歴史文書）と `tasks/000〜007` を参照してください。

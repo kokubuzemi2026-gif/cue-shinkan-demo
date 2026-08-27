@@ -10,6 +10,9 @@ type ClubDashboardProps = {
   weeklyLimit: number
   onCreate: () => void
   headingRef: RefObject<HTMLHeadingElement | null>
+  // 作成ボタンの表示可否（Task 009: 認証済みアプリでは団体のowner/adminのみ作成できる。
+  // 省略時はtrue＝Phase 1デモの従来動作）
+  canCreate?: boolean
 }
 
 const FUNNEL_LABELS = [
@@ -28,6 +31,7 @@ export function ClubDashboard({
   weeklyLimit,
   onCreate,
   headingRef,
+  canCreate = true,
 }: ClubDashboardProps) {
   const quotaFull = sentThisWeek >= weeklyLimit
 
@@ -57,16 +61,22 @@ export function ClubDashboard({
           </span>
         </div>
         <p className="quota-helper">直近7日間に送信できるキャンペーンは{weeklyLimit}件までです。</p>
-        <button
-          type="button"
-          className="button button-primary club-create-button"
-          onClick={onCreate}
-          disabled={quotaFull}
-        >
-          新しいオファーを作成
-        </button>
-        {quotaFull && (
-          <p className="quota-full-note">今週の作成上限（{weeklyLimit}件）に達しています。</p>
+        {canCreate ? (
+          <>
+            <button
+              type="button"
+              className="button button-primary club-create-button"
+              onClick={onCreate}
+              disabled={quotaFull}
+            >
+              新しいオファーを作成
+            </button>
+            {quotaFull && (
+              <p className="quota-full-note">今週の作成上限（{weeklyLimit}件）に達しています。</p>
+            )}
+          </>
+        ) : (
+          <p className="quota-helper">オファーの作成・送信は、オーナーまたは管理者が行えます。</p>
         )}
       </section>
 
