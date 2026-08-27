@@ -12,7 +12,7 @@
 
 | 項目 | 値 |
 |---|---|
-| `develop` | `05e2701`（PR #21 merge後） |
+| `develop` | `72f3cc8`（PR #23 merge後） |
 | `main` | `646278f`（Phase 1公開デモ・**公開中**・凍結） |
 | 完了Task | 000〜017・019（**018は本PR #22でレビュー中**） |
 | migration | **19本**（0008×4・0009×4・0011×3・0010×2・0013×2・0014・0015・0017・0018） |
@@ -316,7 +316,7 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 
 ## 7.2 人間の操作チェックリスト（公開までに必要なものだけ）
 
-**実装側からは実行できない**操作だけを、実行順にまとめる。
+**実装側からは実行できない**操作だけを、実行順にまとめる（§7 の H1〜H11 を網羅する。H5 は段階3の release PR に含む）。
 Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メールが要るため。
 
 > **secretをチャットへ貼らないでください。** 値はDashboardとGitHubの設定画面へ
@@ -328,8 +328,29 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   - なぜ: 接続先が決まらないと以降すべてが進まない
   - 画面: https://supabase.com/dashboard → プロジェクト一覧
   - 入力場所: 既存の `cue-shinkan-staging` を昇格するか、新規作成（Region: `ap-northeast-1`）
-  - 成功判定: Project Settings → General に **Project URL** が表示される
+  - 成功判定: Project Settings → **API** に **Project URL** が表示される
+    （`docs/runbook_supabase_hosted.md` §5 と同じ画面）
   - 注意: **Freeプランの範囲で行う。有料プランへの変更は別途相談**
+  - **同時に決める（§7.1 E6・P1）**: 送信元をどうするか。
+    stagingのSMTPは**個人Gmail（1日500宛先）**の暫定構成で、本番は
+    独自ドメイン＋専用プロバイダが要る。ここで決めないと H3 の作業が決まらない
+
+- [ ] **H3 メール送信（SMTP）を設定する**
+  - なぜ: **新規プロジェクトを作った場合、これが無いと新入生にOTPが1通も届かない。**
+    2026-06-03以降に作成された新規Freeプロジェクトは、標準メールプロバイダのままだと
+    **本文・件名を変更できず**（6桁コード形式にできない）、しかも
+    **組織メンバーのアドレス宛にしか配信されない**
+    （`docs/runbook_supabase_hosted.md` §3-2・プラットフォーム制約）
+  - **stagingを昇格する場合は設定済み**（2026-08-25にカスタムSMTPへ移行済み）。
+    **新規作成した場合は必須**
+  - 画面: Supabase Dashboard → Project Settings → Authentication → SMTP Settings
+  - 入力場所: H6で決めた送信元のホスト・ポート・ユーザー・パスワード・From
+    （**値はDashboardへ直接入力。リポジトリ・チャット・CIへ置かない**）
+  - 続けて: Authentication → Email Templates の「Magic Link」と「Confirm signup」の
+    **両方**を、リンクではなく **6桁コード `{{ .Token }}` だけ**の本文へ差し替える
+    （`app/supabase/templates/otp_code.html` と同等。§3-2）
+  - 成功判定: **組織メンバー以外**の大学メールアドレス宛にOTPが届き、
+    本文が6桁コード形式になっている
 
 - [ ] **H7 GitHub Actions の secrets に接続設定を入れる**
   - なぜ: 公開ビルドに接続先が埋め込まれないと「接続設定が必要です」の案内画面になる
@@ -341,11 +362,18 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   - **Variables タブではありません**（D054。variables はログでマスクされない）
   - **`sb_secret_…` を貼らないこと。** 貼った場合は設定し直す前に Dashboard で失効させる
 
-- [ ] **H8 Auth の Site URL / Redirect URLs に公開URLを入れる**
-  - なぜ: 入れないと OTP のリンク先が壊れ、ログインを完了できない
+- [ ] **H8 Auth の Site URL を公開URLへ変更する**
+  - なぜ: いまは `http://localhost:5173/cue-shinkan-demo/` のまま（§3-3 の決定）。
+    **本アプリはOTPコード方式でリンクを使わない**ため
+    （`emailRedirectTo` を渡さず `verifyOtp` の6桁コード、`detectSessionInUrl: false`）、
+    Site URL がログインを直接壊すわけではない。それでも本番でlocalhostを指したままにしない。
+    テンプレートを既定へ戻した場合、既定文面の `{{ .SiteURL }}` がlocalhostを指す
   - 画面: Supabase Dashboard → Authentication → URL Configuration
-  - 入力場所: Site URL と Redirect URLs に `https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/`
-  - 成功判定: 保存後、H2 の OTP 往復が最後まで通る
+  - 入力場所: **Site URL のみ** に `https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/`
+  - **Redirect URLs は追加しない**（`docs/runbook_supabase_hosted.md` §3-3。
+    OTPコード方式でリダイレクトを使わない）
+  - 成功判定: Authentication → URL Configuration の **Site URL が公開URLになっている**
+    （OTP往復はSite URLの有無で結果が変わらないため、H8の判定には使えない）
 
 - [ ] **H11 Auth の Attack Protection を有効にする**
   - なぜ: publishable key は公開バンドルに必ず入る。既定では CAPTCHA が無効で、
@@ -363,7 +391,7 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   - 入力場所: `cd app && npx supabase link --project-ref <ref> && npx supabase db push`
   - 成功判定: `npx supabase migration list` でローカルとリモートの差分が無い。
     適用後に `select * from public.platform_health();` が1行返る
-  - 事前に必ず: `docs/runbook_operations.md` §3 の手順（backup → 差分確認 → 適用）
+  - 事前に必ず: `docs/runbook_operations.md` §3 の手順（差分確認 → migrationを読む → backup → 適用 → `platform_health()` 確認）
 
 - [ ] **H2 大学メールで OTP を1往復させる**
   - なぜ: Authの生存はDBのRPCでは確認できない（`docs/runbook_incident.md` §2.5）
@@ -476,7 +504,7 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
 |---|---|---|
 | **H6** | 公開用Supabaseプロジェクトの作成（または staging を昇格する判断） | 接続先が決まらない |
 | **H7** | GitHub Actions **secrets** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`（D054） | 公開ビルドが接続設定を持てない（deployが検証ステップで止まる） |
-| **H8** | Supabase Auth の Site URL / Redirect URL を公開URLへ | OTPのリンク先が壊れる |
+| **H8** | Supabase Auth の **Site URL** を公開URLへ（Redirect URLsは追加しない） | 本番でSite URLがlocalhostを指したまま残る |
 | H1 | hosted staging への migration 適用 | §6 の「migration・rollback確認済み」が埋まらない |
 | H2 | 大学メールでのOTP実機確認 | ログインの生存確認ができない |
 | H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | 実メールが1通も飛ばない |

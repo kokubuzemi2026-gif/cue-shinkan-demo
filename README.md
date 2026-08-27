@@ -52,7 +52,7 @@ CUE は、新入生が事前に登録した「興味パスポート」をもと�
 
 - `docs/product_spec.md`: プロダクト要件
 - `docs/matching_and_safety.md`: マッチング・安全設計
-- `docs/decisions.md`: **決定事項の正本**（D001〜D053）
+- `docs/decisions.md`: **決定事項の正本**（D001〜D054）
 - `docs/auth_and_authorization.md`: 認証・権限の正本（Phase 2）
 - `docs/server_data_model.md`: サーバーデータの正本
 - `docs/notifications.md`: メール通知の設計
