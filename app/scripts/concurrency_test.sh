@@ -299,9 +299,19 @@ from generate_series(1, 6) as n;
 SQL
 
 claim_sql() { # claim_sql <batch size>
+  # **`as materialized` を外さないこと。**
+  # `claim_email_batch` は volatile な集合返し関数で、行を掴む副作用を持つ。
+  # `select count(*) from public.claim_email_batch(3)` と素で書くと、
+  # プランによっては関数ノードが再スキャンされ、**2回実行されて6件掴む**。
+  # CIで実際に「Aが6件・Bが0件」が1度出た（ローカルでは再現しない）。
+  # 観測はすべて整合する: count=6 / Bは掴めない / どの行もattempts=1。
+  # `as materialized` は関数を1度だけ評価してCTEへ格納するため、再スキャンが起きない
   cat <<SQL
 set local role service_role;
-select count(*) as claimed from public.claim_email_batch($1);
+with claimed as materialized (
+  select * from public.claim_email_batch($1)
+)
+select count(*) as claimed from claimed;
 reset role;
 SQL
 }
