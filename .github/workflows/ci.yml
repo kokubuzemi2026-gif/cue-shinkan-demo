@@ -75,7 +75,9 @@ jobs:
   # Task 008: Playwright E2E（ローカルSupabase + Mailpit + Chromium）。
   # remote Supabase・本番secretは使わない。ブラウザへ渡すのはローカルスタックの
   # URLとpublishable keyだけで、service-role key・JWT secretは参照しない。
-  # OTP・招待トークンはログ・アーティファクトへ出さない（trace/video/screenshot無効）
+  # OTP・招待トークンはログ・アーティファクトへ出さない
+  # （trace/video/screenshot無効 + PLAYWRIGHT_NO_COPY_PROMPT。
+  #   後者が無いと、失敗時のaria snapshotへ入力値がそのまま残る）
   e2e:
     runs-on: ubuntu-latest
     defaults:
@@ -117,4 +119,10 @@ jobs:
             echo "VITE_SUPABASE_PUBLISHABLE_KEY=$PUB_KEY"
           } >> "$GITHUB_ENV"
       - name: Run Playwright E2E
+        # playwright.config.ts でも立てているが、設定漏れに備えてCI側でも指定する。
+        # ここで明示するとCIではconfig側の代入が発火しないため、
+        # configの1行が消えてもCIは気づけない。その回帰は
+        # src/lib/playwrightConfigGuard.test.ts が検出する
+        env:
+          PLAYWRIGHT_NO_COPY_PROMPT: '1'
         run: npm run e2e
