@@ -299,13 +299,14 @@ from generate_series(1, 6) as n;
 SQL
 
 claim_sql() { # claim_sql <batch size>
-  # **`as materialized` を外さないこと。**
-  # `claim_email_batch` は volatile な集合返し関数で、行を掴む副作用を持つ。
-  # `select count(*) from public.claim_email_batch(3)` と素で書くと、
-  # プランによっては関数ノードが再スキャンされ、**2回実行されて6件掴む**。
-  # CIで実際に「Aが6件・Bが0件」が1度出た（ローカルでは再現しない）。
-  # 観測はすべて整合する: count=6 / Bは掴めない / どの行もattempts=1。
-  # `as materialized` は関数を1度だけ評価してCTEへ格納するため、再スキャンが起きない
+  # CIで「Aが6件・Bが0件」が出た件の原因は**関数の内側**にあった（D055）:
+  # 旧実装は掴む行の確定を IN サブクエリ
+  # `where o.id in (select ... for update skip locked limit N)` で行っており、
+  # プランによってサブプランが再実行され得た。migration 0019 で
+  # 関数内を `with picked as materialized` + join へ変えて解消済み。
+  # ここのCTEラッパは当初この事象への対処として入れたが、原因は別だった。
+  # 呼び出し形に依らない検証にするための**防御として残す**（外しても
+  # 0019適用後は正しく動く。36_claim_batch_limit_test.sql が契約を固定している）
   cat <<SQL
 set local role service_role;
 with claimed as materialized (

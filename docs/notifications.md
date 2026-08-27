@@ -101,7 +101,7 @@ enqueue時の判定だけでは足りない。積まれてから送信までに�
 
 | RPC | 権限 | 内容 |
 |---|---|---|
-| `claim_email_batch(batch_size)` | **service_role専用** | 期限が来た`pending`を`sending`へ進めて取り出す。`FOR UPDATE SKIP LOCKED`でワーカーが並んでも二重に掴まない。**宛先メールを返す唯一の経路** |
+| `claim_email_batch(batch_size)` | **service_role専用** | 期限が来た`pending`を`sending`へ進めて取り出す。`FOR UPDATE SKIP LOCKED`でワーカーが並んでも二重に掴まない。**1回の取り出しは `batch_size` 件まで**（掴む行の確定は `as materialized` のCTEで1度だけ評価する・D055）。**宛先メールを返す唯一の経路** |
 | `complete_email(id, succeeded, error_code)` | **service_role専用** | 成功→`sent` / 失敗→backoffして`pending` / 上限超過→`failed` |
 | `email_outbox_health()` | **service_role専用** | 状態別の件数と、最古のpending・sending時刻だけを返す |
 
@@ -144,6 +144,7 @@ SMTP接続は暗号化を必須にする（465なら暗黙TLS、それ以外はS
 - DB: pgTAP `24_notification_outbox_test.sql`（冪等性・状態遷移・backoff・上限・
   daily digestの時刻）、`25_notification_privacy_test.sql`（権限・PIIサーフェス）
 - pgTAP: `35_outbox_prune_test.sql`（剪定の権限・下限・状態ごとの取捨・Task 019）
+- pgTAP: `36_claim_batch_limit_test.sql`（1回の取り出しが `batch_size` を超えない・D055）
 - E2E: `e2e/task010-notifications.spec.ts`（設定の3択・永続化・設定に応じた積まれ方・
   `off`で積まれないこと・通知を止めてもオファーは届くこと）
 - **実メール送信は未検証**。hosted stagingでの実機確認は `docs/launch_plan.md` §7 の人間タスク
