@@ -1,0 +1,118 @@
+# Task 020: 新入生／団体担当者の入口分離（role entry UX）
+
+## Goal（目的）
+
+未ログイン時にOTP入力画面を直接出さず、「新入生の方」（主導線）と
+「団体の方はこちら」の2つの入口を先に示す。ログイン後は選んだ入口に応じた
+初期画面を出す。**認証・認可モデルは変更しない**（同じ大学メール6桁OTP・
+1人1アカウント・兼任可・入口はUI意図であってrole/permissionではない）。
+
+公開前のソフトウェア側release blockerとして扱う（人間操作のH項目ではない）。
+
+## Source of truth（正本）
+
+- 本ファイル（ユーザー確定要件の写し）
+- `docs/auth_and_authorization.md`（認証・認可の正本。変更しない）
+- `docs/decisions.md` D056（本タスクで追加）
+- `docs/product_spec.md`
+
+## In scope
+
+- `app/src/auth/EntryScreen.tsx`（新規・入口画面）
+- `app/src/auth/entryIntent.ts`（新規・`EntryIntent` 型と入口別文言の純関数）
+- `app/src/auth/SignInScreen.tsx`（入口別の見出し・説明、「入口を選び直す」導線）
+- `app/src/AppRoot.tsx`（入口意図のReact state・ログアウト時の破棄・分岐）
+- `app/src/account/contextModel.ts`（`preferredContextForIntent` 純関数）
+- `app/src/shell/AuthenticatedShell.tsx`（初期コンテキストへ入口意図を反映）
+- `app/src/account/RoleOnboarding.tsx`（入口意図で並び順・強調を変える）
+- 入口に応じた「権限が無い側」の案内画面（新規/既存の拡張。最小範囲）
+- unit test（純関数）・E2E（`app/e2e/task020-entry.spec.ts`）
+- 文書: 本ファイル / D056 / `docs/product_spec.md` / `docs/auth_and_authorization.md`
+  （UI意図が認可根拠でない旨の追記のみ）/ `docs/launch_plan.md` / `docs/release_notes_v1.0.md`
+
+## Out of scope（禁止事項）
+
+- 認証基盤の分離・役割別認証・パスワード・Magic Link
+- migration / DB / RLS / RPC / Edge Function / 通知 / 削除機能の変更
+- 新しいSECURITY DEFINER RPC
+- 新しいrouter・状態管理ライブラリ等の依存追加
+- 入口意図の user metadata / DB / localStorage への永続化
+- 招待トークンの受領・URL除去・メモリ保持方法の変更・複製
+- 新しい招待検索・トークン入力・メール照合機能
+- Phase 1 `DemoRole` の再利用
+- `main` へのmerge・release PR・公開・release/tag作成
+
+## 確定要件（ユーザー指定の写し・要約）
+
+### 入口画面（未ログイン・招待なし）
+
+- 「新入生の方」: 説明「興味に合う団体から、新歓案内を受け取れます」/
+  CTA「新入生としてはじめる」。**視覚上の主導線**
+- 「団体の方はこちら」: 説明「団体情報や新歓案内を登録・管理できます」/
+  CTA「団体担当者としてはじめる」。独立カード（小さなテキストリンク不可）
+- 「団体としてログイン」ではなく**「団体担当者として」**（共有アカウントを連想させない）
+- 両方がスマートフォンの最初の画面内で認識できる縦配置
+- 注記: どちらも個人の大学メールでログイン。兼任はログイン後に切替可能
+
+### 認証画面
+
+- どちらの入口も同一 `SignInScreen`・同一OTP処理へ合流
+- 完全共通: `signInWithOtp` / `verifyOtp` / 大学メール判定 / 再送制御 /
+  エラー表現 / 新規・既存で表示を変えない
+- 入口に応じて見出し・説明文のみ変えてよい
+- 「入口を選び直す」導線を置く（ログアウト・別アカウント不要で入口画面へ）
+
+### ログイン後の初期表示（既存順序を壊さない）
+
+OTP → 利用資格確認 → 同意 → 招待確認 → **入口に応じた初期表示** → 通常の切替
+
+- 新入生入口: 権限あり→新入生画面 / なし→「新入生として登録する」説明+明示ボタン
+  （団体権限だけでも進める。**入口選択だけでは権限を作らない**。登録は既存RPCの明示操作のみ）
+- 団体入口: 所属あり→団体画面（複数は既存 `ContextSwitcher`）/
+  なし→団体登録導線+招待リンク参加の説明（新入生権限だけでも進める。
+  **入口選択だけでは団体・membershipを作らない**）
+- 所属・権限の有無を理由に、選んだ入口と逆の画面を先に出さない
+- 両権限: 選んだ入口側を先に表示。以後は既存切替
+- 入口意図がないセッション復元: 既存の初期コンテキスト決定を維持
+- ログアウトで入口意図を破棄
+
+### 招待リンク
+
+- 入口選択画面を強制しない。既存の 認証→利用資格確認→同意→`AcceptInviteScreen` を維持
+
+### 入口意図
+
+- `student | organization` の別型（roleではない）。React stateの最小実装
+- リロードで入口選択へ戻るのは許容。誤った権限・団体画面へ進むのは不可
+- 認可根拠にしない（認可の正本は `auth.uid()`・DB・RLS・既存RPC）
+
+## Acceptance criteria
+
+1. 通常の未ログイン画面に2つの入口が表示される（新入生が視覚上の主導線）
+2. 両入口が同じOTP送信・検証処理へ合流する
+3. ログイン画面から入口を選び直せる
+4. 新入生入口: 権限あり／なし の両方が要件どおり
+5. 団体入口: 所属あり／なし の両方が要件どおり
+6. 両権限ユーザーで入口に応じて初期表示が変わり、以後は既存切替が使える
+7. 複数団体は既存切替で選べる
+8. 入口選択だけでは権限・団体・membershipが作られない
+9. 改変した入口意図・任意のorganization IDで未所属団体を表示できない
+10. 招待リンク流入は入口画面を挟まず既存フローのまま
+11. ログアウト後に入口意図を持ち越さない
+12. 通信失敗時にDemoRole等へフォールバックしない
+13. 既存の認証・RLS・RPC・招待テストがすべてgreen
+14. 実ブラウザ（375×812・1440×900）で入口画面・両ログイン画面を目視確認
+
+## Test plan
+
+- unit: `entryIntent` の文言・`preferredContextForIntent`（実際の分岐数から決める）
+- E2E: `task020-entry.spec.ts`（上の受入条件のUI到達可能な範囲）
+- 既存suiteの全green（unit / pgTAP / 並行 / E2E / build / audit）
+
+## Rollback
+
+- UI層のみの変更のため、revert PRで戻せる（DB・migrationに触れない）
+
+## Verification record
+
+実装後に記入する。
