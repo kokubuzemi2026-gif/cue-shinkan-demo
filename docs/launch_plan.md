@@ -14,9 +14,9 @@
 |---|---|
 | `develop` | `2d4fc9f`（PR #22 merge後） |
 | `main` | `646278f`（Phase 1公開デモ・**公開中**・凍結） |
-| 完了Task | 000〜019（**020を実装中**） |
+| 完了Task | 000〜020（020は本表を含むPR [#25](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/25) のmergeで完了） |
 | migration | **20本**（0008×4・0009×4・0011×3・0010×2・0013×2・0014・0015・0017・0018・0019） |
-| unit test | **365件 / 31ファイル** |
+| unit test | **370件 / 31ファイル**（020で+5） |
 | pgTAP | **653件 / 36ファイル** |
 | 並行テスト | **15件**（`npm run db:test:concurrency`） |
 | hookテスト | 201件 |
@@ -83,7 +83,7 @@ Phase 2の**実装はTask 019まで完了**している。学生の登録・パ�
 | スマホ主要導線 | ✅ | 006/008/009 |
 | アクセシビリティ（キーボード・focus・label・contrast） | ⚠️ 体系的に検証し、コントラスト2件とフォーカス移動を修正。**入力欄の枠が1.4.11未達・スクリーンリーダー実機未確認**（§7.1 C1・C2） | 016 |
 | loading / empty / error / retry | ✅ 主要画面を確認 | 016 |
-| 認証・RLS・RPC・匿名性・E2Eの自動テスト | ✅ pgTAP **653件**（36ファイル）/ 並行15件 / unit 365件 / E2E | 008〜019 |
+| 認証・RLS・RPC・匿名性・E2Eの自動テスト | ✅ pgTAP **653件**（36ファイル）/ 並行15件 / unit 370件 / E2E | 008〜020 |
 | staging実環境検証 | ⚠️ **008のみ完了。009以降は未実施**（H1・H9） | Phase B |
 | release PRと公開後smoke test | ⚠️ 手順は用意済み（production用A・staging用Bに分割）。**実行は公開後**（H6〜H8待ち） | 018 |
 | P0/P1既知不具合ゼロ | ⚠️ §7.1 の28件へ重大度を付与。**P0は0件・P1は7件**（公開判断で受容が要る） | 018 |
@@ -109,7 +109,7 @@ Phase 2の**実装はTask 019まで完了**している。学生の登録・パ�
 | 017 | 運用（structured logging・health・runbook・secret rotation） | **完了（developへmerge済み `cebabdd`）** | [#20](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/20) | 010 |
 | 019 | outboxの剪定・ワーカー並行検証・生成型の同期 | **完了（developへmerge済み `05e2701`）** | [#21](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/21) | 017 |
 | 018 | リリース（release notes・smoke test・deploy設定・main PR） | **完了（developへmerge済み `2d4fc9f`）** | [#22](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/22) | 全部 |
-| 020 | 入口分離（新入生／団体担当者の入口とログイン後の初期表示・D056） | **実装中** | — | 016 |
+| 020 | 入口分離（新入生／団体担当者の入口とログイン後の初期表示・D056） | **完了（本行を含むPRのmergeで確定）** | [#25](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/25) | 016 |
 
 番号の重複回避: 既存Task番号は000〜009・012。013以降を新規に使う（010・011は既存の意味を保持）。
 decision番号は **D055まで使用済み**（D054は本PR＝Task 018、D055はPR #24）。新規はD056以降。migrationの連番は **0019まで**（0012・0016は欠番）。

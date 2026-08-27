@@ -48,6 +48,9 @@ async function fetchOtpCode(request: APIRequestContext, address: string): Promis
   const text = `${message.Text ?? ''} ${message.HTML ?? ''}`
   const code = /\b(\d{6})\b/.exec(text)?.[1] ?? ''
   expect(code.length === 6).toBe(true)
+  // 読み終えたメールは削除する（task016と同じ）。同じアドレスへ再ログインする
+  // テスト（E5・E8）で、次回のpollが前回の古いメールを拾わないようにする
+  await request.delete(`${MAILPIT}/api/v1/messages`, { data: { IDs: [messageId] } })
   return code
 }
 
@@ -68,9 +71,21 @@ async function signInVia(
   // 合流点: 入口に依らず同じログイン画面
   await expect(page.getByRole('heading', { name: '大学メールでログイン' })).toBeVisible()
   await page.getByLabel('大学メールアドレス').fill(address)
-  await page.getByRole('button', { name: '6桁コードを送る' }).click()
   const codeInput = page.getByRole('textbox', { name: '6桁コード' })
-  await expect(codeInput).toBeVisible()
+  // 同じアドレスで続けてログインし直すテスト（E5・E8・旧E7）では、前回の送信から
+  // 約1秒で次の送信が起きるため、ローカルスタックの再送間隔
+  // max_frequency = "1s"（supabase/config.toml [auth.email]）にかかって
+  // rateLimited になることがある（CI実測: 前後の操作が速いと1秒を割る）。
+  // その場合だけ、画面の案内どおり少し待って送り直す。rateLimited以外の
+  // 送信失敗はリトライせず、そのまま失敗として検出する
+  const rateLimitAlert = page.getByRole('alert').filter({ hasText: '送信回数の上限' })
+  for (let attempt = 1; ; attempt += 1) {
+    await page.getByRole('button', { name: '6桁コードを送る' }).click()
+    await expect(codeInput.or(rateLimitAlert).first()).toBeVisible({ timeout: 15_000 })
+    if (await codeInput.isVisible()) break
+    expect(attempt, '再送レート制限が続いています（max_frequency起因なら1回の待機で解消するはず）').toBeLessThan(3)
+    await page.waitForTimeout(1_100)
+  }
   await codeInput.fill(await fetchOtpCode(request, address))
   await page.getByRole('button', { name: 'ログインする' }).click()
   await passConsentIfPresent(page)
@@ -281,4 +296,25 @@ test('E7: 招待リンク流入では入口画面を挟まず、認証→同意�
     timeout: 20_000,
   })
   await context.close()
+})
+
+test('E8: 新入生権限のみの人が団体入口を選ぶと、登録せずに新入生画面へ進める', async ({
+  page,
+  request,
+}) => {
+  // EMAIL_S は E3 で新入生登録のみ（団体所属なし）。E6の対称パス
+  await signInVia(page, request, 'organization', EMAIL_S)
+  await expect(page.getByRole('heading', { name: '団体担当者としてはじめる' })).toBeVisible({
+    timeout: 15_000,
+  })
+  // 新入生権限があるので「登録せずに新入生画面へ進む」が出る（権限ゼロ向けの
+  // 「他の利用方法を見る」は出ない）
+  const skip = page.getByRole('button', { name: '登録せずに新入生画面へ進む' })
+  await expect(skip).toBeVisible()
+  await expect(page.getByRole('button', { name: '他の利用方法を見る' })).toHaveCount(0)
+  // 団体を作らないまま先へ進める＝入口意図が権限を要求しない
+  await skip.click()
+  await expect(page.getByRole('heading', { name: '新入生ホーム' })).toBeVisible({
+    timeout: 15_000,
+  })
 })

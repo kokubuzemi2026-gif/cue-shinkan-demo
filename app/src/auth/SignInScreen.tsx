@@ -24,9 +24,7 @@ const SEND_ERROR_TEXT = {
   badCode: AUTH_TEXT.badCode,
 } as const
 
-// 登録とログインを一つの導線に統合したメールOTP画面。
-// ドメイン外・plus付きメールはクライアント側で送信自体を拒否する（第一ゲート）。
-// 成功・失敗の表示は新規/既存で差を付けず、アカウントの存在有無を漏らさない
+// 入口別の文脈表示（Task 020）。選んだ入口だけで決まり、アカウントの有無では変わらない
 const ENTRY_LEAD: Record<EntryIntent, { context: string; lead: string }> = {
   student: {
     context: '新入生としてはじめる',
@@ -38,6 +36,9 @@ const ENTRY_LEAD: Record<EntryIntent, { context: string; lead: string }> = {
   },
 }
 
+// 登録とログインを一つの導線に統合したメールOTP画面。
+// ドメイン外・plus付きメールはクライアント側で送信自体を拒否する（第一ゲート）。
+// 成功・失敗の表示は新規/既存で差を付けず、アカウントの存在有無を漏らさない
 export function SignInScreen({
   client,
   hasPendingInvite,
@@ -122,9 +123,7 @@ export function SignInScreen({
           大学メールでログイン
         </h1>
         {entryIntent !== null && (
-          <p className="auth-hint entry-context" role="status">
-            {ENTRY_LEAD[entryIntent].context}
-          </p>
+          <p className="auth-hint entry-context">{ENTRY_LEAD[entryIntent].context}</p>
         )}
         <section className="auth-card" aria-label="メールアドレスの入力">
           <p className="auth-text">

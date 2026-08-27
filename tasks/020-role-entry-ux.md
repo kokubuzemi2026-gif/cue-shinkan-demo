@@ -19,10 +19,11 @@
 ## In scope
 
 - `app/src/auth/EntryScreen.tsx`（新規・入口画面）
-- `app/src/auth/entryIntent.ts`（新規・`EntryIntent` 型と入口別文言の純関数）
-- `app/src/auth/SignInScreen.tsx`（入口別の見出し・説明、「入口を選び直す」導線）
+- `app/src/auth/SignInScreen.tsx`（入口別の文脈表示・リード文（`ENTRY_LEAD` 定数）、
+  「入口を選び直す」導線。当初案の `entryIntent.ts` 新設は不要になり、
+  型は `contextModel.ts`・文言はこのファイルに置いた）
 - `app/src/AppRoot.tsx`（入口意図のReact state・ログアウト時の破棄・分岐）
-- `app/src/account/contextModel.ts`（`preferredContextForIntent` 純関数）
+- `app/src/account/contextModel.ts`（`EntryIntent` 型と `initialContextForIntent` 純関数）
 - `app/src/shell/AuthenticatedShell.tsx`（初期コンテキストへ入口意図を反映）
 - `app/src/account/RoleOnboarding.tsx`（入口意図で並び順・強調を変える）
 - 入口に応じた「権限が無い側」の案内画面（新規/既存の拡張。最小範囲）
@@ -105,7 +106,7 @@ OTP → 利用資格確認 → 同意 → 招待確認 → **入口に応じた�
 
 ## Test plan
 
-- unit: `entryIntent` の文言・`preferredContextForIntent`（実際の分岐数から決める）
+- unit: `initialContextForIntent`（実際の分岐数から決める。入口別文言は定数のためE2Eで表示を検証）
 - E2E: `task020-entry.spec.ts`（上の受入条件のUI到達可能な範囲）
 - 既存suiteの全green（unit / pgTAP / 並行 / E2E / build / audit）
 
@@ -149,7 +150,7 @@ E2Eだけになる。Aは`docs/auth_and_authorization.md` §4「UI状態のみ�
 | unit（vitest） | **31ファイル 370件 PASS**（contextModelへ+5: 意図なし＝既存既定と同値・意図側優先・フォールバック・注入不可） |
 | tsc -b / oxlint / vite build | すべてgreen |
 | pgTAP・並行テスト | **対象外**（DB・RPC・migrationに一切触れないため変更なし。suiteは直前のdevelop検証で653件/15件green） |
-| E2E | **ローカル未実行**（Docker無し）。新規`task020-entry.spec.ts`（E1〜E7）+ 既存7本を入口フローへ更新し、**CIで実行**する |
+| E2E | **ローカル未実行**（Docker無し）。新規`task020-entry.spec.ts`（E1〜E8）+ 既存7本を入口フローへ更新し、**CIで実行**する |
 | 実ブラウザ目視 | **6枚すべて目視済み**（375×812・1440×900 × 入口/新入生ログイン/団体ログイン）。両CTAが初期画面内（実測 y+h ≤ viewport: mobile 246/435 ≤ 812）・横スクロールなし・新入生カードが枠+主ボタン+順序で優位（色だけに依存しない）・見出し構造 h1→h2・はみ出し/重なり/不自然な長文なし |
 | キーボード操作 | task016のE2Eを入口画面込みへ更新（入口→ログイン→同意→登録まで全手順キーボードのみ・フォーカス見出し検証つき）。**実行はCI** |
 
@@ -158,18 +159,26 @@ E2Eだけになる。Aは`docs/auth_and_authorization.md` §4「UI状態のみ�
 - 新規 `task020-entry.spec.ts`: E1 入口表示と非永続 / E2 選び直しとリロード /
   E3 新入生入口+権限なし / E4 団体入口+所属なし（textbox 0個=新しいトークン入力を
   作っていない検証を含む）/ E5 両権限で入口別初期表示+既存切替+ログアウト破棄 /
-  E6 団体所属のみ+新入生入口（逆画面を出さない）/ E7 招待流入の入口スキップ
+  E6 団体所属のみ+新入生入口（逆画面を出さない）/ E7 招待流入の入口スキップ /
+  E8 新入生権限のみ+団体入口（E6の対称。登録せず新入生画面へ進める）
 - 既存7本: `passConsentIfPresent` のアンカーを正規表現へ・ヘルパーに入口引数・
   初回ログインのアンカーを入口別見出しへ。**意図消費後・リロード後の
   「利用方法を選ぶ」は正しい挙動としてそのまま**（task008 step8・task014 step6）
+- CIで観測した不安定要因と対策: 同一アドレスへの連続ログイン（E5・旧E7）は前回
+  送信から約1秒で次のOTP送信が起き、ローカルスタックの `max_frequency = "1s"`
+  （`app/supabase/config.toml`）に境界でかかり rateLimited になることがある
+  （初回送信は落ちない・CIログの時刻で実測）。対策は (1) rateLimited表示を
+  検出したときだけ約1.1秒待って送り直す有限回リトライ（rateLimited以外の失敗は
+  リトライしない）、(2) 読み終えたMailpitメールの削除（再ログイン時に古いコードを
+  拾わない。task016と同じ）。アプリ側の送信・検証処理は変更していない
 
 ### 受入条件の消化
 
 1〜3・8〜12: `task020-entry.spec.ts` E1/E2/E3/E4/E7 + unit（注入不可）+ 実装
 （登録は既存RPCの明示操作のみ・DemoRoleへの参照なし・通信失敗時は既存のエラー画面）
-/ 4〜7: E3〜E6 / 13: 既存suiteの全green（CIで最終確認）/ 14: 上記の目視6枚
+/ 4〜7: E3〜E6・E8 / 13: 既存suiteの全green（CIで最終確認）/ 14: 上記の目視6枚
 
 ### 残る課題
 
-- E2E（新規E1〜E7+既存7本）のgreenは**CIで確認する**（ローカルにDocker無し）
+- E2E（新規E1〜E8+既存7本）のgreenは**CIで確認する**（ローカルにDocker無し）
 - スクリーンリーダー実機（§7.1 C2）は本タスクでも未実施（既知リスクのまま）
