@@ -367,6 +367,7 @@ def _destination_branch(refspec: str) -> str | None:
 def _check_push(args: list[str], cwd: str) -> str | None:
     force = False
     push_all = False
+    tags_only = False
     positionals: list[str] = []
 
     index = 0
@@ -380,6 +381,8 @@ def _check_push(args: list[str], cwd: str) -> str | None:
                 force = True
             elif _is_long_option(token, "--all", "--mirror"):
                 push_all = True
+            elif token.split("=", 1)[0] == "--tags":
+                tags_only = True
             name = token.split("=", 1)[0]
             if "=" not in token and any(
                 option.startswith(name) for option in _PUSH_OPTS_WITH_VALUE
@@ -412,7 +415,9 @@ def _check_push(args: list[str], cwd: str) -> str | None:
         if destination in PROTECTED_BRANCHES:
             return f"保護ブランチ `{destination}` への直接pushは禁止されています"
 
-    if not refspecs:
+    if not refspecs and not tags_only:
+        # refspecなしの `git push` は現在ブランチを送る。
+        # ただし `--tags` だけの場合はタグrefのみを送るため対象外
         branch = _current_branch(cwd)
         if branch in PROTECTED_BRANCHES:
             return f"保護ブランチ `{branch}` からの直接pushは禁止されています"

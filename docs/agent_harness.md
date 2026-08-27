@@ -149,6 +149,7 @@ Deepモード、または実装方針が分岐するときに使います。
 次の**5種類だけ**を機械的に拒否します。判定はトークン解析で行い、tool inputをshellへ展開しません。拒否理由にコマンド全文を含めない（URLに埋め込まれたトークンを出さない）設計です。
 
 - `main` / `develop` への直接push（明示的なrefspec、`HEAD`、refspecなしの暗黙push、`--all` / `--mirror`、削除push）
+  - `git push origin --tags` のようにタグrefだけを送る形は、ブランチを更新しないため保護ブランチ上でも許可します
 - force push（`--force` / `-f` / `--force-with-lease` / `--force-if-includes` / `+refspec`）
 - `git reset --hard`
 - `git clean -f`（`-fd` などの結合短オプションを含む。`--dry-run` 併用時は許可）
