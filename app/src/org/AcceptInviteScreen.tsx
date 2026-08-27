@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 
+import { useScreenFocus } from '../a11y/useScreenFocus'
 import { ORG_ROLE_LABELS } from '../account/contextModel'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
 import {
@@ -30,6 +31,7 @@ export function AcceptInviteScreen({
   onDismiss,
 }: AcceptInviteScreenProps) {
   const [state, setState] = useState<PreviewState>({ status: 'loading' })
+  const headingRef = useScreenFocus<HTMLHeadingElement>(state.status)
   const [busy, setBusy] = useState(false)
   const [errorText, setErrorText] = useState<string | null>(null)
 
@@ -63,7 +65,9 @@ export function AcceptInviteScreen({
 
   return (
     <main className="auth-main">
-      <h1 className="page-title">団体への招待</h1>
+      <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+        団体への招待
+      </h1>
       <section className="auth-card" aria-label="招待の確認">
         {state.status === 'loading' && (
           <p className="auth-text" role="status">

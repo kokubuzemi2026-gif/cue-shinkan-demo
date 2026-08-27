@@ -126,11 +126,21 @@ export function OrgOffersPanel({
     }
   }, [client, organizationId, refreshToken, reloadCount])
 
-  // 画面切替のたびにスクロールを先頭へ戻し、見出しへフォーカスを移す
+  // 画面切替のたびにスクロールを先頭へ戻し、見出しへフォーカスを移す。
+  // Task 016: viewだけを依存に置くと、confirm・dashboardのように
+  // **読み込み中は見出しを持たない別の表示**を挟む画面で、
+  // 読み込みが終わって本来の画面が出た瞬間にフォーカスが移らない
+  // （effectが走った時点ではrefがnullで、以後は再実行されないため
+  //   フォーカスはbodyへ落ちたまま）。読み込み状態も依存に含める
   useEffect(() => {
     window.scrollTo(0, 0)
     headingRef.current?.focus({ preventScroll: true })
-  }, [view])
+  //
+  // organizationId も依存に入れる。コンテキスト切替（団体A -> 団体B）では
+  // どちらもverifiedだとこのコンポーネントは再マウントされず、
+  // 取得effectも成功時に status を 'ready' のまま入れ直すだけなので、
+  // organizationId が無いとフォーカスが切替前のボタンに残る
+  }, [organizationId, view, confirmState.status, campaignState.status])
 
   // 集中モードの通知。ダッシュボード・アンマウントの全経路で必ず解除する
   useEffect(() => {
@@ -276,7 +286,9 @@ export function OrgOffersPanel({
   if (campaignState.status === 'error' || orgRow === null) {
     return (
       <section className="auth-card" aria-label="再試行の案内">
-        <h2 className="auth-card-title">オファー配信</h2>
+        <h2 className="auth-card-title" tabIndex={-1} ref={headingRef}>
+          オファー配信
+        </h2>
         <p className="auth-text">
           キャンペーン情報を読み込めませんでした。通信環境を確認して再試行してください。
         </p>

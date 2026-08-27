@@ -3,6 +3,7 @@ import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
 import '../styles/passport.css'
 import '../styles/inbox.css'
 
+import { useScreenFocus } from '../a11y/useScreenFocus'
 import type { ResponseChoice, StudentPreference } from '../domain/types'
 import { deriveOfferStatus, type InboxItem } from '../features/student/inbox'
 import { OfferCard } from '../features/student/OfferCard'
@@ -451,6 +452,8 @@ function HomePanel({
   onTogglePaused: () => void
   onOpenInbox: () => void
 }) {
+  // 読み込み→表示、要約→wizard など画面が入れ替わるたびに見出しへ移す
+  const headingRef = useScreenFocus<HTMLHeadingElement>(`${passport.status}:${homeView}`)
   if (passport.status === 'loading') {
     return (
       <section className="placeholder-card" aria-label="読み込み中">
@@ -462,7 +465,9 @@ function HomePanel({
   if (passport.status === 'error') {
     return (
       <section className="auth-card" aria-label="再試行の案内">
-        <h1 className="page-title">新入生ホーム</h1>
+        <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+          新入生ホーム
+        </h1>
         <p className="auth-text">{GENERIC_LOAD_ERROR}</p>
         <button type="button" className="button button-primary" onClick={onRetryLoad}>
           再試行
@@ -476,6 +481,9 @@ function HomePanel({
   if (homeView === 'wizard') {
     return (
       <>
+        {/* wizard中はフォーカスをPassportWizard側（各stepの見出し）へ任せる。
+            Reactは子のeffectを先に走らせるため、ここでrefを渡すと
+            step1だけ親がstep見出しのフォーカスを奪い、着地点がstep2以降と食い違う */}
         <h1 className="page-title">興味パスポート</h1>
         <p className="wizard-privacy">名前や顔写真は、団体には公開されません</p>
         {saveError !== null && (
@@ -496,7 +504,9 @@ function HomePanel({
   if (homeView === 'complete' && saved !== null) {
     return (
       <>
-        <h1 className="page-title">興味パスポート</h1>
+        <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+          興味パスポート
+        </h1>
         <section className="complete-card" role="status">
           <span className="complete-check" aria-hidden="true">
             ✓
@@ -520,7 +530,9 @@ function HomePanel({
   if (saved !== null) {
     return (
       <>
-        <h1 className="page-title">新入生ホーム</h1>
+        <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+          新入生ホーム
+        </h1>
         {migrationNotice && (
           <p role="status" className="auth-notice">
             このブラウザのデモ版に保存されていた興味パスポートをアカウントへ引き継ぎました。内容はいつでも編集できます。
@@ -546,7 +558,9 @@ function HomePanel({
 
   return (
     <>
-      <h1 className="page-title">新入生ホーム</h1>
+      <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+        新入生ホーム
+      </h1>
       <section className="auth-card" aria-label="興味パスポートの案内">
         <h2 className="auth-card-title">新歓は、探すから届くへ。</h2>
         <p className="auth-text">
@@ -583,6 +597,7 @@ function InboxPanel({
   onResume: () => void
   onNavigateHome: () => void
 }) {
+  const headingRef = useScreenFocus<HTMLHeadingElement>(inbox.status)
   if (inbox.status === 'loading') {
     return (
       <section className="placeholder-card" aria-label="読み込み中">
@@ -594,7 +609,9 @@ function InboxPanel({
   if (inbox.status === 'error') {
     return (
       <section className="auth-card" aria-label="再試行の案内">
-        <h1 className="page-title">受信箱</h1>
+        <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+          受信箱
+        </h1>
         <p className="auth-text">{GENERIC_LOAD_ERROR}</p>
         <button type="button" className="button button-primary" onClick={onRetryLoad}>
           再試行
@@ -605,7 +622,9 @@ function InboxPanel({
 
   return (
     <>
-      <h1 className="page-title">受信箱</h1>
+      <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+        受信箱
+      </h1>
       {readSaveFailed && (
         <p className="save-warning">開封状態の保存に失敗しました。表示への影響はありません。</p>
       )}

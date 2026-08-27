@@ -1,3 +1,5 @@
+import { useEffect, useRef } from 'react'
+
 import {
   canConfirm,
   DELETION_COPY,
@@ -31,6 +33,14 @@ export function DeletionCard({
   doneAction,
 }: DeletionCardProps) {
   const copy = DELETION_COPY[kind]
+  // 確認が開いたら、その見出しへフォーカスを移す。
+  // カードは画面の途中にあるため、移さないとスクリーンリーダーは確認文を読まず、
+  // キーボード利用者は「消えるもの／残るもの」を読み飛ばして実行ボタンへ着く。
+  // マウント時（idle）とdone時はrefがnullなので何もしない
+  const confirmHeadingRef = useRef<HTMLHeadingElement>(null)
+  useEffect(() => {
+    if (state.phase === 'confirming') confirmHeadingRef.current?.focus()
+  }, [state.phase])
 
   if (state.phase === 'done') {
     return (
@@ -63,7 +73,9 @@ export function DeletionCard({
 
   return (
     <section className="danger-card danger-card--open" aria-label={copy.confirmTitle}>
-      <h2 className="danger-heading">{copy.confirmTitle}</h2>
+      <h2 className="danger-heading" tabIndex={-1} ref={confirmHeadingRef}>
+        {copy.confirmTitle}
+      </h2>
       <p className="danger-note danger-note--strong">{IRREVERSIBLE_NOTICE}</p>
 
       <h3 className="danger-subheading">消えるもの</h3>

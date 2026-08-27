@@ -1,5 +1,6 @@
 import { useState } from 'react'
 
+import { useScreenFocus } from '../a11y/useScreenFocus'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
 import { registerStudentAccount } from './useMyAccount'
 
@@ -20,6 +21,7 @@ export function RoleOnboarding({
   onStudentRegistered,
   onCreateOrganization,
 }: RoleOnboardingProps) {
+  const headingRef = useScreenFocus<HTMLHeadingElement>('onboarding')
   const [busy, setBusy] = useState(false)
   const [registerFailed, setRegisterFailed] = useState(false)
 
@@ -38,7 +40,9 @@ export function RoleOnboarding({
 
   return (
     <main className="auth-main">
-      <h1 className="page-title">利用方法を選ぶ</h1>
+      <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+        利用方法を選ぶ
+      </h1>
       <p className="auth-text">
         あとから別の権限を追加することもできます（新入生と団体担当者の兼任も可能です）。
       </p>

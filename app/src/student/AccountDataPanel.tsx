@@ -4,6 +4,7 @@ import {
   deletionReducer,
   INITIAL_DELETION_STATE,
 } from '../features/account/deletion'
+import { useScreenFocus } from '../a11y/useScreenFocus'
 import { DeletionCard } from '../features/account/DeletionCard'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
 import { serverErrorMessage } from '../serverdata/apiText'
@@ -30,6 +31,8 @@ export function AccountDataPanel({
   onPassportDeleted,
   onAccountDeleted,
 }: AccountDataPanelProps) {
+  // アカウントタブへ切り替えたときに見出しへフォーカスを移す
+  const headingRef = useScreenFocus<HTMLHeadingElement>('account')
   const [passportState, passportDispatch] = useReducer(deletionReducer, INITIAL_DELETION_STATE)
   const [accountState, accountDispatch] = useReducer(deletionReducer, INITIAL_DELETION_STATE)
 
@@ -65,7 +68,9 @@ export function AccountDataPanel({
 
   return (
     <>
-      <h1 className="page-title">アカウントとデータ</h1>
+      <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+        アカウントとデータ
+      </h1>
       <p className="auth-text">
         CUEに保存されているあなたのデータを、自分で削除できます。削除した内容は元に戻せません。
       </p>
