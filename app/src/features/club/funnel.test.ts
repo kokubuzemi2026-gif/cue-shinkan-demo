@@ -120,7 +120,10 @@ describe('listClubCampaigns: ダッシュボード一覧', () => {
     // 六甲の配信のみ（Harbor・TableTalkは含まない）
     expect(views.map((view) => view.offer.id)).toEqual(['offer-created-1', 'offer-rokko-hike'])
     for (const view of views) {
-      expect(Object.keys(view).sort()).toEqual(['funnel', 'offer'])
+      // 受信者情報を持たないことの固定（列を足すときは意図的な追加であることを確認する）。
+      // stoppedは運営の停止状態で、個人を指す情報ではない（D044）
+      expect(Object.keys(view).sort()).toEqual(['funnel', 'offer', 'stopped'])
+      expect(view.stopped).toBe(false)
     }
   })
 })

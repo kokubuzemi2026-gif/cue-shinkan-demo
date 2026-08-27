@@ -371,6 +371,12 @@ test('Task 013: 団体確認・オファー停止・緊急停止が画面へ正�
 
     expect(problems, `console error・失敗リクエストが無いこと: ${problems.join(' | ')}`).toEqual([])
   } finally {
+    // 緊急停止は**全団体に効く単一行**のため、途中で失敗すると後続のspecまで
+    // 配信できなくなる。停止したままなら必ず戻す（既に戻っていれば何もしない＝
+    // 監査記録も増えないので、上のステップ8の件数検査と両立する）
+    if (execSql(`select delivery_paused from private.platform_controls`) === 't') {
+      execAdminSql(`select public.admin_set_delivery_paused(false, 'ops-e2e-cleanup', null);`)
+    }
     for (const context of contexts) {
       await context.close()
     }

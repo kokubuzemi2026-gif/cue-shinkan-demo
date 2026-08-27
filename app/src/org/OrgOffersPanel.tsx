@@ -310,6 +310,7 @@ export function OrgOffersPanel({
         offer: campaign.offer,
         funnel: campaign.funnel,
         snapshotDate: campaign.snapshotDate,
+        stopped: campaign.stopped,
       }))}
       sentThisWeek={sentThisWeek}
       weeklyLimit={CLUB_WEEKLY_CAMPAIGN_LIMIT}
