@@ -142,6 +142,21 @@ Task 008〜015で追加したPhase 2の画面には入っていなかった
 
 非テキスト（1.4.11・3:1）: 選択中の枠 ink on white = 16.29。
 
+**半透明の背景も数え直した**（トークン同士だけを見ると、これも取りこぼす）。
+CSSに直書きされている背景は3種類あり、下地（white / cream / mint）と合成した色で計算した。
+
+| 重ねている背景 | 使っているルール | 上に載る文字 | 合成後のコントラスト |
+|---|---|---|---|
+| `rgba(23,33,43,0.08)` | `.offer-status--answered` / `.status-chip--paused` / `.wizard-progress-bar` | ink（`.offer-status`・`.status-chip`が指定）／文字なし | 12.31〜13.90 OK |
+| `rgba(255,107,94,0.14)` | `.form-error` / `.status-suspended` | ink | 12.58〜14.11 OK |
+| `rgba(23,33,43,0.45)` | `.demo-dialog::backdrop` | 文字なし | — |
+
+**muted をこれらの上に載せている箇所は無い**（載せると mint 下地で 4.17 まで落ちる）。
+`background: transparent` / `none` は親の背景をそのまま使うため上表に含まれる。
+
+前景として `color:` に現れるトークンは ink(23) / muted(46) / white(3) / danger(1) / inherit(1) の
+5種類だけで、上表と合わせて**全組み合わせを網羅している**（`grep -o 'color: [^;]*'` で確認）。
+
 `.button:disabled { opacity: 0.45 }`はコントラストを下げるが、WCAG 1.4.3は
 無効コントロールを対象外とする。状態は文言（「送信しています…」等）でも示す。
 
