@@ -82,7 +82,11 @@ async function fetchOtpMail(
 // Task 015: 同意画面が出たら同意して進む（初回・版更新時）
 async function passConsentIfPresent(page: Page) {
   const consentCheck = page.getByRole('checkbox', { name: /同意します/u })
-  const onboarding = page.getByRole('heading', { name: '利用方法を選ぶ' })
+  // Task 020: 初回ログインは入口で絞った見出し（新入生／団体担当者としてはじめる）になる。
+  // 意図が無いセッション復元では従来の「利用方法を選ぶ」
+  const onboarding = page.getByRole('heading', {
+    name: /利用方法を選ぶ|新入生としてはじめる|団体担当者としてはじめる/,
+  })
   const signedIn = page.getByRole('button', { name: 'ログアウト' })
   // locator.isVisible() は待たない（即時判定）。ログイン直後はまだ遷移中で
   // 必ずfalseになるため、まず「同意画面 / 権限選択 / シェル」のどれかが
@@ -97,13 +101,22 @@ async function passConsentIfPresent(page: Page) {
   }
 }
 
+// Task 020: 未ログイン時は入口選択が先に出る。テストの人物像に合う入口を選ぶ。
+// 権限ゼロの新規ユーザー前提（ログイン後は入口で絞った登録画面が出る）
+const ENTRY_CTA = {
+  student: '新入生としてはじめる',
+  organization: '団体担当者としてはじめる',
+} as const
+
 async function signInWithOtp(
   page: Page,
   request: APIRequestContext,
   rawEmailInput: string,
   expectedAddress: string,
+  entry: keyof typeof ENTRY_CTA = 'student',
 ): Promise<{ toAddress: string; subject: string; body: string }> {
   await page.goto(BASE)
+  await page.getByRole('button', { name: ENTRY_CTA[entry] }).click()
   await page.getByLabel('大学メールアドレス').fill(rawEmailInput)
   const sendButton = page.getByRole('button', { name: '6桁コードを送る' })
   await expect(sendButton).toBeEnabled()
@@ -117,7 +130,8 @@ async function signInWithOtp(
   await page.getByRole('button', { name: 'ログインする' }).click()
   // Task 015: 登録の前に同意画面を通す（D050）
   await passConsentIfPresent(page)
-  await expect(page.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
+  // Task 020: 権限ゼロの初回ログインは、選んだ入口で絞った登録画面になる
+  await expect(page.getByRole('heading', { name: ENTRY_CTA[entry] })).toBeVisible({
     timeout: 15_000,
   })
   return { toAddress: mail.toAddress, subject: mail.subject, body: mail.body }
@@ -125,6 +139,8 @@ async function signInWithOtp(
 
 test('1-2: ドメイン外・plus付きメールはクライアント側で送信不可', async ({ page }) => {
   await page.goto(BASE)
+  // Task 020: 入口選択を通ってから同一のログイン画面へ（どちらの入口でも同じ検証）
+  await page.getByRole('button', { name: '新入生としてはじめる' }).click()
   const emailInput = page.getByLabel('大学メールアドレス')
   const sendButton = page.getByRole('button', { name: '6桁コードを送る' })
 
@@ -160,11 +176,13 @@ test('3-25: 登録→権限→団体→招待→切替の一連フロー', async
       // 6: 本文にMagic Link・ログイン用URLが存在しない（6桁コードの存在はfetchOtpMailで検証済み）
       expect(/https?:\/\//i.test(mail.body)).toBe(false)
       expect(mail.body.includes('href')).toBe(false)
-      await expectNoHorizontalScroll(pageA, '利用方法選択(390px)')
+      await expectNoHorizontalScroll(pageA, '入口別の初回登録画面(390px)')
     })
 
     await test.step('8: リロード後もセッションが復元される', async () => {
       await pageA.reload()
+      // Task 020: 入口意図は永続化しないため、リロード後は従来の全選択肢
+      // 「利用方法を選ぶ」へ安全に戻る（誤った画面へは進まない）
       await expect(pageA.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
         timeout: 15_000,
       })
@@ -238,7 +256,7 @@ test('3-25: 登録→権限→団体→招待→切替の一連フロー', async
     })
 
     await test.step('17: 別contextでdemo-bがログインできる', async () => {
-      await signInWithOtp(pageB, request, EMAIL_B, EMAIL_B)
+      await signInWithOtp(pageB, request, EMAIL_B, EMAIL_B, 'organization')
     })
 
     await test.step('18-19: 招待URLのhash即時除去→内容確認→参加', async () => {

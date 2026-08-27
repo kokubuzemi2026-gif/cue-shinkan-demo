@@ -1,6 +1,7 @@
 import { useEffect, useReducer, useState, type FormEvent } from 'react'
 
 import { useScreenFocus } from '../a11y/useScreenFocus'
+import type { EntryIntent } from '../account/contextModel'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
 import { canResend, initialAuthUiState, reduceAuthUi } from './authMachine'
 import { AUTH_TEXT, mapOtpSendError } from './errorMessages'
@@ -10,6 +11,11 @@ type SignInScreenProps = {
   client: CueSupabaseClient
   // 招待リンク経由の流入。ログイン後に承諾へ進むことを予告する
   hasPendingInvite: boolean
+  // Task 020: 選んだ入口。見出し下の文脈表示とリード文だけを変える。
+  // OTP送信・検証・再送・エラー表示・新規/既存の無差別表示は入口に依らず完全共通
+  entryIntent?: EntryIntent | null
+  // 「入口を選び直す」。招待流入（entryIntent=null）では出さない
+  onReselectEntry?: () => void
 }
 
 const SEND_ERROR_TEXT = {
@@ -18,10 +24,27 @@ const SEND_ERROR_TEXT = {
   badCode: AUTH_TEXT.badCode,
 } as const
 
+// 入口別の文脈表示（Task 020）。選んだ入口だけで決まり、アカウントの有無では変わらない
+const ENTRY_LEAD: Record<EntryIntent, { context: string; lead: string }> = {
+  student: {
+    context: '新入生としてはじめる',
+    lead: '登録とログインは共通です。大学メールへ届く6桁コードで本人確認します。',
+  },
+  organization: {
+    context: '団体担当者としてはじめる',
+    lead: '担当者個人の大学メールでログインします（団体共有のアカウントは作りません）。届く6桁コードで本人確認します。',
+  },
+}
+
 // 登録とログインを一つの導線に統合したメールOTP画面。
 // ドメイン外・plus付きメールはクライアント側で送信自体を拒否する（第一ゲート）。
 // 成功・失敗の表示は新規/既存で差を付けず、アカウントの存在有無を漏らさない
-export function SignInScreen({ client, hasPendingInvite }: SignInScreenProps) {
+export function SignInScreen({
+  client,
+  hasPendingInvite,
+  entryIntent = null,
+  onReselectEntry,
+}: SignInScreenProps) {
   const [ui, dispatch] = useReducer(reduceAuthUi, initialAuthUiState)
   const [rawEmail, setRawEmail] = useState('')
   const [code, setCode] = useState('')
@@ -99,9 +122,14 @@ export function SignInScreen({ client, hasPendingInvite }: SignInScreenProps) {
         <h1 className="page-title" tabIndex={-1} ref={headingRef}>
           大学メールでログイン
         </h1>
+        {entryIntent !== null && (
+          <p className="auth-hint entry-context">{ENTRY_LEAD[entryIntent].context}</p>
+        )}
         <section className="auth-card" aria-label="メールアドレスの入力">
           <p className="auth-text">
-            登録とログインは共通です。大学メールへ届く6桁コードで本人確認します。
+            {entryIntent === null
+              ? '登録とログインは共通です。大学メールへ届く6桁コードで本人確認します。'
+              : ENTRY_LEAD[entryIntent].lead}
           </p>
           {hasPendingInvite && (
             <p className="auth-notice" role="status">
@@ -145,6 +173,18 @@ export function SignInScreen({ client, hasPendingInvite }: SignInScreenProps) {
               {sending ? '送信しています…' : '6桁コードを送る'}
             </button>
           </form>
+          {entryIntent !== null && onReselectEntry !== undefined && (
+            <div className="auth-subactions">
+              <button
+                type="button"
+                className="button button-ghost"
+                onClick={onReselectEntry}
+                disabled={sending}
+              >
+                入口を選び直す
+              </button>
+            </div>
+          )}
         </section>
       </main>
     )

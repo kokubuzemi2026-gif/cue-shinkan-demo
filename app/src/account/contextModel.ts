@@ -37,6 +37,12 @@ export type MyAccount = {
 
 export type AccountContext = { kind: 'student' } | { kind: 'org'; organizationId: string }
 
+// 未ログイン時に選んだ入口（Task 020・D056）。
+// **roleではなくUI意図**であり、認可根拠にしない（認可は常にサーバーのRLS/RPC）。
+// React stateのみで保持し、user metadata・DB・localStorageへ永続化しない。
+// リロードで消えたら入口選択へ戻る（誤った画面へ進むより安全側）
+export type EntryIntent = 'student' | 'organization'
+
 export function deriveContexts(account: MyAccount): AccountContext[] {
   const contexts: AccountContext[] = []
   if (account.hasStudentAccount) {
@@ -56,6 +62,25 @@ export function isSameContext(a: AccountContext, b: AccountContext): boolean {
 // 既定: 新入生権限があればstudent、なければ最初の所属団体
 export function defaultContext(contexts: AccountContext[]): AccountContext | null {
   return contexts[0] ?? null
+}
+
+// 入口意図に応じた初期コンテキスト。意図が示す側が使えるならそれ、
+// 使えない・意図なし（null）なら既存の既定（defaultContext）と同値。
+// **サーバーが返した contexts の中からしか選ばない**ため、
+// 改変した意図や任意のorganization IDで未所属団体が表示されることはない
+export function initialContextForIntent(
+  contexts: AccountContext[],
+  intent: EntryIntent | null,
+): AccountContext | null {
+  if (intent === 'student') {
+    const student = contexts.find((context) => context.kind === 'student')
+    if (student !== undefined) return student
+  }
+  if (intent === 'organization') {
+    const org = contexts.find((context) => context.kind === 'org')
+    if (org !== undefined) return org
+  }
+  return defaultContext(contexts)
 }
 
 // 現在の選択が有効ならそのまま、無効（脱退等）なら既定へフォールバックする

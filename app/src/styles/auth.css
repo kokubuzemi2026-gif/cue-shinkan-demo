@@ -392,3 +392,17 @@
   height: 20px;
   flex-shrink: 0;
 }
+
+/* ---- Task 020: 入口選択（EntryScreen） ---- */
+
+/* 新入生カードを視覚上の主導線にする。色だけに意味を依存させない:
+   差は「枠の強調 + 主ボタン + 掲載順」で作り、団体側も独立カードとして
+   同じ画面内で認識できる大きさを保つ（AGENTS §7） */
+.entry-card--student {
+  border: 2px solid var(--color-ink);
+}
+
+.entry-note {
+  margin: 0;
+  padding: 0 var(--space-1);
+}

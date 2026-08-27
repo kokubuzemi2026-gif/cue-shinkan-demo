@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { useScreenFocus } from './a11y/useScreenFocus'
 import { RoleOnboarding } from './account/RoleOnboarding'
@@ -6,6 +6,8 @@ import { ConsentScreen } from './legal/ConsentScreen'
 import { serverErrorMessage } from './serverdata/apiText'
 import { fetchConsent, recordConsent, type ConsentStatus } from './serverdata/consentApi'
 import { useMyAccount } from './account/useMyAccount'
+import type { EntryIntent } from './account/contextModel'
+import { EntryScreen } from './auth/EntryScreen'
 import { SignInScreen } from './auth/SignInScreen'
 import { useAuthSession } from './auth/useAuthSession'
 import { getSupabaseClient, type CueSupabaseClient } from './lib/supabaseClient'
@@ -40,12 +42,40 @@ function AuthApp({
 }) {
   const { session, signOut } = useAuthSession(client)
   const [inviteToken, setInviteToken] = useState(initialInviteToken)
+  // Task 020: 未ログイン時に選んだ入口（D056）。roleではなくUI意図で、
+  // React stateのみに保持する（永続化しない。リロードで入口選択へ戻る）
+  const [entryIntent, setEntryIntent] = useState<EntryIntent | null>(null)
+
+  // ログアウト（明示操作・別タブ・セッション失効のいずれでも）で入口意図を破棄し、
+  // 次の利用者へ引き継がない。**signedIn -> signedOut の遷移だけ**で破棄する:
+  // signedOut中の毎レンダーで消すと、入口を選んだ直後（OTP往復中）に消えてしまう
+  const prevStatusRef = useRef(session.status)
+  useEffect(() => {
+    if (prevStatusRef.current === 'signedIn' && session.status === 'signedOut') {
+      setEntryIntent(null)
+    }
+    prevStatusRef.current = session.status
+  }, [session.status])
 
   if (session.status === 'restoring') {
     return <LoadingScreen label="ログイン状態を確認しています…" />
   }
   if (session.status === 'signedOut') {
-    return <SignInScreen client={client} hasPendingInvite={inviteToken !== null} />
+    // 招待リンク流入では入口選択を強制しない（既存の 認証 -> 同意 -> 承諾 の順のまま）
+    if (inviteToken !== null) {
+      return <SignInScreen client={client} hasPendingInvite />
+    }
+    if (entryIntent === null) {
+      return <EntryScreen onSelect={setEntryIntent} />
+    }
+    return (
+      <SignInScreen
+        client={client}
+        hasPendingInvite={false}
+        entryIntent={entryIntent}
+        onReselectEntry={() => setEntryIntent(null)}
+      />
+    )
   }
   return (
     <SignedInApp
@@ -54,6 +84,8 @@ function AuthApp({
       userId={session.userId}
       inviteToken={inviteToken}
       onInviteHandled={() => setInviteToken(null)}
+      entryIntent={entryIntent}
+      onEntryIntentConsumed={() => setEntryIntent(null)}
       signOut={signOut}
     />
   )
@@ -64,16 +96,23 @@ function SignedInApp({
   userId,
   inviteToken,
   onInviteHandled,
+  entryIntent,
+  onEntryIntentConsumed,
   signOut,
 }: {
   client: CueSupabaseClient
   userId: string
   inviteToken: string | null
   onInviteHandled: () => void
+  // Task 020: 入口意図。初期表示にだけ使い、認可には使わない（D056）
+  entryIntent: EntryIntent | null
+  onEntryIntentConsumed: () => void
   signOut: () => Promise<void>
 }) {
   const { state, reload } = useMyAccount(client, userId)
   const [creatingFirstOrg, setCreatingFirstOrg] = useState(false)
+  // Task 020: 入口で絞った初回登録画面から「他の利用方法を見る」で全選択肢へ戻す
+  const [showAllRoles, setShowAllRoles] = useState(false)
   // Task 015: 同意（D050）。**登録より前**に通す必要があるため、権限の有無で
   // 分岐するより先（AppRoot側）に置く。シェル側へ置くと、最初の権限を作った
   // 後にしか出ず「登録前に同意」にならない
@@ -230,19 +269,55 @@ function SignedInApp({
 
   const hasAnyRole = account.hasStudentAccount || account.memberships.length > 0
 
+  // 団体作成画面（初回登録と入口意図の両方から使う）。
+  // 作成後は再読込し、意図ゲートが通ればシェルが第1団体を初期表示する
+  if (creatingFirstOrg) {
+    return (
+      <OrgCreateScreen
+        client={client}
+        onCreated={() => {
+          setCreatingFirstOrg(false)
+          reload()
+        }}
+        onCancel={() => setCreatingFirstOrg(false)}
+      />
+    )
+  }
+
+  // Task 020: 入口意図に応じた初期表示（同意・招待ゲートより**後**。D050の順序を守る）。
+  // 意図が示す側の権限が無い場合は、逆側の画面を先に出さず登録導線を示す。
+  // ここで表示を絞るだけで、権限・団体・membershipは各ボタンの明示操作でしか作られない
+  const effectiveIntent = showAllRoles ? null : entryIntent
+  if (effectiveIntent === 'student' && !account.hasStudentAccount) {
+    return (
+      <RoleOnboarding
+        client={client}
+        userId={userId}
+        onStudentRegistered={reload}
+        onCreateOrganization={() => setCreatingFirstOrg(true)}
+        focus="student"
+        onShowAll={hasAnyRole ? undefined : () => setShowAllRoles(true)}
+        onSkip={account.memberships.length > 0 ? onEntryIntentConsumed : undefined}
+        skipLabel="登録せずに団体画面へ進む"
+      />
+    )
+  }
+  if (effectiveIntent === 'organization' && account.memberships.length === 0) {
+    return (
+      <RoleOnboarding
+        client={client}
+        userId={userId}
+        onStudentRegistered={reload}
+        onCreateOrganization={() => setCreatingFirstOrg(true)}
+        focus="organization"
+        onShowAll={hasAnyRole ? undefined : () => setShowAllRoles(true)}
+        onSkip={account.hasStudentAccount ? onEntryIntentConsumed : undefined}
+        skipLabel="登録せずに新入生画面へ進む"
+      />
+    )
+  }
+
   if (!hasAnyRole) {
-    if (creatingFirstOrg) {
-      return (
-        <OrgCreateScreen
-          client={client}
-          onCreated={() => {
-            setCreatingFirstOrg(false)
-            reload()
-          }}
-          onCancel={() => setCreatingFirstOrg(false)}
-        />
-      )
-    }
     return (
       <RoleOnboarding
         client={client}
@@ -258,6 +333,8 @@ function SignedInApp({
       client={client}
       userId={userId}
       account={account}
+      entryIntent={entryIntent}
+      onEntryIntentConsumed={onEntryIntentConsumed}
       reloadAccount={reload}
       signOut={signOut}
     />

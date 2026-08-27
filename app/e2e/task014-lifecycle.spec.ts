@@ -103,7 +103,11 @@ async function fetchOtpCode(request: APIRequestContext, address: string): Promis
 // 既に同意済みなら何もしない
 async function passConsentIfPresent(page: Page) {
   const consentCheck = page.getByRole('checkbox', { name: /同意します/u })
-  const onboarding = page.getByRole('heading', { name: '利用方法を選ぶ' })
+  // Task 020: 初回ログインは入口で絞った見出し（新入生／団体担当者としてはじめる）になる。
+  // 意図が無いセッション復元では従来の「利用方法を選ぶ」
+  const onboarding = page.getByRole('heading', {
+    name: /利用方法を選ぶ|新入生としてはじめる|団体担当者としてはじめる/,
+  })
   const signedIn = page.getByRole('button', { name: 'ログアウト' })
   // locator.isVisible() は待たない（即時判定）。ログイン直後はまだ遷移中で
   // 必ずfalseになるため、まず「同意画面 / 権限選択 / シェル」のどれかが
@@ -118,8 +122,21 @@ async function passConsentIfPresent(page: Page) {
   }
 }
 
-async function signInWithOtp(page: Page, request: APIRequestContext, address: string) {
+// Task 020: 未ログイン時は入口選択が先に出る。テストの人物像に合う入口を選ぶ。
+// どちらの入口でもOTPログイン処理は同一で、ログイン後の初期表示だけが変わる
+const ENTRY_CTA = {
+  student: '新入生としてはじめる',
+  organization: '団体担当者としてはじめる',
+} as const
+
+async function signInWithOtp(
+  page: Page,
+  request: APIRequestContext,
+  address: string,
+  entry: keyof typeof ENTRY_CTA = 'student',
+) {
   await page.goto(BASE)
+  await page.getByRole('button', { name: ENTRY_CTA[entry] }).click()
   await page.getByLabel('大学メールアドレス').fill(address)
   const sendButton = page.getByRole('button', { name: '6桁コードを送る' })
   await expect(sendButton).toBeEnabled()
@@ -221,7 +238,8 @@ test('Task 014: 本人がデータを削除でき、復元可能な個人情報�
 
     await test.step('1: 学生が登録し、国際交流のパスポートを保存する', async () => {
       await signInWithOtp(pageStudent, request, EMAIL_STUDENT)
-      await expect(pageStudent.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
+      // Task 020: 新入生入口を選んだ初回ログインは、入口で絞った登録画面になる
+      await expect(pageStudent.getByRole('heading', { name: '新入生としてはじめる' })).toBeVisible({
         timeout: 15_000,
       })
       await pageStudent.getByRole('button', { name: '新入生として登録する' }).click()
@@ -244,8 +262,9 @@ test('Task 014: 本人がデータを削除でき、復元可能な個人情報�
     })
 
     await test.step('2: 団体が配信し、学生が返答する（消す対象のデータを作る）', async () => {
-      await signInWithOtp(pageOwner, request, EMAIL_OWNER)
-      await expect(pageOwner.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
+      await signInWithOtp(pageOwner, request, EMAIL_OWNER, 'organization')
+      // Task 020: 団体入口を選んだ初回ログインは、団体側に絞った登録画面になる
+      await expect(pageOwner.getByRole('heading', { name: '団体担当者としてはじめる' })).toBeVisible({
         timeout: 15_000,
       })
       await pageOwner.getByRole('button', { name: '新しい団体を作る' }).click()
