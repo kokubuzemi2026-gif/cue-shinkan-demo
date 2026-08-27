@@ -271,7 +271,7 @@ H8（Auth Site URL）・H11（Auth Attack Protection）が未了**です。
 **実装側からは実行できません**（GitHub Actionsの設定APIはこの環境のproxyが403で拒否し、
 Supabaseの資格情報もこの環境にはありません）。
 
-H6〜H8 が無いまま `main` へmergeすると:
+H6〜H8（新規プロジェクトの場合はH3も）が無いまま `main` へmergeすると:
 
 1. deploy-pages の検証ステップが落ちてdeployされない
    （**いま公開されているPhase 1デモはそのまま残る**）

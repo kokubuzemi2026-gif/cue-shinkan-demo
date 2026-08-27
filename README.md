@@ -52,7 +52,7 @@ CUE は、新入生が事前に登録した「興味パスポート」をもと�
 
 - `docs/product_spec.md`: プロダクト要件
 - `docs/matching_and_safety.md`: マッチング・安全設計
-- `docs/decisions.md`: **決定事項の正本**（D001〜D054）
+- `docs/decisions.md`: **決定事項の正本**（D001〜D055）
 - `docs/auth_and_authorization.md`: 認証・権限の正本（Phase 2）
 - `docs/server_data_model.md`: サーバーデータの正本
 - `docs/notifications.md`: メール通知の設計
@@ -100,7 +100,7 @@ CUE は、新入生が事前に登録した「興味パスポート」をもと�
 Phase 1（2026年8月22日のメンバー持ち寄りデモ）は完了しました。Phase 2（アカウント・権限・サーバーデータ化・通知・運用）は`develop`で**実装が完了**しています（Task 008〜019）。閉鎖β v1.0の公開は、**人間にしかできない準備が終わってから**行います。
 
 - 公開デモ（現在公開中・mainのlocalStorage版）: https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/
-- **`main`へのmergeを止めている理由**: 公開用Supabaseプロジェクト（H6）・Actions **secrets**（H7・D054）・Auth Site URL（H8）が未設定です。この状態でmergeすると、`.github/workflows/deploy-pages.yml` の検証ステップがdeployを止めます（いま動いている公開デモは残ります）。詳細は `docs/launch_plan.md` §7
+- **`main`へのmergeを止めている理由**: 公開用Supabaseプロジェクト（H6）とActions **secrets**（H7・D054）が未設定です。この状態でmergeすると、`.github/workflows/deploy-pages.yml` の検証ステップがdeployを止めます（いま動いている公開デモは残ります）。Auth Site URL（H8）はDashboard側の設定で、CIでは検証されません。詳細は `docs/launch_plan.md` §7
 - Phase 2の技術: Supabase Auth（メールOTP）+ PostgreSQL + RLS + Edge Functions
 - ブランチ運用: `develop`をbaseにした1タスク1PR。`main`へのmergeは公開判断のときだけ
 - 認証・権限の正本: `docs/auth_and_authorization.md`、決定は`docs/decisions.md`（D026〜D034）

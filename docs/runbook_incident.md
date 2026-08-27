@@ -94,7 +94,7 @@ select confirmed_identities, identities_created_last_7d,
 | 確認先 | 見るもの |
 |---|---|
 | Authentication → Providers | Email が有効か。OTP（Email OTP）が有効か |
-| Authentication → URL Configuration | Site URL と Redirect URLs に公開ドメインが入っているか |
+| Authentication → URL Configuration | **Site URL が公開URLになっているか。Redirect URLs は空のまま**（OTPコード方式でリダイレクト不使用・`docs/runbook_supabase_hosted.md` §3-3） |
 | Authentication → Emails / SMTP | カスタムSMTPの設定と送信元。**組込みSMTPは低レートで、組織メンバー宛にしか届かない** |
 | Logs → Auth | 直近のエラー。**Freeプランは保持期間が短い**ので当日中に見る |
 | Project の状態 | **Freeプロジェクトは約1週間の非アクティブでpauseされ得る**。停止していたらRestore |
