@@ -26,7 +26,7 @@ jobs:
     # `main` を選ぶと検証ステップを持たない旧定義が走ってしまい、
     # 「通った」という誤った確信だけが残る（独立レビューN3で実証された）。
     # 公開前の空撃ちは、この定義を持つrefを選んで dry_run で行う
-    if: github.ref == 'refs/heads/main' || inputs.dry_run
+    if: github.ref == 'refs/heads/main' || (github.event_name == 'workflow_dispatch' && inputs.dry_run)
     defaults:
       run:
         working-directory: app
@@ -82,8 +82,8 @@ jobs:
           set -euo pipefail
           if [ -z "${VITE_SUPABASE_URL:-}" ] || [ -z "${VITE_SUPABASE_PUBLISHABLE_KEY:-}" ]; then
             echo "VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY が未設定です。" >&2
-            echo "Settings -> Secrets and variables -> Actions -> Variables で設定してください" >&2
-            echo "（リポジトリのVariables。Environmentsの変数はこのjobから読めません）。" >&2
+            echo "Settings → Secrets and variables → Actions → **Secrets** で設定してください" >&2
+            echo "（**Variables ではありません**・D054。Environmentsではなくリポジトリのsecretです）。" >&2
             echo "docs/launch_plan.md §7 H7 を参照。" >&2
             exit 1
           fi
@@ -94,11 +94,11 @@ jobs:
           URL_TRIM="$(printf '%s' "$VITE_SUPABASE_URL" | tr -d '[:space:]')"
           KEY_TRIM="$(printf '%s' "$VITE_SUPABASE_PUBLISHABLE_KEY" | tr -d '[:space:]')"
           if [ -z "$URL_TRIM" ] || [ -z "$KEY_TRIM" ]; then
-            echo "variableが空白だけです（docs/launch_plan.md §7 H7）。" >&2
+            echo "secretが空白だけです（docs/launch_plan.md §7 H7）。" >&2
             exit 1
           fi
           if [ "$URL_TRIM" != "$VITE_SUPABASE_URL" ] || [ "$KEY_TRIM" != "$VITE_SUPABASE_PUBLISHABLE_KEY" ]; then
-            echo "variableに空白が混ざっています。貼り付け時の前後の空白を消してください。" >&2
+            echo "secretに空白が混ざっています。貼り付け時の前後の空白を消してください。" >&2
             exit 1
           fi
           # **globではなく正規表現で見る。** `case` の `*` は `/` `?` `#` を跨ぐため、

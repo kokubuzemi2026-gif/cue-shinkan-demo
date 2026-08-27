@@ -27,7 +27,7 @@
 ## 前提条件（すべて満たすまでrelease PRを作らない）
 
 - [x] Task 010・011・013〜017が`develop`へmerge済み（008〜017 + 019 = `05e2701`）
-- [ ] P0/P1の既知不具合ゼロ ← **一部**（P0:0 / **P1:6**。公開判断で明示的に受容が要る。とくに§7.1 B7は「設定するまで公開しない」）
+- [ ] P0/P1の既知不具合ゼロ ← **一部**（P0:0 / **P1:7**。公開判断で明示的に受容が要る。とくに§7.1 B7は「設定するまで公開しない」）
 - [x] 未解決の認証・RLS・privacy blockerゼロ
 - [x] 全CI green（quality / db-tests / e2e / audit）
 - [ ] staging E2E green ← **未実施**（H1・H9。人間の操作が要る）
@@ -226,10 +226,10 @@ productionでは行わない。
 
 | 対象 | 内容 |
 |---|---|
-| `.github/workflows/deploy-pages.yml` | build へ `VITE_SUPABASE_*`（Actions **variables**）を渡し、直後に「バンドルへ入っているか」を検証するステップを足した。**値そのものはログへ出さない** |
+| `.github/workflows/deploy-pages.yml` | build へ `VITE_SUPABASE_*`（Actions **secrets**・D054）を渡し、直後に「バンドルへ入っているか」を検証するステップを足した。**値そのものはログへ出さない** |
 | `docs/release_notes_v1.0.md`（新規） | できること / 守っていること（実装との対応表）/ 既知の制限 / 運用の入口 / rollback |
 | 本ファイル §公開後smoke test | A（production）34項目 / B（staging）24項目。**実在する学生を巻き込まない**手順にした |
-| `README.md` | 「現在地」と「公開（GitHub Pages）」をPhase 2の実態へ。**必要なActions variablesを明記** |
+| `README.md` | 「現在地」と「公開（GitHub Pages）」をPhase 2の実態へ。**必要なActions secretsを明記** |
 | `docs/launch_plan.md` §6 | 完了条件の現状を記録 |
 
 ### 公開ビルドの検証（実測・2026-08-27・ローカル）
@@ -251,7 +251,7 @@ productionでは行わない。
 | 条件 | 状態 |
 |---|---|
 | Task 010・011・013〜017 が `develop` へmerge済み | **満たす**（008〜017 + 019 = `05e2701`） |
-| P0/P1 の既知不具合ゼロ | **一部**。§7.1 の28件へ重大度を付与した結果 **P0:0 / P1:6**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection未設定 / C1 WCAG 1.4.11未達 / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る** |
+| P0/P1 の既知不具合ゼロ | **一部**。§7.1 の28件へ重大度を付与した結果 **P0:0 / P1:7**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection未設定 / C1 WCAG 1.4.11未達 / **E3 送信ワーカー未デプロイ** / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る** |
 | 未解決の認証・RLS・privacy blocker ゼロ | **満たす**（各タスクの独立レビューでBlocker 0） |
 | 全CI green | **満たす**（quality / db-tests / e2e / audit） |
 | staging E2E green | **未実施**（H1・H9。人間の操作が要る） |
@@ -265,10 +265,10 @@ productionでは行わない。
 **このPR（Task 018）は base=`develop` の通常タスクPRで、release PRではありません。**
 release PR（`develop → main`）は、次が揃ってから新規に作ります。
 
-`docs/launch_plan.md` §7 の **H6（公開用Supabaseプロジェクト）・H7（Actions variables）・
+`docs/launch_plan.md` §7 の **H6（公開用Supabaseプロジェクト）・H7（Actions secrets）・
 H8（Auth Site URL）・H11（Auth Attack Protection）が未了**です。
 いずれもSupabaseアカウントとGitHubリポジトリ設定へのアクセスが要るため、
-**実装側からは実行できません**（Actions variables APIはこの環境のproxyが403で拒否し、
+**実装側からは実行できません**（GitHub Actionsの設定APIはこの環境のproxyが403で拒否し、
 Supabaseの資格情報もこの環境にはありません）。
 
 H6〜H8 が無いまま `main` へmergeすると:
@@ -294,7 +294,7 @@ H11 が無いまま公開すると、publishable keyは公開バンドルに必�
 | **B3（security）** | **§6後半〜§9 が、記載の制約下では実行不能**。配信は対象5人以上（D036）、ファネルは配信10人以上（D037）、`+` エイリアスは不可。守ると実在の新入生を集めるしかない | 上記の分割で、配信・受信箱・ファネル・メール通知をBへ移した |
 | **B1（両方）** | **未mergeのPR #21（Task 019）の内容を既存の状態として書いていた**。pgTAP件数・migration本数・D053・outbox剪定・「019がmerge済み」がすべて事実でない | PR #21 を先に develop へmerge（`05e2701`）し、本ブランチへ取り込んでから実測し直した（pgTAP **641**件・migration **19**本）。`35 migration` の誤りも訂正 |
 | **B3（独立）/ N2（security）** | 「release PRはdraftのまま」が事実でない。PR #22 は draft ではなく base=`develop` で、そもそも release PR ではない。§6 は独立レビュー行を自己言及で「達成」にしていた | 「`develop → main` の release PR をまだ作っていない理由」へ書き換え。§6 の該当行を **未達** へ。§9 の手順を「release PR を新規に作る」へ |
-| **B4（独立）** | §7.1 に severity 列が無く、「P0/P1ゼロ」の根拠が空。さらに **D030がTask 011へ委ねたCAPTCHA・レート制限が、011のscopeに入っておらず未実施**で、§7・§7.1 のどこにも無い | 28件へ**1件ずつ判断して**重大度を付与（**P0:0 / P1:6 / P2:20 / 対応済み:2**）。**H11**（Auth Attack Protection）と **§7.1 B7**（P1）を追加。§6 の根拠を分類へ置き換え |
+| **B4（独立）** | §7.1 に severity 列が無く、「P0/P1ゼロ」の根拠が空。さらに **D030がTask 011へ委ねたCAPTCHA・レート制限が、011のscopeに入っておらず未実施**で、§7・§7.1 のどこにも無い | 28件へ**1件ずつ判断して**重大度を付与（当時 **P0:0 / P1:6 / P2:20 / 対応済み:2**。その後E3をP1へ格上げし **P1:7 / P2:19**）。**H11**（Auth Attack Protection）と **§7.1 B7**（P1）を追加。§6 の根拠を分類へ置き換え |
 | N-3（独立） | 検証ステップは `push: main` と `workflow_dispatch` でしか走らないため、**PRのCIでは一度も実行されない**。初回実行が本番deployになる | §9 に手順0「mergeの前に workflow_dispatch で1回空撃ちする」を追加 |
 | N1（security） | PR本文の「ログにはコマンド本体しか出ない」は不正確。runnerは各stepの冒頭に `env:` マップを**値ごと**出力し、`vars.*` はマスクされない | workflowのコメントを訂正し、「このstepへsecretを足さないこと」を明記 |
 | N-1（独立） | §7 本文が「build は `VITE_SUPABASE_*` を渡していない」と現在形のまま | 実装済みへ更新。mergeを止める理由（H6〜H8）は変わらない |

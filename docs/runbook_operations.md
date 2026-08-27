@@ -20,7 +20,7 @@
 
 | 変数 | 置き場所 | 誰が見るか | 用途 |
 |---|---|---|---|
-| `VITE_SUPABASE_URL` | ローカル: `app/.env.local` / 公開: GitHub Actions **variables** | **ブラウザへ出る** | Supabaseへの接続先 |
+| `VITE_SUPABASE_URL` | ローカル: `app/.env.local` / 公開: GitHub Actions **secrets**（D054） | **ブラウザへ出る** | Supabaseへの接続先 |
 | `VITE_SUPABASE_PUBLISHABLE_KEY` | 同上 | **ブラウザへ出る** | 公開してよい鍵 |
 | `CUE_SMTP_HOST` / `_PORT` / `_USER` / `_PASSWORD` / `_FROM` | Supabase Function secrets | サーバーのみ | 通知メールの送信 |
 | `CUE_APP_URL` | Supabase Function secrets | メール本文に出る | 受信箱へのリンク |
@@ -31,7 +31,11 @@
 原則（D027）:
 
 - **`VITE_` で始まる変数はすべてブラウザのバンドルへ埋め込まれる。** secret key・service-role key・DBパスワード・アクセストークンを入れない
-- `VITE_SUPABASE_URL` と `VITE_SUPABASE_PUBLISHABLE_KEY` はブラウザへ出る値なので、GitHubでは **secret ではなく variable** でよい
+- `VITE_SUPABASE_URL` と `VITE_SUPABASE_PUBLISHABLE_KEY` はブラウザへ出る値だが、
+  GitHubでは **variable ではなく secret** へ置く（**D054**）。値を隠すためではなく
+  **貼り間違いを封じ込めるため**: runnerは各stepの冒頭に `env:` マップを値ごと出力し、
+  `secrets.*` はマスクされるが **`vars.*` はマスクされない**。本リポジトリは公開なので
+  Actionsログは誰でも読める。`sb_secret_*` を貼ると検証ステップが止める前に世界へ出る
 - 実値ファイル（`.env`・`.env.local`）はgit管理外。`app/.env.example` にプレースホルダーだけを置く
 
 ### 公開ビルドに設定が入っているかの確認
@@ -135,7 +139,7 @@ restoreは**最後の手段**。実行前に、緊急停止（`docs/operations.m
 | secret | 交換手順 | 交換後の確認 |
 |---|---|---|
 | SMTPパスワード | メール送信元のサービスで再発行 → `npx supabase secrets set CUE_SMTP_PASSWORD=...` | 送信ワーカーを1回動かし、`email_outbox_health()` の `failed_count` が増えないこと |
-| Supabase publishable key | Dashboard → API Keys で再発行 → GitHub Actions variable を更新 → 再deploy | 公開URLでログイン画面が出ること |
+| Supabase publishable key | Dashboard → API Keys で再発行 → GitHub Actions **secret** を更新 → 再deploy | 公開URLでログイン画面が出ること |
 | Supabase secret key（`sb_secret_`） | Dashboard → API Keys で再発行 | 使っているのは運用時の一時利用のみ。配布しない |
 | Supabaseアクセストークン（`sbp_`） | Dashboard → Account → Access Tokens | `npx supabase link` が通ること |
 | GitHubのトークン | 使用していない（CIはGITHUB_TOKENのみ） | — |

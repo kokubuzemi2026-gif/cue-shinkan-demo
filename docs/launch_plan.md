@@ -14,7 +14,7 @@
 |---|---|
 | `develop` | `05e2701`（PR #21 merge後） |
 | `main` | `646278f`（Phase 1公開デモ・**公開中**・凍結） |
-| 完了Task | 000〜019（018はPR #22でレビュー中） |
+| 完了Task | 000〜017・019（**018は本PR #22でレビュー中**） |
 | migration | **19本**（0008×4・0009×4・0011×3・0010×2・0013×2・0014・0015・0017・0018） |
 | unit test | **365件 / 31ファイル** |
 | pgTAP | **641件 / 35ファイル** |
@@ -203,7 +203,7 @@ decision番号は **D054まで使用済み**。新規はD055以降。migration�
 | privacy / termsのdraftがあり、要確認箇所が明示されている | **達成** | `docs/legal/`・【要確認】（D050）。**法令適合は運営者の最終確認事項** |
 | 公開後smoke testとrollback手順がある | **達成** | `tasks/018-release-v1.md` §公開後smoke test / `docs/runbook_operations.md` §4・§7 |
 | release notesと既知制限がある | **達成** | `docs/release_notes_v1.0.md` / §7.1 |
-| release PRに独立レビューとセキュリティレビューを実施 | **未達** | `develop → main` のrelease PRはまだ作っていない。Task 018のPR（base=develop）では独立レビュー・security-reviewerを各1本実施し、Blocker 8件を修正した |
+| release PRに独立レビューとセキュリティレビューを実施 | **未達** | `develop → main` のrelease PRはまだ作っていない。Task 018のPR（base=develop）では**独立レビュー3周（Blocker 4→3→3件）・security-reviewer 2周（4→1件）**を実施し、すべて修正した |
 | main反映後のdeploy監視とsmoke test完了 | **未達** | H6〜H8が未了のためmergeしていない |
 | `v1.0.0` のrelease / tag作成 | **未達** | main反映後に作る |
 
@@ -229,7 +229,7 @@ decision番号は **D054まで使用済み**。新規はD055以降。migration�
 ### H6〜H8 が揃うまで `main` へmergeしない（重要）
 
 **Task 018で実装側の手当ては済んでいる。** `deploy-pages.yml` の build は
-Actions variables から `VITE_SUPABASE_*` を受け取り、直後の検証ステップが
+Actions **secrets** から `VITE_SUPABASE_*` を受け取り（D054）、直後の検証ステップが
 「値の形式」と「バンドルへ入っているか」を確認して、揃っていなければ
 deployを止める（`sb_secret_*` の貼り間違えもここで落ちる）。
 
@@ -244,11 +244,11 @@ Task 018のsmoke testも全滅する。
 
 実装側の手当て（Task 018・**実装済み**）:
 
-- `deploy-pages.yml` の build step へ `env:` を足した（値は `${{ vars.* }}` の参照だけ）
+- `deploy-pages.yml` の build step へ `env:` を足した（値は `${{ secrets.* }}` の参照だけ）
 - ビルド成果物に設定が入っているかを、**値を出さずに**確認するステップを足した
 - 鍵の種類を許可リスト（`sb_publishable_*`）で検査し、secret keyの混入を止めた
 
-残るのは **H6・H7・H8 の人間の操作だけ**。設定しないまま `main` へmergeすると、
+残るのは **人間の操作だけ**（merge前に H6・H7・H8、公開前に H9・H11）。設定しないまま `main` へmergeすると、
 検証ステップが落ちてdeployされない（**いま公開されているページはそのまま残る**）。
 
 ## 7.1 既知リスク一覧（公開前に運営者が読む）
@@ -314,6 +314,114 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 | E6 | **P1** | **staging のSMTPは個人のGmail（1日500宛先）** | 本番の規模で頭打ちになる。送信元ドメインも借り物 | 本番は独自ドメイン＋専用プロバイダが必要（`docs/runbook_supabase_hosted.md` §7）。**H6と同時に判断する** |
 | E7 | **P2** | denomailer 1.6.0 のSTARTTLS挙動が未確認 | 465以外のポートで平文送信になる可能性 | hosted stagingで実配信を確認するときに、ポートと暗号化を目視する（H9） |
 
+## 7.2 人間の操作チェックリスト（公開までに必要なものだけ）
+
+**実装側からは実行できない**操作だけを、実行順にまとめる。
+Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メールが要るため。
+
+> **secretをチャットへ貼らないでください。** 値はDashboardとGitHubの設定画面へ
+> 直接入力します。この文書にも実値は書きません（`docs/runbook_operations.md` §2）。
+
+### 段階1: 接続先を決める（mergeの前）
+
+- [ ] **H6 公開用Supabaseプロジェクトを決める**
+  - なぜ: 接続先が決まらないと以降すべてが進まない
+  - 画面: https://supabase.com/dashboard → プロジェクト一覧
+  - 入力場所: 既存の `cue-shinkan-staging` を昇格するか、新規作成（Region: `ap-northeast-1`）
+  - 成功判定: Project Settings → General に **Project URL** が表示される
+  - 注意: **Freeプランの範囲で行う。有料プランへの変更は別途相談**
+
+- [ ] **H7 GitHub Actions の secrets に接続設定を入れる**
+  - なぜ: 公開ビルドに接続先が埋め込まれないと「接続設定が必要です」の案内画面になる
+  - 画面: リポジトリ → Settings → Secrets and variables → Actions → **Secrets** タブ
+  - 入力場所: 「New repository secret」から2つ
+    - `VITE_SUPABASE_URL` … Supabase の Project URL（`https://<ref>.supabase.co`）
+    - `VITE_SUPABASE_PUBLISHABLE_KEY` … Project Settings → API Keys の **publishable key**（`sb_publishable_…`）
+  - 成功判定: Secrets 一覧に2つ並ぶ（値は表示されない。それが正しい）
+  - **Variables タブではありません**（D054。variables はログでマスクされない）
+  - **`sb_secret_…` を貼らないこと。** 貼った場合は設定し直す前に Dashboard で失効させる
+
+- [ ] **H8 Auth の Site URL / Redirect URLs に公開URLを入れる**
+  - なぜ: 入れないと OTP のリンク先が壊れ、ログインを完了できない
+  - 画面: Supabase Dashboard → Authentication → URL Configuration
+  - 入力場所: Site URL と Redirect URLs に `https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/`
+  - 成功判定: 保存後、H2 の OTP 往復が最後まで通る
+
+- [ ] **H11 Auth の Attack Protection を有効にする**
+  - なぜ: publishable key は公開バンドルに必ず入る。既定では CAPTCHA が無効で、
+    Supabase 既定のレート制限だけが防壁（§7.1 B7・**P1**）。
+    任意アドレスへ OTP を送らせられ、送信元Gmail（§7.1 E6）が止まりうる
+  - 画面: Supabase Dashboard → Authentication → Attack Protection
+  - 入力場所: CAPTCHA を有効化（hCaptcha / Turnstile）＋ レート制限を既定より強める
+  - 成功判定: 設定後、ログイン画面から通常のOTP送信が**通る**こと（過剰に締めていない）
+
+### 段階2: hosted で通す（mergeの前が望ましい）
+
+- [ ] **H1 migration を適用する**
+  - なぜ: stagingは0008・0009までしか適用しておらず、0010以降が未適用
+  - 画面: 端末（Supabaseアクセストークンが要る）
+  - 入力場所: `cd app && npx supabase link --project-ref <ref> && npx supabase db push`
+  - 成功判定: `npx supabase migration list` でローカルとリモートの差分が無い。
+    適用後に `select * from public.platform_health();` が1行返る
+  - 事前に必ず: `docs/runbook_operations.md` §3 の手順（backup → 差分確認 → 適用）
+
+- [ ] **H2 大学メールで OTP を1往復させる**
+  - なぜ: Authの生存はDBのRPCでは確認できない（`docs/runbook_incident.md` §2.5）
+  - 画面: 公開URL（または `npm run dev`）のログイン画面
+  - 入力場所: 運営者本人の `@stu.kobe-u.ac.jp`
+  - 成功判定: メールが届き、6桁コードでログインできる。件名・本文にコード以外の情報が無い
+
+- [ ] **H9 送信ワーカー（Edge Function）をデプロイする**
+  - なぜ: デプロイしないとメール通知が**1通も飛ばない**（§7.1 E3・**P1**）
+  - 画面: 端末 + Supabase Dashboard
+  - 入力場所: `npx supabase functions deploy send-notifications` →
+    Dashboard → Edge Functions → Schedules で定期実行を設定
+    （SMTP関連の secret は `npx supabase secrets set` で。`docs/runbook_supabase_hosted.md` §6.1）
+  - 成功判定: 1回実行して `select * from public.email_outbox_health();` の
+    `failed_count` が増えない。実際にメールが届く
+
+- [ ] **H10 退会後の `auth.users` 削除挙動を確認する**
+  - なぜ: 退会しても大学メールが残る（§7.1 B1・**P1**）。その解消可否がここで決まる
+  - 画面: Supabase Dashboard → SQL Editor / Authentication → Users
+  - 入力場所: 合成アカウントで `admin_delete_auth_identity` を実行
+  - 成功判定: `auth.users` から消え、`auth.identities` / `sessions` / `refresh_tokens` が連鎖して消え、
+    `auth.audit_log_entries` の JSON payload にメールが残らない
+  - 残る場合: Admin API（`auth.admin.deleteUser`）へ寄せることを検討（`docs/operations.md` §9）
+
+### 段階3: 公開する
+
+- [ ] **deploy を1回空撃ちする（`dry_run`）**
+  - なぜ: 検証ステップは `push: main` と `workflow_dispatch` でしか走らず、
+    PRのCIでは一度も実行されない。初回実行が本番deployになるのを避ける
+  - 画面: Actions タブ → 「Deploy to GitHub Pages」→ Run workflow
+  - 入力場所: **`develop` を選び**、`dry_run` にチェック
+  - 成功判定: build と「Verify build has Supabase config」が成功し、deploy は skip される
+  - **`main` を選ばないこと**（まだこの定義を持たないため旧定義が走る）
+
+- [ ] **release PR を作って merge する**
+  - なぜ: 公開範囲の変更（H5）。判断は人間が行う
+  - 画面: GitHub → Pull requests → New pull request（base `main` ← compare `develop`）
+  - 入力場所: —
+  - 成功判定: CI green・独立レビュー/セキュリティレビュー済み・§7.1 の **P1 を読んで受容した**うえで merge
+
+- [ ] **公開後 smoke test（A）を実行する**
+  - なぜ: 公開URLで実際に動くかは、そこでしか確認できない
+  - 画面: 公開URL + Supabase SQL Editor
+  - 入力場所: `tasks/018-release-v1.md` §公開後smoke test の **A**（所要15〜20分）
+  - 成功判定: A0〜A6 のチェックが埋まる。**A5で団体を作る前に、そこの注意書きを読むこと**
+
+- [ ] **`v1.0.0` の tag / release を作る**
+  - なぜ: 公開したものを特定できるようにする
+  - 画面: GitHub → Releases → Draft a new release
+  - 入力場所: tag `v1.0.0`（target `main`）。本文は `docs/release_notes_v1.0.md`
+  - 成功判定: Releases に `v1.0.0` が出る
+
+### 判断だけが必要なもの（実装の待ちではない）
+
+- [ ] **H4 利用規約・プライバシーポリシーの最終確認**（§7.1 A1・**P1**）
+  - `docs/legal/` はドラフト。**法令適合は断定していません。**
+    `【要確認】` が運営者の決定または法的判断が必要な箇所です
+
 ## 8. 進捗ログ
 
 | 日付 | 内容 |
@@ -354,7 +462,7 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 
 | 2026-08-27 | Task 018（release準備・PR #22）。`deploy-pages.yml` へ接続設定の受け渡しと
   検証ステップを追加。release notes・公開後smoke test・READMEの公開手順を用意。
-  独立レビュー・security-reviewer 各2周でBlocker 9件を検出し修正（うち
+  **独立レビュー3周（Blocker 4→3→3件）・security-reviewer 2周（4→1件）**で修正（うち
   **貼り間違えたsecret keyが公開Actionsログへ平文で出る**経路をD054で塞いだ）。
   **`develop → main` の release PR は未作成**（H6〜H8・H11 が未了） |
 
@@ -385,7 +493,7 @@ H6〜H8 が揃うまで **`main` へmergeしない**。**H9（送信ワーカー
 
    Actionsタブ → 「Deploy to GitHub Pages」→ Run workflow で、
    **この定義を持つブランチ**（`develop` など）を選び、`dry_run` を有効にする。
-   build と検証だけが走り、deployはskipされる。
+   build・検証・artifactの生成までが走り、**deploy jobだけがskipされる**。
 
    **`main` を選んではいけない。** `workflow_dispatch` は選んだrefの
    ワークフロー定義を実行するため、まだこの定義を持たない `main` を選ぶと
