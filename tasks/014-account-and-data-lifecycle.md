@@ -92,6 +92,13 @@
 | `admin_delete_auth_identity` の `account_data_remains` を外す | 32: 1件 |
 | `delete_my_account` の最終 owner 事前チェックを削除 | **0件（＝重複コードと判明したため削除した）** |
 
+### CIで見つけて直したもの
+
+- e2eが `permission denied for table organizations` で失敗。`service_role` には
+  `public.organizations` のSELECT権限が無い（Task 013で確認した設計どおりの状態）ため、
+  運営RPCの引数を副問い合わせで解決できない → 対象IDを所有者権限で先に解決し、
+  リテラルで渡す
+
 ### 残る課題
 
 - **auth identity（大学メール）は退会後も残る**。運営が `admin_delete_auth_identity`

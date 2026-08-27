@@ -229,10 +229,13 @@ test('Task 014: 本人がデータを削除でき、復元可能な個人情報�
       await expect(pageOwner.getByRole('heading', { name: ORG_NAME })).toBeVisible({
         timeout: 15_000,
       })
+      // service_role には public.organizations のSELECT権限が無い（設計どおり）。
+      // 対象IDは所有者権限で先に解決し、運営RPCへはリテラルで渡す
+      const orgId = execSql(`select id::text from public.organizations where name = '${ORG_NAME}'`)
+      expect(orgId.length > 0).toBe(true)
       execAdminSql(
         `select public.admin_set_organization_status(` +
-          `(select id from public.organizations where name = '${ORG_NAME}'), ` +
-          `'verified', 'ops-e2e', 'E2E検証');`,
+          `'${orgId}'::uuid, 'verified', 'ops-e2e', 'E2E検証');`,
       )
       seedStudentPool(`${RUN}i`, 5, 'international')
       await pageOwner.reload()
