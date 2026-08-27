@@ -5,7 +5,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(15);
+select plan(17);
 
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('00000000-0000-0000-0000-000000000b01', 'demo-inbox-owner@stu.kobe-u.ac.jp', now(), now(), now()),
@@ -57,8 +57,8 @@ select is(
 );
 select is(
   (select (i.org_name, i.org_contact_handle, i.score::int)::text from public.list_my_inbox() i),
-  '(受信箱テスト団体,@inbox_test,100)',
-  'T5: 受信行に団体表示snapshotとscoreが含まれる'
+  '(受信箱テスト団体,"",100)',
+  'T5: 受信行に団体表示snapshotとscoreが含まれる（返答前は公式窓口を返さない・D033）'
 );
 select lives_ok(
   $$select public.mark_offer_read((select id from bdelivery))$$,
@@ -73,6 +73,11 @@ select is(
   'interested',
   'T5: 返答が受信箱へ反映される'
 );
+select is(
+  (select i.org_contact_handle from public.list_my_inbox() i),
+  '@inbox_test',
+  'T5: 「行ってみたい」の後にだけ公式窓口が開示される（D033）'
+);
 select lives_ok(
   $$select public.respond_to_offer((select id from bdelivery), 'skip')$$,
   'T5: 返答は後から変更できる'
@@ -81,6 +86,11 @@ select is(
   (select i.response_choice::text from public.list_my_inbox() i),
   'skip',
   'T5: 変更後の返答が反映される（1件へ上書き）'
+);
+select is(
+  (select i.org_contact_handle from public.list_my_inbox() i),
+  '',
+  'T5: 見送りへ変更すると公式窓口は再び返らない（D033）'
 );
 reset role;
 
@@ -148,6 +158,8 @@ update public.organizations
  where id = (select id from borg);
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000b02","role":"authenticated"}', true);
 set local role authenticated;
+-- 窓口はD033で「行ってみたい」時のみ開示されるため、開示条件を満たしてから不変性を検査する
+select public.respond_to_offer((select id from bdelivery), 'interested');
 select is(
   (select (i.org_name, i.org_contact_handle)::text from public.list_my_inbox() i),
   '(受信箱テスト団体,@inbox_test)',

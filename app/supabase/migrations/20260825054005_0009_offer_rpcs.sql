@@ -585,8 +585,10 @@ begin
            d.organization_id,
            d.org_name,
            d.org_description,
-           d.org_contact_label,
-           d.org_contact_handle,
+           -- D033: 公式窓口は「行ってみたい」を選んだ後にだけ開示する。
+           -- UI側の出し分けだけではAPI応答に値が載るため、サーバー側でも伏せる。
+           case when rs.choice = 'interested' then d.org_contact_label else '' end,
+           case when rs.choice = 'interested' then d.org_contact_handle else '' end,
            d.event_name,
            d.description,
            d.reason_note,

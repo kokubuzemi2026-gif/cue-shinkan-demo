@@ -30,7 +30,7 @@ Phase 1の`src/demo/DemoApp.tsx`（隔離済みデモ）と公開デモ（main�
 
 - 学生の正本ID = `auth.uid()`（`student_accounts.user_id`へFK）、団体 = `organizations.id`へFK（§11契約1）。
 - enum（`interest_category`・`purpose`・`activity_style`・`frequency`・`day_slot`・`experience_level`・`response_choice`）は`domain/types.ts`の定数配列と同値・同順でpublicに定義し、生成型へ含める。
-- `organizations`へ公式窓口2列（`contact_label`・`contact_handle`）を追加（D033）。「行ってみたい」後にだけ学生へ開示する団体の公式アカウントで、個人の連絡先は置かない（matching_and_safety.md §6）。
+- `organizations`へ公式窓口2列（`contact_label`・`contact_handle`）を追加（D033）。「行ってみたい」後にだけ学生へ開示する団体の公式アカウントで、個人の連絡先は置かない（matching_and_safety.md §6）。開示のゲートは`list_my_inbox`のサーバー側にあり、返答が`interested`以外の行では空文字を返す（クライアント表示だけの制御にしない）。
 - 配列列はCHECKで要素数上限と重複禁止（`private.has_unique_elements`）を強制し、直接DML迂回でも配点操作（目的の重複登録など）ができない。
 
 ## 3. マッチングのサーバー正本
@@ -40,7 +40,7 @@ Phase 1の`src/demo/DemoApp.tsx`（隔離済みデモ）と公開デモ（main�
 - TS: `app/src/domain/matchingParity.test.ts`
 - SQL: `app/supabase/tests/12_matching_parity_test.sql`
 
-同一イベント判定（`private.normalize_event_text` / `private.event_fingerprint`）も`domain/delivery.ts`と同一（NFKC→小文字化→空白除去。空白集合はJSの`\s`をエスケープ表記で明示しロケール非依存）。
+同一イベント判定（`private.normalize_event_text` / `private.event_fingerprint`）も`domain/delivery.ts`と同一（NFKC→小文字化→空白除去。空白集合はJSの`\s`をエスケープ表記で明示しロケール非依存）。ただし小文字化はSQLの`lower()`とJSの`toLowerCase()`で一部のUnicode大文字（例: `İ` U+0130）の結果が異なる。認証済み導線の重複判定はサーバーのfingerprintだけを正本とするため実害はない。
 
 ## 4. RPC一覧（Task 009でクライアント公開はこの8本のみ）
 

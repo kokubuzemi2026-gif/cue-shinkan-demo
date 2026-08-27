@@ -17,28 +17,35 @@ type OrgContactFormProps = {
 export function OrgContactForm({ client, organizationId, onSaved }: OrgContactFormProps) {
   const [label, setLabel] = useState('')
   const [handle, setHandle] = useState('')
-  const [loaded, setLoaded] = useState(false)
+  const [loadState, setLoadState] = useState<'loading' | 'error' | 'ready'>('loading')
+  const [reloadCount, setReloadCount] = useState(0)
   const [busy, setBusy] = useState(false)
   const [errorText, setErrorText] = useState<string | null>(null)
   const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     let active = true
+    setLoadState('loading')
     void (async () => {
-      const { data } = await client
+      const { data, error } = await client
         .from('organizations')
         .select('contact_label, contact_handle')
         .eq('id', organizationId)
         .maybeSingle()
-      if (!active || data === null || data === undefined) return
+      if (!active) return
+      // 失敗を無言で捨てると、入力欄と保存ボタンがdisabledのまま復帰できなくなる
+      if (error !== null || data === null || data === undefined) {
+        setLoadState('error')
+        return
+      }
       setLabel(data.contact_label)
       setHandle(data.contact_handle)
-      setLoaded(true)
+      setLoadState('ready')
     })()
     return () => {
       active = false
     }
-  }, [client, organizationId])
+  }, [client, organizationId, reloadCount])
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault()
@@ -57,9 +64,32 @@ export function OrgContactForm({ client, organizationId, onSaved }: OrgContactFo
     }
   }
 
+  if (loadState === 'error') {
+    return (
+      <section className="auth-card" aria-label="公式窓口の編集">
+        <h2 className="auth-card-title">公式窓口</h2>
+        <p className="auth-text">
+          公式窓口の設定を読み込めませんでした。通信環境を確認して再試行してください。
+        </p>
+        <button
+          type="button"
+          className="button button-secondary"
+          onClick={() => setReloadCount((count) => count + 1)}
+        >
+          再試行
+        </button>
+      </section>
+    )
+  }
+
   return (
     <section className="auth-card" aria-label="公式窓口の編集">
       <h2 className="auth-card-title">公式窓口</h2>
+      {loadState === 'loading' && (
+        <p className="auth-text" role="status">
+          読み込んでいます…
+        </p>
+      )}
       <p className="auth-text">
         「行ってみたい」を選んだ新入生にだけ表示される、団体の公式アカウントです。個人の連絡先は登録しないでください。
       </p>
@@ -74,7 +104,7 @@ export function OrgContactForm({ client, organizationId, onSaved }: OrgContactFo
           maxLength={50}
           value={label}
           onChange={(event) => setLabel(event.target.value)}
-          disabled={busy || !loaded}
+          disabled={busy || loadState !== 'ready'}
         />
         <label className="field-label" htmlFor="org-contact-handle">
           アカウント・URL（100文字まで）
@@ -86,7 +116,7 @@ export function OrgContactForm({ client, organizationId, onSaved }: OrgContactFo
           maxLength={100}
           value={handle}
           onChange={(event) => setHandle(event.target.value)}
-          disabled={busy || !loaded}
+          disabled={busy || loadState !== 'ready'}
         />
         {errorText !== null && (
           <p className="form-error" role="alert">
@@ -101,7 +131,7 @@ export function OrgContactForm({ client, organizationId, onSaved }: OrgContactFo
         <button
           type="submit"
           className="button button-secondary auth-submit"
-          disabled={busy || !loaded}
+          disabled={busy || loadState !== 'ready'}
         >
           {busy ? '保存しています…' : '保存する'}
         </button>

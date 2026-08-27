@@ -260,6 +260,10 @@ export function StudentArea({ client, onFocusModeChange }: StudentAreaProps) {
             }),
           }
         })
+        // 公式窓口は「行ってみたい」の後にサーバーが開示するため（D033）、
+        // 返答後に受信箱を取り直して開示された値を反映する。
+        // 表示中の内容は保持したまま再取得するので、返答直後の見た目は変わらない
+        setInboxReloadCount((count) => count + 1)
       } catch (error) {
         setRespondError(serverErrorMessage(error))
       } finally {
