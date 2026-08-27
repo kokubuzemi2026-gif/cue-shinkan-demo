@@ -27,6 +27,7 @@ import {
 } from '../serverdata/passportApi'
 import { getDefaultStorage } from '../storage/appStorage'
 import { planDemoMigration, runDemoMigration } from './demoMigration'
+import { NotificationSettings } from './NotificationSettings'
 import { ServerOfferDetail } from './ServerOfferDetail'
 
 type StudentAreaProps = {
@@ -45,7 +46,7 @@ type InboxState =
   | { status: 'error' }
   | { status: 'ready'; items: InboxItem[] }
 
-type StudentTab = 'home' | 'inbox'
+type StudentTab = 'home' | 'inbox' | 'settings'
 type HomeView = 'intro' | 'wizard' | 'complete' | 'summary'
 
 // 未登録から始めるときの空draft。デモデータ（demoStudent）は持ち込まない
@@ -315,6 +316,14 @@ export function StudentArea({ client, onFocusModeChange }: StudentAreaProps) {
           >
             受信箱
           </button>
+          <button
+            type="button"
+            className="context-switcher-button"
+            aria-pressed={tab === 'settings'}
+            onClick={() => switchTab('settings')}
+          >
+            通知設定
+          </button>
         </nav>
       )}
 
@@ -336,6 +345,8 @@ export function StudentArea({ client, onFocusModeChange }: StudentAreaProps) {
           onOpenInbox={() => switchTab('inbox')}
         />
       )}
+
+      {tab === 'settings' && <NotificationSettings client={client} />}
 
       {tab === 'inbox' &&
         (selected !== undefined ? (

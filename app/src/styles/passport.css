@@ -532,3 +532,60 @@
     transform: none;
   }
 }
+
+/* Task 010: メール通知の受け取り方（3択） */
+.notification-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.notification-option {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  /* 主要タップ領域を十分に取る（片手操作・AGENTS.md UI/UX） */
+  min-height: var(--tap-target);
+  padding: var(--space-3);
+  background: var(--color-white);
+  border: 1px solid rgba(23, 33, 43, 0.24);
+  border-radius: 12px;
+  text-align: left;
+  font: inherit;
+  color: var(--color-ink);
+  cursor: pointer;
+}
+
+.notification-option.is-selected {
+  /* 色だけに意味を持たせない。記号（●）と枠の太さでも選択を示す */
+  border-width: 2px;
+  border-color: var(--color-ink);
+  background: var(--color-mint);
+}
+
+.notification-option:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 2px;
+}
+
+.notification-option[disabled] {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.notification-option-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.notification-option-mark {
+  font-size: 13px;
+}
+
+.notification-option-description {
+  font-size: 13px;
+  color: var(--color-muted);
+}
