@@ -112,6 +112,32 @@ PR・チャットへ置かない。**
    確認後は必ず戻す。
 3. `select * from public.admin_list_audit(100);` で、1・2の操作が記録されていることを確認する。
 
+## 6.3 Task 014・015・017 の人間タスク（追加分）
+
+Task 013時点のチェックリストに加えて、次を確認する。
+
+1. [ ] **同意画面が登録より前に出る**（Task 015・D050）。新規の大学メールでログインし、
+   「はじめる前に」が権限選択より先に出ること、同意しないと先へ進めないことを確認する
+2. [ ] **未同意では団体側の操作ができない**。同意前に PostgREST から
+   `accept_invitation` / `send_offer` を直接呼び、`consent_required` になることを
+   SQL Editor か curl で確認する（8 RPCすべてを試す必要はない。2〜3本で足りる）
+3. [ ] **本人によるデータ削除**（Task 014）。合成アカウントで
+   興味パスポート削除 → アカウント削除まで通し、`public`・`private` に本人の行が
+   残らないことを確認する（`docs/operations.md` §9 の抽出SQLを使う）
+4. [ ] **退会後のauth identity削除**（H10）。`admin_delete_auth_identity` を実行し、
+   `auth.users` から実際に消えるか、`auth.identities` / `auth.sessions` /
+   `auth.refresh_tokens` が連鎖して消えるか、`auth.audit_log_entries` の
+   JSON payload にメールが残り続けないかを確認する。
+   **残る場合はAdmin API（`auth.admin.deleteUser`）へ寄せることを検討する**
+5. [ ] **health check**（Task 017）。`select * from public.platform_health();` を
+   service_role で実行し、1行返ること・値が実態と合っていることを確認する。
+   とくに `auth.users` から作る4列（`confirmed_identities` /
+   `identities_created_last_7d` / `non_university_identities` /
+   `orphan_identities`）が `permission denied` にならず**値を返す**ことを見る。
+   hosted は `auth` スキーマの権限がローカルスタックと同じとは限らないため、
+   ここだけはローカルのpgTAPで担保できない
+6. [ ] **緊急停止の往復**（Task 013 §6.2の2と同じ）を、公開直前にもう一度行う
+
 ## 7. 料金・運用上の注意（残余リスク）
 
 - **Free projectは約1週間非アクティブでpauseされ得る**。Phase B実施前にプロジェクトが稼働中か確認し、停止時はダッシュボードからRestoreする。

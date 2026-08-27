@@ -99,8 +99,8 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 | 013 | 団体確認（pending/verified/suspended）・停止・kill switch・監査 | **完了（developへmerge済み `e8b333c`）** | [#14](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/14) | — |
 | 014 | アカウント・データライフサイクル（削除・脱退・孤児データ） | **完了（developへmerge済み `7da6919`）** | [#15](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/15) | 013 |
 | 015 | プライバシー・同意・利用規約draft・同意バージョン | **完了（developへmerge済み `1c3bb28`）** | [#16](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/16) | — |
-| 016 | UX・アクセシビリティ・完全E2E | **実装完了・CIと独立レビュー確認中** | [#17](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/17) | 010〜015 |
-| 017 | 運用（structured logging・health・runbook・secret rotation） | 未着手（仕様は `tasks/017-*.md`） | — | 010 |
+| 016 | UX・アクセシビリティ・完全E2E | **完了（developへmerge済み `623f85a`）** | [#17](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/17) | 010〜015 |
+| 017 | 運用（structured logging・health・runbook・secret rotation） | **実装完了・レビュー待ち** | — | 010 |
 | 018 | リリース（release notes・smoke test・staging記録・main PR） | 未着手（仕様は `tasks/018-*.md`） | — | 全部 |
 
 番号の重複回避: 既存Task番号は000〜009・012。013以降を新規に使う（010・011は既存の意味を保持）。
@@ -207,6 +207,84 @@ decision番号は既存D001〜D035。新規はD036以降。
 | H3 | SMTP認証情報のDashboard設定 | secretをチャット・リポジトリへ置かない運用 | Task 008時に設定済み・010で再確認 |
 | H4 | privacy policy / 利用規約の最終承認 | 法的文書の最終判断 | 未実施 |
 | H5 | `main`へのrelease PR merge判断 | 公開範囲の変更 | 未実施 |
+| H6 | **公開用Supabaseプロジェクトの決定**（stagingを流用するか、productionを新規に作るか） | Supabaseアカウントの操作。Freeプランの範囲なら課金は発生しない | 未実施 |
+| H7 | **GitHub Actions variables へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` を設定** | どちらもブラウザへ出る値なのでsecretではなくvariableでよい。**チャットへ貼らない** | 未実施 |
+| H8 | **公開ドメインを Supabase Auth の Site URL / Redirect URLs へ追加** | Dashboardの操作 | 未実施 |
+| H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | Supabaseアクセストークンが必要（`docs/runbook_supabase_hosted.md` §6.1） | 未実施 |
+| H10 | 本番Supabaseでの `auth.users` 削除挙動の確認 | Dashboardでの実操作が必要（`docs/operations.md` §9） | 未実施 |
+
+### H6〜H8 が揃うまで `main` へmergeしない（重要）
+
+`.github/workflows/deploy-pages.yml` の build は `VITE_SUPABASE_*` を渡していない。
+`src/lib/supabaseClient.ts` はどちらかが空だと `null` を返し、`AppRoot` は
+`SetupNotice`（「接続設定が必要です」）を表示する。
+
+公開URLは**いまPhase 1のlocalStorageデモとして動いている**（`main` の内容）。
+Phase 2では `src/demo/DemoApp.tsx` が `AppRoot` から到達不能なので、
+**設定なしでmergeすると「動いているデモ」が案内画面に置き換わる**。
+Task 018のsmoke testも全滅する。
+
+実装側で先にやること（Task 018）:
+
+- `deploy-pages.yml` の build step へ `env:` を足す（値は `${{ vars.* }}` の参照だけ）
+- ビルド成果物に設定が入っているかを、**値を出さずに**確認するステップを足す
+
+## 7.1 既知リスク一覧（公開前に運営者が読む）
+
+各タスクの「残る課題」と `docs/operations.md` §8 を1か所へ集めたもの。
+**直せていないものを直したことにしない。** 公開の判断はこの一覧を読んでから行う。
+
+### A. 法務・同意
+
+| # | 内容 | 影響 | いまの扱い |
+|---|---|---|---|
+| A1 | **法令適合は未確認**。利用規約・プライバシーポリシーはドラフト | 公開後に不備が判明する可能性 | `【要確認】`で該当箇所を明示。運営者の最終確認（H4） |
+| A2 | 事業者情報・連絡先・準拠法・委託先が未確定 | 問い合わせ先が機能しない | プレースホルダーとして明示。公開判断時に確定 |
+| A3 | 保存期間の上限（無操作・卒業後）が未定 | データが無期限に残る | 監査ログは年1回の剪定を用意（`runbook_operations.md` §8）。利用者データの上限は未定 |
+| A4 | 10–5ルールは英国ONSの公開手法を参考にしたもので、**法令準拠を主張しない**（D037） | 開示水準の妥当性が第三者検証を経ていない | decisionへ明記。運営者の最終確認 |
+
+### B. プライバシー・セキュリティ
+
+| # | 内容 | 影響 | いまの扱い |
+|---|---|---|---|
+| B1 | **退会後もauth identity（大学メール）が残る**（D047） | 削除したはずのメールがDBに残る | 運営が `admin_delete_auth_identity` で消す運用。自動化されていない。画面で「ログイン情報の削除は運営が行う」と伝えている |
+| B2 | `admin_delete_auth_identity` の監査記録は**対象を持たない** | service_role keyが漏れた場合の事後追跡ができない | 「誰を消したか」を残さない設計の代償。Supabase側のログ（保持期間短）に依存 |
+| B3 | 本番Supabaseでの `auth.users` 削除の挙動が未検証 | 子テーブル・`auth.audit_log_entries` にメールが残る可能性 | H10 で確認する |
+| B4 | 運営操作は**SQL Editorから**行う（運営画面UIが無い） | 人間の操作ミスを機械的に防げない。`actor_label` の正しさは運用依存 | 手順を `docs/operations.md` に固定 |
+| B5 | 対象人数の `0` と `1–4` を区別する（D036の残余リスク） | 小集団の在・不在が観測できる | 受容済み。preview条件数の上限と24時間固定で回数を制限 |
+| B6 | E2Eの失敗アーティファクトに入力値が残り得た | OTP・招待URLの露出 | `PLAYWRIGHT_NO_COPY_PROMPT` で停止（D051・PR #19でdevelopへmerge済み）。`test-results/` はgitignore、CIに `upload-artifact` は無い。**`toMatchAriaSnapshot` の失敗は環境変数で止まらない**ため、OTP・招待URLが出ている画面では使わない |
+
+### C. アクセシビリティ・UX
+
+| # | 内容 | 影響 | いまの扱い |
+|---|---|---|---|
+| C1 | **細線の枠が1.4.11（非テキスト3:1）を満たさない**。`.choice-chip`(0.16) / `.text-input`(0.18) / `.club-input`(0.24) / `.status-pending`(0.25) が白地で**1.39〜1.68**。`.button-primary` の coral 背景と周囲の境界も2.79 | 入力欄の境界が見えにくい利用者がいる | 3:1に届かせるにはalpha 0.50が必要で、アプリ全体の見え方が変わる。**公開前に運営者の判断が必要** |
+| C2 | スクリーンリーダー実機（VoiceOver / TalkBack）での確認が未実施 | 読み上げ順・読み上げ内容の問題を検出できていない | 自動検証は「フォーカスが移ること」までしか保証しない |
+| C3 | 390pxの目視確認が未実施 | 横スクロール以外のレイアウト崩れ | E2Eは横スクロールの有無だけを自動判定 |
+| C4 | セッションの**期限切れ**・**別端末でのログアウト**が未検証 | その経路で画面が壊れる可能性 | `sb-*` を消した場合のみ検証済み |
+
+### D. 機能の穴
+
+| # | 内容 | 影響 | いまの扱い |
+|---|---|---|---|
+| D1 | 団体そのものの削除が未実装 | 不要な団体が残る | 最終ownerガードと配信snapshotの整合を別途設計する必要がある |
+| D2 | 担当者の削除・role変更（他人を外す操作）が未実装 | 担当者を交代できない | 運営がSQLで対応する |
+| D3 | **まとめメールは取り消せない**（D044） | 停止直後に「新しい案内があります」が届き得る | 本文に団体名・イベント名を含まないため誤解は生まない |
+| D4 | 停止を団体へ能動的に通知する仕組みが無い | 団体は自分の画面を見て初めて気づく | — |
+| D5 | 緊急停止は**配信済みの案内を止めない** | 配信済みのものは個別停止が必要 | `docs/operations.md` §3・§4 |
+| D6 | 単独ownerが退会すると、その団体の所属だけが残る（D049） | 団体が宙に浮く | 戻り値で件数を返し画面で伝える。運営が引き取る |
+
+### E. 運用
+
+| # | 内容 | 影響 | いまの扱い |
+|---|---|---|---|
+| E1 | **Freeプロジェクトは約1週間の非アクティブでpauseされ得る** | 突然ログインできなくなる | 定期的に稼働を確認する |
+| E2 | **Authログの保持期間が短い** | 認証障害の事後調査ができない | 発生当日中に調査する |
+| E3 | 実メール送信がhosted未検証 | 本番で届かない可能性 | H9 で確認する |
+| E4 | 外部の監視サービスを使っていない | 障害に気づくのが遅れる | `platform_health()` を毎日見る運用（`runbook_operations.md` §8）。**有料サービスは承認なしに追加しない** |
+| E5 | **`email_outbox` の古い行を消す経路が無い** | `user_id` を持つ行が無期限に増える | Task 010が017へ引き継いだ項目だが、017では**実装していない**（監査とpreviewだけ剪定した）。次のタスクで対応する |
+| E6 | **staging のSMTPは個人のGmail（1日500宛先）** | 本番の規模で頭打ちになる。送信元ドメインも借り物 | 本番は独自ドメイン＋専用プロバイダが必要（`runbook_supabase_hosted.md` §7）。**H6と同時に判断する** |
+| E7 | denomailer 1.6.0 のSTARTTLS挙動が未確認 | 465以外のポートで平文送信になる可能性 | hosted stagingで実配信を確認するときに、ポートと暗号化を目視する（H9） |
 
 ## 8. 進捗ログ
 
@@ -229,6 +307,11 @@ decision番号は既存D001〜D035。新規はD036以降。
 
 | 2026-08-27 | Task 015をdevelopへsquash merge（`1c3bb28`）。merge後のdevelopで再検証し全green
   （pgTAP 591 / 並行10 / unit 362 / hook 201）。Task 016着手 |
+
+| 2026-08-27 | Task 016完了（PR #17 `623f85a`）。独立レビューでBlocker 2件
+  （コントラストの測定方法の誤り／自分が作ったフォーカスの穴）を検出し、再現して修正。
+  CIの時限式pgTAPを別PR #18で修正。E2Eの失敗アーティファクトへ入力値が残る件を
+  実機確認して別PR #19で修正。Task 017着手 |
 
 ## 9. 次回再開時の開始点
 
