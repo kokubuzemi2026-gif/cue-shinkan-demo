@@ -176,8 +176,9 @@ restoreは**最後の手段**。実行前に、緊急停止（`docs/operations.m
 | 年1 | 監査ログの剪定 | `select * from private.prune_audit_logs(365);`（DB管理者権限） |
 | 年1 | secret rotation | §6 |
 
-`prune_audit_logs` と `prune_preview_cache` は **service_role からも呼べない**
-（DB管理者＝Dashboard の SQL Editor でのみ実行できる）。誤操作で監査を消させないため。
+`prune_audit_logs`・`prune_preview_cache`・`prune_email_outbox` は
+**service_role からも呼べない**（DB管理者＝Dashboard の SQL Editor でのみ実行できる）。
+誤操作で監査や送信待ちを消させないため。
 
 ## 9. ログの方針（structured logging）
 

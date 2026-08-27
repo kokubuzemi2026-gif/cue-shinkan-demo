@@ -5,7 +5,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(14);
+select plan(16);
 
 -- ---- 権限: 掃除関数は誰からも呼べない（DB管理者のみ） ----
 select is(
@@ -96,6 +96,15 @@ select is(
   0,
   'T1: 2回目は0件（消すものが無ければ何も起きない）'
 );
+-- **引数が効いていることを検査する。** ここまでは既定の90日しか使っておらず、
+-- `make_interval(days => retain_days)` を `days => 90` に固定した変異体が
+-- 636件すべて通ってしまう（実際に確認した）。この時点で残っている終了済みの行は
+-- p-sent-new（10日前）だけなので、7日を渡せば消える
+select is(
+  private.prune_email_outbox(7),
+  1,
+  'T1: retain_days=7 なら10日前の終了済み行も消える（引数が効いている）'
+);
 
 -- ---- 二重送信にならないこと ----
 -- offer_arrival の dedupe_key は配信ID。積むのは
@@ -125,6 +134,26 @@ select is(
       and column_name in ('email', 'to_address', 'subject', 'body', 'recipient_email')),
   0,
   'T1: email_outbox は宛先・件名・本文の列を持たない（剪定しても消す対象が無い・D041）'
+);
+
+-- ---- リポジトリ全体の不変条件: SECURITY DEFINER は search_path を固定する ----
+-- 独立レビューとsecurity-reviewerが揃って指摘した既存の穴。
+-- 0018から `set search_path = ''` を外しても、`security invoker` へ変えても、
+-- **pgTAPは1件も落ちなかった**。実害は現状小さい（public に PUBLIC の CREATE が
+-- 無いため差し替え用オブジェクトを置けない）が、`security definer` は呼び出し側の
+-- search_path を引き継ぐため、修飾漏れと組み合わさると権限昇格の足場になる。
+-- 個別の関数ではなくカタログを走査して固定する（今後のmigrationにも効く）
+select is(
+  (select coalesce(string_agg(p.proname::text, ', ' order by p.proname::text), '')
+     from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname in ('public', 'private')
+      and p.prosecdef
+      and not exists (
+        select 1 from unnest(coalesce(p.proconfig, array[]::text[])) c
+         where c like 'search_path=%')),
+  '',
+  'T1: public・privateのSECURITY DEFINER関数は、すべてsearch_pathを固定している'
 );
 
 select * from finish();

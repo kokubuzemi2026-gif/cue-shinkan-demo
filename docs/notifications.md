@@ -143,12 +143,15 @@ SMTP接続は暗号化を必須にする（465なら暗黙TLS、それ以外はS
   ログ行に宛先が出ないこと）、`notificationApi.test.ts`
 - DB: pgTAP `24_notification_outbox_test.sql`（冪等性・状態遷移・backoff・上限・
   daily digestの時刻）、`25_notification_privacy_test.sql`（権限・PIIサーフェス）
+- pgTAP: `35_outbox_prune_test.sql`（剪定の権限・下限・状態ごとの取捨・Task 019）
 - E2E: `e2e/task010-notifications.spec.ts`（設定の3択・永続化・設定に応じた積まれ方・
   `off`で積まれないこと・通知を止めてもオファーは届くこと）
 - **実メール送信は未検証**。hosted stagingでの実機確認は `docs/launch_plan.md` §7 の人間タスク
 
 ## 8. 未実施・今後
 
-- 送信ワーカーのデプロイとスケジュール設定（人間タスク）
-- 送信済み・失敗の運用確認手順の整備（Task 017）
-- 古いoutbox行の削除（Task 017）
+- 送信ワーカーのデプロイとスケジュール設定（人間タスク・`docs/launch_plan.md` §7 H9）
+- ~~送信済み・失敗の運用確認手順の整備~~ **Task 017で対応**
+  （`platform_health()` と `docs/runbook_incident.md` §2）
+- ~~古いoutbox行の削除~~ **Task 019で対応**
+  （`private.prune_email_outbox(90)`・D053。**pending・sending は消さない**）

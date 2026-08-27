@@ -24,6 +24,9 @@ CIが警告を出し続けている生成型の差分を解消する。
 - `docs/decisions.md`（D053）
 - `docs/runbook_operations.md` §8（定期作業）
 - `docs/launch_plan.md` §7.1（E5を対応済みへ）
+- `docs/notifications.md` §7・§8（独立レビューN3・D053で解消した項目の反映）
+- `docs/legal/privacy_draft.md` §5（security-reviewer N2・保持期間の「未定」を90日へ）
+- `app/supabase/tests/34_ops_health_test.sql`（独立レビューN1・`prune_audit_logs` の同じ穴）
 
 ## Out of scope
 
@@ -42,8 +45,11 @@ CIが警告を出し続けている生成型の差分を解消する。
 5. `public` スキーマへ露出しない（PostgRESTから叩けない）
 6. 送信ワーカーの並行取り出しが、2プロセスを実際に並行させて検証されている
    （二重に掴まない／相手のロックを待たない）
-7. CIの生成型差分検査が差分ゼロになる
+7. CIの生成型差分検査が差分を出さない（**このステップはジョブを落とさない**。
+   差分は `::warning::` として出るだけなので、ログを見て確認する）
 8. `docs/runbook_operations.md` の定期作業に剪定が載っている
+9. `retain_days` が実際に使われている（引数を無視する実装ではテストが落ちる）
+10. `public`・`private` のSECURITY DEFINER関数がすべて `search_path` を固定している
 
 ## Test plan
 
@@ -51,7 +57,7 @@ CIが警告を出し続けている生成型の差分を解消する。
 |---|---|---|
 | 権限・下限・状態ごとの取捨 | pgTAP 14件 | `app/supabase/tests/35_outbox_prune_test.sql` |
 | ワーカーの並行取り出し | psql 2プロセス並行 | `app/scripts/concurrency_test.sh` |
-| 生成型の差分 | CI `db-tests` の差分検査 | `.github/workflows/ci.yml` |
+| 生成型の差分 | CI `db-tests` の差分検査（**警告のみ。落ちない**） | `.github/workflows/ci.yml` |
 
 ## Rollback
 
@@ -94,7 +100,7 @@ CIが警告を出し続けている生成型の差分を解消する。
 
 | 検証 | 結果 |
 |---|---|
-| pgTAP | 35ファイル **636テスト PASS**（622から+14） |
+| pgTAP | 35ファイル **641テスト PASS**（622から+19。うち34へ+3・35へ+16） |
 | 並行テスト | **15件 PASS**（10から+5） |
 | oxlint / `tsc -b` / vitest / vite build | すべてgreen（ユニット365テスト） |
 | 生成型の差分 | CIの差分検査で確認（下記） |
@@ -105,7 +111,30 @@ CIが警告を出し続けている生成型の差分を解消する。
 |---|---|
 | `claim_email_batch` の `for update skip locked` → `for update` | 並行: 1件（「BはAのロックを待たない」実測 46ms → 2042ms） |
 | `prune_email_outbox` の状態での絞り込みを外す（時刻だけで消す） | 35: 3件 |
-| 下限チェック（`retain_days < 7`）を外す | 35: 2件 |
+| 下限チェック（`retain_days < 7`）だけを外す | 35: **1件**（`null` チェックも含めたガード節ごと外すと2件） |
+| `make_interval(days => retain_days)` を `days => 90` へ固定（引数を無視） | 35: 1件 |
+| `prune_audit_logs` の同じ変異（`days => 365` へ固定） | 34: 1件 |
+| `prune_email_outbox` から `set search_path = ''` を外す | 35: 1件 |
+
+### 独立レビュー2本の結論と対応
+
+**どちらもBlocker 0件（承認可）。** Non-blockerのうち、次を同じPRで直した。
+
+| 指摘 | 内容 | 対応 |
+|---|---|---|
+| N1（独立） | **`retain_days` が効いているかを1件も検査していない**。`make_interval(days => retain_days)` を `days => 90` に固定した変異体が641件すべて通る。`lives_ok(prune(7))` が行を入れる前に走っており、以降は既定値しか使っていなかった | 35へ「`retain_days=7` なら10日前の行も消える」を追加。**同じ穴が `prune_audit_logs`（D052）にもあった**ので、34にも下限30日で判別できる3件を追加。どちらも変異体が落ちることを確認 |
+| N1（security） | **並行テストの `sleep 1` 同期が空振りしうる**。Aのpsql起動が1秒を超えると、`skip locked` を外した変異体でも全件okになる（レビュー側が再現） | `pg_stat_activity` で**Aが `pg_sleep` を実行中**（＝掴み終えて握ったまま）を観測してからBを起動する。**「掴んだ行が見えるまで待つ」は誤り**で、未commitのため見えるのはcommit後＝ロック解放後になる（実際にそれで変異体が通ることを確認した）。Aの保持を5秒、しきい値を1000msへ。実測は正常系39〜44ms・8並列負荷下105ms・変異体4872msで、両側20倍以上の余裕 |
+| N3（security） | 第4フェーズが `claim_email_batch` を直接呼ぶため、実データのDBへ誤って向けると実在のpendingが `sending` へ落ちる | `demo-` 以外の利用者が居たら中止する安全弁を追加 |
+| N5（独立） | 第4フェーズが第1フェーズの残留outbox行との時刻順序に暗黙依存 | seed直前に `delete from private.email_outbox` |
+| N4（security）/ N8（独立） | **`security definer` + `search_path=''` を固定するテストがリポジトリ全体に無い**。0018から外しても641件全通過 | カタログ走査で `public`・`private` のSECURITY DEFINER関数全件を固定（変異体が落ちることを確認） |
+| N2（独立） | `runbook_operations.md` §8 の地の文が `prune_email_outbox` を含まず、service_roleから呼べると誤読しうる | 3関数を列挙 |
+| N3（独立）/ T1（security） | `docs/notifications.md` §8 が「古いoutbox行の削除（Task 017）」を未実施のまま残す | 017・019で対応済みへ。§7へ35を追加 |
+| N2（security） | `docs/legal/privacy_draft.md` が送信記録の保持期間を「未定」のまま | 90日へ。D052で監査を365日に決めたときと同じ扱い |
+| N4（独立） | 記録の mutation test 表が「下限チェックを外す → 2件」としていたが実測は1件 | 実測へ訂正（ガード節ごとなら2件） |
+| T2（security） | 受入条件7「CIの差分検査が差分ゼロ」は、CIが警告を出すだけで落ちない実態より強い | 「警告のみ。落ちない」と明記 |
+| T3（security） | `head -c 1` で先頭1文字しか見ておらず batch size 10以上で誤判定 | 最初の数値行を取る |
+
+**持ち越し**: N7（保持期間ちょうどの境界テスト）・N9（`2147483647` は `invalid_retain_days` でなく `timestamp out of range`。abortするだけでデータは失われない）・N11（積む経路の検査をトリガ数から `prosrc` 走査へ）・T4（`cleanup` の失敗時の後片付け）。いずれも実害が確認されておらず、次の機会に回す。
 
 ### 残る課題
 

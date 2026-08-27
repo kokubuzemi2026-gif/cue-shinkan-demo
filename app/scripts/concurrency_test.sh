@@ -263,6 +263,22 @@ rm -rf "$LEAVE_OUT"
 # の2点を実際に並行させて確かめる。
 # pgTAPは1ファイル=1セッションなので、この2点はpgTAPでは検証できない。
 note 'Task 017 ワーカー並行テスト: 準備'
+# **安全弁**: このフェーズは claim_email_batch を直接呼ぶ。同RPCは
+# `order by next_attempt_at` で**送信期限が来ている行なら何でも**掴んで
+# sending へ進め、attempts を +1 する。実データのあるDBへ誤って向けると、
+# 実在の pending が最大6件 sending へ落ち、leaseが切れるまで滞留する。
+# 合成データ以外の利用者が居るDBでは走らせない
+REAL_USERS="$("${PSQL[@]}" -c "select count(*)::int from auth.users where email not like 'demo-%'")"
+if [ "${REAL_USERS:-0}" -ne 0 ]; then
+  note "  中止 - demo- 以外の利用者が ${REAL_USERS} 人います。このスクリプトは合成データ専用です"
+  exit 1
+fi
+# 第1〜3フェーズが積んだ outbox 行を消してから始める。
+# 残っていると claim_email_batch が next_attempt_at 順にそちらを先に掴み、
+# 「6件すべてがsendingへ進む」が本フェーズの行を数えられなくなる
+"${PSQL[@]}" >/dev/null <<SQL
+delete from private.email_outbox;
+SQL
 "${PSQL[@]}" >/dev/null <<SQL
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at)
 select ('00000000-0000-0000-0000-0000000cc9' || to_char(n, 'FM00'))::uuid,
@@ -292,14 +308,36 @@ SQL
 
 note 'Task 017 ワーカー並行テスト: 2つのワーカーを同時に走らせる'
 WORKER_OUT="$(mktemp -d)"
-# A: 3件掴んで3秒握ったままにする
+# A: 3件掴んで5秒握ったままにする
 {
   printf 'begin;\n'
   claim_sql 3
-  printf 'select pg_sleep(3);\ncommit;\n'
+  printf 'select pg_sleep(5);\ncommit;\n'
 } | "${PSQL[@]}" >"$WORKER_OUT/a" 2>&1 &
 WORKER_A=$!
-sleep 1
+# **固定sleepで同期しない。** Aのpsql起動が遅れるとBが先に掴んでしまい、
+# `skip locked` を外した変異体でも全件okになる（空振りPASS）。
+#
+# ただし「掴んだ行が見えるまで待つ」のも**誤り**。claim_email_batch は
+# Aの未commitトランザクション内なので、別セッションからは commit まで
+# 見えない。それを待つとAが commit してロックを手放した後にBを起動することになり、
+# やはり変異体を検出できない（実際にそうなることを確認した）。
+#
+# 観測すべきは「Aが掴み終えて、まだ握ったまま眠っている」瞬間。
+# pg_stat_activity で **Aが pg_sleep を実行中**であることを見る。
+# claim の次の文が pg_sleep なので、これが active ＝ claim は完了し、
+# 行ロックは保持されたまま（トランザクションは開いている）。
+# 自分自身のポーリング問い合わせは `select count(` で始まるため前方一致しない
+A_HOLDING=no
+for _ in $(seq 1 100); do
+  HOLD="$("${PSQL[@]}" -c "select count(*)::int from pg_stat_activity where datname = current_database() and pid <> pg_backend_pid() and state = 'active' and query like 'select pg_sleep(5)%'" || echo 0)"
+  if [ "${HOLD:-0}" -ge 1 ]; then A_HOLDING=yes; break; fi
+  sleep 0.1
+done
+if [ "$A_HOLDING" != yes ]; then
+  note "  FAIL - ワーカーAが10秒以内に枠を握った状態になりませんでした"
+  FAILURES=$((FAILURES + 1))
+fi
 # B: Aがロックを握っている最中に走る。skip lockedなら待たずに残りを掴める
 B_START=$(date +%s%N)
 {
@@ -311,12 +349,15 @@ B_ELAPSED_MS=$(( ($(date +%s%N) - B_START) / 1000000 ))
 wait "$WORKER_A" || true
 
 note 'Task 017 ワーカー並行テスト: 検証'
-A_CLAIMED="$(tr -d ' \n' <"$WORKER_OUT/a" | head -c 1)"
-B_CLAIMED="$(tr -d ' \n' <"$WORKER_OUT/b" | head -c 1)"
+# 先頭1文字ではなく最初の数値行を取る（batch sizeが10以上でも壊れない）
+A_CLAIMED="$(grep -oE '^[0-9]+$' "$WORKER_OUT/a" | head -1)"
+B_CLAIMED="$(grep -oE '^[0-9]+$' "$WORKER_OUT/b" | head -1)"
 check 'ワーカーAは3件掴む' '3' "$A_CLAIMED"
 check 'ワーカーBも3件掴む（Aが握っている行を飛ばして残りを取る）' '3' "$B_CLAIMED"
-# ロック待ちなら、Aのcommit（3秒）まで返らない
-if [ "$B_ELAPSED_MS" -lt 2000 ]; then B_NOT_BLOCKED=yes; else B_NOT_BLOCKED=no; fi
+# ロック待ちなら、Aのcommit（5秒）まで返らない。
+# 正常系の実測は50ms前後、ロック待ちは5000ms前後なので、1000msなら
+# どちら側にも十分な余裕がある（2000msだと検出側の余裕が数%しかなかった）
+if [ "$B_ELAPSED_MS" -lt 1000 ]; then B_NOT_BLOCKED=yes; else B_NOT_BLOCKED=no; fi
 check "ワーカーBはAのロックを待たない（skip locked。実測 ${B_ELAPSED_MS}ms）" 'yes' "$B_NOT_BLOCKED"
 WORKER_SENDING="$("${PSQL[@]}" -c "select count(*)::int from private.email_outbox where dedupe_key like 'worker-%' and status = 'sending'")"
 check '6件すべてがsendingへ進む' '6' "$WORKER_SENDING"
