@@ -334,7 +334,9 @@ test('Task 009: パスポート・オファー・受信箱・ファネルのサ�
       await expect(pageB.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible({
         timeout: 15_000,
       })
-      // 同じ日のsnapshotは動かない（D037）。学生Aが返答してもファネルは変わらない
+      // 同じ日のsnapshotは動かない（D037）。学生Aが返答してもファネルは変わらない。
+      // 一覧は非同期取得のため、自動待機しないallInnerTexts()の前に揃うのを待つ
+      await expect(pageB.locator('.funnel-value')).toHaveCount(4)
       const sameDay = await pageB.locator('.funnel-value').allInnerTexts()
       expect(sameDay).toEqual(['15', '—', '—', '—'])
 
@@ -357,6 +359,7 @@ test('Task 009: パスポート・オファー・受信箱・ファネルのサ�
       await expect(pageB.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible({
         timeout: 15_000,
       })
+      await expect(pageB.locator('.funnel-value')).toHaveCount(4)
       const funnel = await pageB.locator('.funnel-value').allInnerTexts()
       // 配信14→15 / 閲覧12→10 / 関心12→10 / 参加意向12→10（5人単位の丸め・D037）
       expect(funnel).toEqual(['15', '10', '10', '10'])

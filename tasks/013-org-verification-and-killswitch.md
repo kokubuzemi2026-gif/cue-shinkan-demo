@@ -150,6 +150,10 @@
 - e2eの`getByText('審査待ち')`がstrict mode violation（状態チップと説明文の2要素に一致）。
   調査中に、`delivery_paused` / `offer_stopped` が `serverErrorMessage` の既知コードに無く、
   「通信環境を確認して…」という誤解を招く汎用文言になっていたことを発見して修正
+- e2eのtask011が「ファネルの抑制表示」で失敗（受け取った配列が空）。
+  `allInnerTexts()` は自動待機しないため、キャンペーン一覧の非同期取得が終わる前に
+  読んでいた既存の競合。ダッシュボード見出しの表示だけでは一覧の取得完了を保証しない
+  → 自動待機するassertionを先に置く（task009の同じ形2箇所もあわせて修正）
 - e2eの最終検査（console errorが無いこと）が失敗。意図的に拒否される要求について、
   ブラウザは`response`とは別に console へも「Failed to load resource」を出すため、
   「拒否されたこと」自体を失敗として数えていた → 拒否を許す区間をフラグで明示する
