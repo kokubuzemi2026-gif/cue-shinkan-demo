@@ -128,15 +128,72 @@
 
 ## Verification record（検証記録）
 
-実装後に記入する。
+- 実行モード: **Deep**（`app/supabase/**`・匿名性・並行処理・PIIに触れるため）
+- ブランチ: `feat/011-anonymity-safety-concurrency`（`develop` の `f28d834` から作成）
+- PR: [#12](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/12)
+- lint: `npm run lint`（oxlint）→ green（指摘0件）
+- unit test: `npm run test -- --run` → **328件 / 26ファイル** すべてpass（develop比 +11件）
+- build: `npm run build`（`tsc -b && vite build`）→ 成功
+- pgTAP: **316件 / 22ファイル** すべてpass（develop比 +87件）。
+  ローカルはDockerが無いため PostgreSQL 16 + Supabase相当スキャフォールド
+  （`auth.users` / `auth.uid()` / anon・authenticated・service_role / pgcrypto / pgtap）へ
+  全11migrationを順に適用して実行。CIの `db-tests`（本物のSupabaseスタック）でも green
+- 並行テスト: `npm run db:test:concurrency` → 8件すべてpass（ローカル・CI とも）
+- E2E: **ローカル未実施**（Dockerデーモンが無く `supabase start` を起動できない）。
+  CIの `e2e` ジョブで green（task008 / task009 / task011 の4テスト）
+- 手動QA（390px）: **未実施**（同上）。E2E内の `expectNoHorizontalScroll` で自動検証している
+- hookテスト: `python3 .claude/hooks/test_hooks.py` → 201件pass（変更なし）
+- CI: quality / db-tests / e2e すべて green（`b0e217d`）。
+  db-testsのログで pgTAP `Files=22, Tests=316, Result: PASS`、
+  並行テスト8件pass、生成型ドリフト検査の差分ゼロ（警告なし）を確認
 
-- 実行モード: Deep（`app/supabase/**`・匿名性・並行処理・PIIに触れるため）
-- ブランチ / commit:
-- lint:
-- unit test:
-- build:
-- pgTAP:
-- E2E:
-- 手動QA（390px）:
-- 独立レビュー（reviewer / security-reviewer）の結論と対応:
-- 残るリスク・未実施事項:
+### 実装中に見つけて直した問題
+
+| 内容 | 検知した手段 | 対応 |
+|---|---|---|
+| 同一文のCTEは同じsnapshotを見るため、受信者を挿入した直後に同じ文で `window_count` を数えると常に挿入前の値になっていた | 並行テスト | 枠の観測値の更新を別の文へ分離 |
+| `list_org_campaigns` のOUTパラメータ `delivery_id` が `on conflict` のカラム参照と衝突（`column reference is ambiguous`） | pgTAP | snapshot確定を `private.ensure_funnel_snapshots()` へ分離 |
+| pgTAP 22 の dblink がSupabaseのローカルスタックで使えない（postgres が superuser ではない） | CI（db-tests） | 本物の並行実行を `scripts/concurrency_test.sh`（psql複数プロセス）へ移し、pgTAP 22は単一セッションで決定的に検証できる部分に限定 |
+| E2Eの `execSql` が `update ... returning id` の戻り値にコマンドタグ（`UPDATE 1`）を混ぜていた | CI（e2e） | psqlへ `-q` を追加。今回はじめてorgIdをSQLへ埋め込んだことで露見した潜在不具合 |
+| E2Eの母集団がspec間で混ざる（DBを共有して直列実行するため） | CI（e2e） | task011に専用カテゴリ（旅行・スポーツ・ボランティア）を割り当て |
+
+### 並行テストの実効性（変異テスト）
+
+「テストが通ること」ではなく「壊したら落ちること」を確認した。
+
+| 変異 | 結果 |
+|---|---|
+| 枠の `FOR UPDATE` ループを外す | `scripts/concurrency_test.sh` が **3回とも失敗**（同時起動4件がすべて成立し、学生1人が4件受信＝上限1件を突破） |
+| 週枠の再判定で上限を `now()` で閉じる | pgTAP 22 が失敗（後からcommitされた配信を取りこぼす） |
+
+なお、第1フェーズ（Aが枠を確保している間にBが来る形）だけでは、枠の行に対する
+`insert ... on conflict do nothing` の一意制約待ちが偶然の直列化を生むため、
+`FOR UPDATE` を外しても検出できなかった。遅延を入れずに4団体を同時起動する
+第2フェーズを足して、はじめて変異を検出できるようになった。
+
+### 差分攻撃について確認したこと
+
+`20_differential_attack_test.sql` で、攻撃が理論上成立する状況（費用以外の合計が60点＝
+参加費の5点で配信可否が変わる学生を1人だけ混ぜた12人の母集団）を作り、次を確認した。
+
+- 区分化により、標的1人が外れても区分は `10-24` のまま動かない
+- 集団が保たれる範囲を8条件掃引しても、観測される区分は1種類だけ
+- 条件数の制限（20条件/24時間）で掃引が打ち切られる
+- 24時間固定により、標的が予算を変えても同一条件の再previewは古い区分を返す
+- 3人へ絞り込んでも送信は `insufficient_audience` で拒否され、送信をoracleにできない
+
+**正直な限界**: 集団全体が対象から外れる価格帯では区分が動く（`10-24` → `0`）。
+これは「その条件では誰も該当しない」という集計情報であり、個人の予算上限を特定する
+情報ではない。D036へ残余リスクとして記録し、テストでも明示している。
+
+### 残るリスク・未実施事項
+
+- **E2Eと390pxの手動QAがローカル未実施**（Dockerデーモンが無い）。CIで担保している。
+- 枠のロックは対象学生数に比例した回数取得するため、母集団が非常に大きい場合は
+  送信のレイテンシが伸びる（閉鎖βの規模では問題にならない。`docs/server_data_model.md` §9へ記録）。
+- ~~`database.types.ts` は手書きで更新した~~ → CIの生成型ドリフト検査で
+  **差分ゼロ**（警告なし）を確認済み。生成器の出力と一致している。
+- 10-5ルールは公開手法を参考にしたものであり、**法令準拠を主張しない**（D037）。
+  運営者による最終確認が必要。
+- hosted stagingへの0011 migration適用は未実施（`docs/launch_plan.md` §7 H1）。
+- 独立レビュー（reviewer / security-reviewer）の結論と対応: 後述のとおり実施し、追記する。
