@@ -96,7 +96,9 @@ $$;
 comment on function private.audience_fingerprint(
   public.interest_category[], public.purpose[], public.activity_style,
   public.day_slot[], public.frequency, integer, boolean) is
-  '対象条件の正規化ハッシュ。raw条件を監査ログへ残さないための一方向変換（D038）';
+  '対象条件の正規化ハッシュ（D038）。raw条件を平文で残さないための正規化であり、'
+  '探索空間が小さい（約5×10^10）ため秘匿性は主張しない。表のgrantはゼロで、'
+  'DB自体が漏えいしない限り到達できないことに依拠する';
 revoke execute on function private.audience_fingerprint(
   public.interest_category[], public.purpose[], public.activity_style,
   public.day_slot[], public.frequency, integer, boolean) from public;

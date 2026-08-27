@@ -5,7 +5,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(19);
+select plan(20);
 
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('00000000-0000-0000-0000-00000000d001', 'demo-min-owner@stu.kobe-u.ac.jp', now(), now(), now());
@@ -33,21 +33,37 @@ create temp table morg as select public.create_organization('最小人数テス�
 reset role;
 update public.organizations set status = 'verified' where id = (select id from morg);
 
+-- Task 011: 送信は24時間以内の同一条件previewを必須とする
 create function pg_temp.try_send(ev text, dt text, pl text)
 returns table (delivery_id uuid, audience_band text)
-language sql
+language plpgsql
 as $$
-  select * from public.send_offer(
+begin
+  perform public.preview_offer_audience(
     (select id from morg), ev, '説明文', '届けたい理由', dt, pl,
     array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
     array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
-    10, '2026-09-10')
+    10, '2026-09-10');
+  return query select * from public.send_offer(
+    (select id from morg), ev, '説明文', '届けたい理由', dt, pl,
+    array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+    array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
+    10, '2026-09-10');
+end
 $$;
 
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000d001","role":"authenticated"}', true);
 set local role authenticated;
 
 -- ---- 0人（対象カテゴリに誰も該当しない） ----
+select lives_ok(
+  $$select public.preview_offer_audience(
+      (select id from morg), '音楽会', '説明文', '理由', '9月13日（土）', '大学会館',
+      array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+      array['music']::public.interest_category[], array['creation']::public.purpose[],
+      10, '2026-09-10')$$,
+  'T7: 0人の条件でもpreviewは通る（区分0を返す）'
+);
 select throws_ok(
   $$select * from public.send_offer(
       (select id from morg), '音楽会', '説明文', '理由', '9月13日（土）', '大学会館',
@@ -201,7 +217,12 @@ update public.student_passports set reception_paused = false
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000d001","role":"authenticated"}', true);
 set local role authenticated;
 select lives_ok(
-  $$select * from public.send_offer(
+  $$select public.preview_offer_audience(
+      (select id from morg), '重複指定会', '説明文', '理由', '9月28日（日）', '摩耶山',
+      array['weekend','weekend','weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+      array['outdoor','outdoor']::public.interest_category[],
+      array['friends','friends','friends','friends']::public.purpose[], 10, '2026-09-26');
+    select * from public.send_offer(
       (select id from morg), '重複指定会', '説明文', '理由', '9月28日（日）', '摩耶山',
       array['weekend','weekend','weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
       array['outdoor','outdoor']::public.interest_category[],

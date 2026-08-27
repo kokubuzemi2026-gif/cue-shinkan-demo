@@ -14,6 +14,7 @@ import {
 
 const UNAVAILABLE: DisclosedFunnel = {
   available: false,
+  rounded: true,
   delivered: null,
   viewed: null,
   engaged: null,
@@ -22,6 +23,7 @@ const UNAVAILABLE: DisclosedFunnel = {
 
 const PARTIAL: DisclosedFunnel = {
   available: true,
+  rounded: true,
   delivered: 15,
   viewed: 10,
   engaged: null,
@@ -51,6 +53,11 @@ describe('funnelDisclosure', () => {
     expect(funnelCellAriaLabel(PARTIAL, 'delivered')).toBe('約15人')
   })
 
+  it('丸めていない実数（Phase 1デモ）は「約」を付けずに読み上げる', () => {
+    const exact = exactToDisclosed({ delivered: 3, viewed: 2, engaged: 2, planned: 1 })
+    expect(funnelCellAriaLabel(exact, 'delivered')).toBe('3人')
+  })
+
   it('0という開示値と抑制を取り違えない', () => {
     const zeroDisclosed: DisclosedFunnel = { ...PARTIAL, viewed: 0 }
     expect(funnelCellText(zeroDisclosed, 'viewed')).toBe('0')
@@ -63,6 +70,7 @@ describe('funnelDisclosure', () => {
     expect(isDisclosedFunnel(exact)).toBe(false)
     expect(exactToDisclosed(exact)).toEqual({
       available: true,
+      rounded: false,
       delivered: 3,
       viewed: 2,
       engaged: 2,

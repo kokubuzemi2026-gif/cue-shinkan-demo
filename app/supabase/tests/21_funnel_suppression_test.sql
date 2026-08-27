@@ -36,12 +36,23 @@ update public.organizations set status = 'verified' where id = (select id from s
 
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000b0001","role":"authenticated"}', true);
 set local role authenticated;
+-- Task 011: 送信前に同一条件のpreviewを通す
+select public.preview_offer_audience(
+    (select id from sorg), '写真散歩', '説明文', '理由', '9月13日（土）', '旧居留地',
+    array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+    array['photo']::public.interest_category[], array['friends','challenge']::public.purpose[],
+    10, '2026-09-10');
 create temp table d_small as
   select s.delivery_id as id from public.send_offer(
     (select id from sorg), '写真散歩', '説明文', '理由', '9月13日（土）', '旧居留地',
     array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
     array['photo']::public.interest_category[], array['friends','challenge']::public.purpose[],
     10, '2026-09-10') s;
+select public.preview_offer_audience(
+    (select id from sorg), '六甲山ハイク', '説明文', '理由', '9月20日（土）', '六甲ケーブル下',
+    array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+    array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
+    10, '2026-09-18');
 create temp table d_big as
   select s.delivery_id as id from public.send_offer(
     (select id from sorg), '六甲山ハイク', '説明文', '理由', '9月20日（土）', '六甲ケーブル下',

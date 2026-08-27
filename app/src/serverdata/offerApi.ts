@@ -1,6 +1,6 @@
 import type { OfferDraft } from '../features/club/offerComposer'
 import type { AudienceBand } from '../features/club/audienceBand'
-import { canDeliverBand, parseAudienceBand } from '../features/club/audienceBand'
+import { parseAudienceBand } from '../features/club/audienceBand'
 import type { DisclosedFunnel } from '../features/club/funnelDisclosure'
 import type { ClubOffer } from '../domain/types'
 import type { Database } from '../lib/database.types'
@@ -14,7 +14,6 @@ import type { CueSupabaseClient } from '../lib/supabaseClient'
 export type AudiencePreview = {
   // 正確な人数ではなく6区分。生の人数はクライアント状態に存在しない（D036）
   audienceBand: AudienceBand
-  canDeliver: boolean
   duplicateEvent: boolean
   // 団体自身の枠情報（学生の情報ではないため正確な値）
   sentThisWeek: number
@@ -113,6 +112,7 @@ export function campaignRowToView(organizationId: string, row: CampaignRow): Ser
     // 抑制されたセルはサーバーがNULLを返す。0へ潰さずnullのまま運ぶ（D037）
     funnel: {
       available: row.funnel_available,
+      rounded: true,
       delivered: nullableCount(row.delivered_count),
       viewed: nullableCount(row.viewed_count),
       engaged: nullableCount(row.engaged_count),
@@ -140,10 +140,8 @@ export async function previewOfferAudience(
   if (error) throw error
   const row = data?.[0]
   if (row === undefined) throw new Error('empty_rpc_result')
-  const band = parseAudienceBand(row.audience_band)
   return {
-    audienceBand: band,
-    canDeliver: canDeliverBand(band),
+    audienceBand: parseAudienceBand(row.audience_band),
     duplicateEvent: row.duplicate_event,
     sentThisWeek: row.sent_this_week,
     weeklyLimit: row.weekly_limit,

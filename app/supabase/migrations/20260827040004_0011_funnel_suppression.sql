@@ -114,7 +114,7 @@ begin
            d.capacity,
            d.deadline,
            -- 配信人数が10人未満のofferは、どのセルも開示しない
-           (s.delivered_count >= 10) as funnel_available,
+           coalesce(s.delivered_count >= 10, false) as funnel_available,
            case when s.delivered_count >= 10
                 then private.round_to_base5(s.delivered_count) end,
            case when s.delivered_count >= 10 and s.viewed_count >= 10
@@ -123,9 +123,13 @@ begin
                 then private.round_to_base5(s.engaged_count) end,
            case when s.delivered_count >= 10 and s.planned_count >= 10
                 then private.round_to_base5(s.planned_count) end,
-           s.snapshot_date
+           coalesce(s.snapshot_date, v_today)
       from private.offer_deliveries d
-      join private.offer_funnel_snapshots s
+      -- snapshotの確定（ensure_funnel_snapshots）とこの問い合わせは別の文であり、
+      -- その間に他トランザクションがcommitした配信にはまだsnapshotが無い。
+      -- INNER JOINだとその配信が一覧から消えるためLEFT JOINにし、
+      -- snapshotが無い行は「集計に必要な人数未満」と同じ扱い（全セル非開示）で返す
+      left join private.offer_funnel_snapshots s
         on s.delivery_id = d.id
        and s.snapshot_date = v_today
      where d.organization_id = list_org_campaigns.org_id

@@ -227,6 +227,9 @@ export function OrgOffersPanel({
       <SendConfirm
         offer={draftToClubOffer(organizationId, draft)}
         band={confirmState.preview.audienceBand}
+        previewConditionsUsed={confirmState.preview.previewConditionsUsed}
+        previewConditionsLimit={confirmState.preview.previewConditionsLimit}
+        bandComputedAt={confirmState.preview.bandComputedAt}
         sentThisWeek={confirmState.preview.sentThisWeek}
         weeklyLimit={confirmState.preview.weeklyLimit}
         duplicate={confirmState.preview.duplicateEvent}
@@ -306,6 +309,7 @@ export function OrgOffersPanel({
       campaigns={campaignState.campaigns.map((campaign) => ({
         offer: campaign.offer,
         funnel: campaign.funnel,
+        snapshotDate: campaign.snapshotDate,
       }))}
       sentThisWeek={sentThisWeek}
       weeklyLimit={CLUB_WEEKLY_CAMPAIGN_LIMIT}

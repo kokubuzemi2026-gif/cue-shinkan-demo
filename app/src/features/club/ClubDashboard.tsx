@@ -7,6 +7,8 @@ import {
   FUNNEL_UNAVAILABLE_TEXT,
   funnelCellAriaLabel,
   funnelCellText,
+  formatSnapshotDate,
+  isDisclosedFunnel,
   toDisclosedFunnel,
 } from './funnelDisclosure'
 
@@ -119,12 +121,21 @@ export function ClubDashboard({
                   {!funnel.available && (
                     <p className="campaign-funnel-note">{FUNNEL_UNAVAILABLE_TEXT}</p>
                   )}
+                  {campaign.snapshotDate !== undefined && (
+                    <p className="campaign-funnel-note">
+                      {formatSnapshotDate(campaign.snapshotDate)}時点の集計
+                    </p>
+                  )}
                 </li>
               )
             })}
           </ul>
         )}
-        <p className="club-metric-note">{FUNNEL_NOTE}</p>
+        {/* 抑制・丸めの注記は、サーバー由来の開示済みファネルにだけ出す。
+            Phase 1デモは実数のため、出すと事実と異なる説明になる */}
+        {campaigns.some((campaign) => isDisclosedFunnel(campaign.funnel)) && (
+          <p className="club-metric-note">{FUNNEL_NOTE}</p>
+        )}
         <p className="club-metric-note">
           参加意向は「行ってみたい」の回答数です。参加の確約ではありません。
         </p>

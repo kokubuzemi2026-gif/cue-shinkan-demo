@@ -251,6 +251,8 @@ declare
   v_now timestamptz := now();
   v_org record;
   v_fingerprint text;
+  v_audience_fp text;
+  v_band text;
   v_sent_this_week integer;
   v_membership_id uuid;
   v_delivery_id uuid;
@@ -315,6 +317,31 @@ begin
       and d.event_fingerprint = v_fingerprint
   ) then
     raise exception 'duplicate_event';
+  end if;
+
+  -- 送信は「対象を確認してから送る」導線（product_spec.md §7 団体 4→5）の後段であり、
+  -- 24時間以内に同じ対象条件のpreviewを通っていることを必須にする。
+  --
+  -- これは差分攻撃の遮断でもある（D038）。送信の失敗は例外で全体をrollbackするため、
+  -- 失敗した送信は配信行もpreviewの条件数も消費しない。ゲートが無いと
+  -- `no_recipients`（0人）と `insufficient_audience`（1〜4人）の区別が
+  -- 「回数制限も監査記録も無い1人単位の判定器」になり、
+  -- previewへ課した20条件/24時間の制限を完全に迂回できてしまう
+  -- （実測: 16回の呼び出しで特定学生の予算上限を1円単位で確定できた）。
+  -- previewを必須にすることで、探索の手数はpreviewの予算に縛られる。
+  v_audience_fp := private.audience_fingerprint(
+    v_target_categories, v_target_purposes, send_offer.intensity,
+    v_event_days, send_offer.frequency, send_offer.fee_per_event_yen,
+    send_offer.beginner_friendly
+  );
+  select c.band
+    into v_band
+    from private.offer_preview_cache c
+   where c.organization_id = send_offer.org_id
+     and c.audience_fingerprint = v_audience_fp
+     and c.first_computed_at > v_now - interval '24 hours';
+  if v_band is null then
+    raise exception 'preview_required';
   end if;
 
   select m.id
@@ -425,7 +452,10 @@ begin
    );
 
   delivery_id := v_delivery_id;
-  audience_band := private.audience_band(v_deliverable);
+  -- 送信時点で数え直した人数ではなく、previewで確定した区分を返す。
+  -- 同一条件の結果を24時間固定する規則（D038）を送信の応答でも守り、
+  -- 送信を「その瞬間の人数」の観測手段にしない
+  audience_band := v_band;
   return next;
 end;
 $$;

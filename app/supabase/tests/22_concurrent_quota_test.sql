@@ -42,15 +42,25 @@ reset role;
 update public.organizations set status = 'verified'
  where id in ((select id from qorg_a), (select id from qorg_b));
 
+-- Task 011: 送信は24時間以内の同一条件previewを必須とする
 create function pg_temp.send(org uuid, ev text)
 returns text
-language sql
+language plpgsql
 as $$
-  select s.audience_band from public.send_offer(
+declare v text;
+begin
+  perform public.preview_offer_audience(
     org, ev, '説明文', '届けたい理由', '9月13日（土）', '六甲ケーブル下',
     array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
     array['international']::public.interest_category[],
-    array['friends','challenge']::public.purpose[], 10, '2026-09-10') s
+    array['friends','challenge']::public.purpose[], 10, '2026-09-10');
+  select s.audience_band into v from public.send_offer(
+    org, ev, '説明文', '届けたい理由', '9月13日（土）', '六甲ケーブル下',
+    array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+    array['international']::public.interest_category[],
+    array['friends','challenge']::public.purpose[], 10, '2026-09-10') s;
+  return v;
+end
 $$;
 
 -- ---- 枠の専用テーブルが存在し、外部から到達できない ----

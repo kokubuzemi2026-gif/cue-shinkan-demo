@@ -56,15 +56,23 @@ insert into public.organization_memberships (organization_id, user_id, role, mem
 select id, '00000000-0000-0000-0000-000000000a04', 'member', '担当者-SENDM1' from org1;
 
 -- 送信引数を組み立てる補助（イベント名・日時・場所だけ差し替える）
+-- Task 011: 送信は24時間以内の同一条件previewを必須とするため、送信前にpreviewを通す
 create function pg_temp.try_send(org uuid, ev text, dt text, pl text)
 returns table (delivery_id uuid, audience_band text)
-language sql
+language plpgsql
 as $$
-  select * from public.send_offer(
+begin
+  perform public.preview_offer_audience(
     org, ev, '説明文', '届けたい理由', dt, pl,
     array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
     array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
-    10, '2026-09-10')
+    10, '2026-09-10');
+  return query select * from public.send_offer(
+    org, ev, '説明文', '届けたい理由', dt, pl,
+    array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+    array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
+    10, '2026-09-10');
+end
 $$;
 
 -- ---- 権限外の送信 ----

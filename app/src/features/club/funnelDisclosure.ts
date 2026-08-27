@@ -7,6 +7,8 @@ import type { FunnelCounts } from './funnel'
 export type DisclosedFunnel = {
   // 配信人数が集計に必要な人数（10人）に満たない場合はfalse。全セルが非開示
   available: boolean
+  // 開示値が5人単位へ丸められているか。Phase 1デモの実数はfalse
+  rounded: boolean
   delivered: number | null
   viewed: number | null
   engaged: number | null
@@ -22,7 +24,16 @@ export const FUNNEL_UNAVAILABLE_TEXT = '集計に必要な人数未満'
 export const FUNNEL_SUPPRESSED_TEXT = '—'
 
 export const FUNNEL_NOTE =
-  '新入生の個人が特定されないよう、少人数の集計は表示せず、表示する数値は5人単位に丸めています。「—」は0人ではなく非表示です。'
+  '新入生の個人が特定されないよう、少人数の集計は表示せず、表示する数値は5人単位に丸めています。' +
+  '「—」は0人ではなく非表示です。集計は1日1回更新されます。'
+
+// 「2026-08-27」→「8月27日」。集計の基準日を短く示す
+export function formatSnapshotDate(isoDate: string | undefined): string {
+  if (isoDate === undefined) return ''
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/u.exec(isoDate)
+  if (match === null) return ''
+  return `${Number(match[2])}月${Number(match[3])}日`
+}
 
 // 型ガード: サーバー由来の開示済みファネルか、Phase 1デモの実数ファネルか
 export function isDisclosedFunnel(
@@ -35,6 +46,7 @@ export function isDisclosedFunnel(
 export function exactToDisclosed(counts: FunnelCounts): DisclosedFunnel {
   return {
     available: true,
+    rounded: false,
     delivered: counts.delivered,
     viewed: counts.viewed,
     engaged: counts.engaged,
@@ -57,5 +69,6 @@ export function funnelCellText(funnel: DisclosedFunnel, key: FunnelMetricKey): s
 export function funnelCellAriaLabel(funnel: DisclosedFunnel, key: FunnelMetricKey): string {
   if (!funnel.available) return FUNNEL_UNAVAILABLE_TEXT
   const value = funnel[key]
-  return value === null ? '10人未満のため非表示' : `約${value}人`
+  if (value === null) return '10人未満のため非表示'
+  return funnel.rounded ? `約${value}人` : `${value}人`
 }

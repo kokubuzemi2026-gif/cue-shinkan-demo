@@ -10,7 +10,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(10);
+select plan(14);
 
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000a0001', 'demo-diff-owner@stu.kobe-u.ac.jp', now(), now(), now());
@@ -118,20 +118,68 @@ select is(pg_temp.probe(2001), '10-24',
   'T10: 標的の予算変更後も同一条件は同じ区分を返す（個人の変更を観測できない・D038）');
 reset role;
 
--- ---- 防止4: 少人数へ絞り込んでも配信をoracleにできない ----
+-- ---- 防止4: 送信の失敗コードをoracleにできない（previewの予算に縛られる） ----
+-- 送信は失敗すると全体をrollbackするため、配信行もpreviewの条件数も消費しない。
+-- したがってpreviewを必須にしないと、`no_recipients`（0人）と
+-- `insufficient_audience`（1〜4人）の区別が、回数制限も監査記録も無い
+-- 1人単位の判定器になる（実測: 16回で特定学生の予算上限を1円単位で確定できた）。
+create function pg_temp.probe_send(fee integer) returns text language plpgsql as $$
+declare v text;
+begin
+  perform set_config('request.jwt.claims',
+    '{"sub":"00000000-0000-0000-0000-0000000a0001","role":"authenticated"}', true);
+  set local role authenticated;
+  select s.audience_band into v from public.send_offer(
+    (select id from dorg), 'probe' || fee, '説明文', '理由', '9月13日', '場所',
+    array['weekend']::public.day_slot[], 'monthly_1_2', fee, true, 'moderate',
+    array['outdoor']::public.interest_category[], array['friends']::public.purpose[],
+    10, '2026-09-10') s;
+  return 'ok';
+exception when others then return sqlerrm;
+end $$;
+
+-- previewを通していない条件では、送信は人数に関する情報を一切返さない
+select is(pg_temp.probe_send(1111), 'preview_required',
+  'T10: previewを通していない送信は preview_required で拒否される');
+select is(
+  (select count(distinct r)::int from (
+     select pg_temp.probe_send(f) as r from generate_series(20000, 20099) as f
+   ) t),
+  1,
+  'T10: 100条件を送信で掃引しても応答は1種類（preview_requiredのみ）で、0人と1〜4人を区別できない'
+);
+select is_empty(
+  $$select r::text from (select pg_temp.probe_send(f) as r
+      from generate_series(30000, 30049) as f) t
+     where r in ('no_recipients', 'insufficient_audience')$$,
+  'T10: 送信経由の掃引で人数を示すエラーが1件も返らない'
+);
+select is(
+  (select count(*)::int from private.offer_deliveries d
+    where d.organization_id = (select id from dorg)),
+  0,
+  'T10: 掃引で配信行が作られない'
+);
+
+-- ---- 防止5: 少人数へ絞り込んでも配信をoracleにできない ----
 -- 12人のうち9人の受信を停止し、対象を3人へ絞る
 update public.student_passports set reception_paused = true
  where user_id in (select uid from dpop where n between 4 and 12);
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000a0001","role":"authenticated"}', true);
 set local role authenticated;
 select throws_ok(
-  $$select * from public.send_offer(
+  $$select public.preview_offer_audience(
+      (select id from dorg), '絞り込み送信', '説明文', '理由', '9月14日（日）', '摩耶山',
+      array['weekend']::public.day_slot[], 'monthly_1_2', 2000, true, 'moderate',
+      array['outdoor']::public.interest_category[], array['friends']::public.purpose[],
+      10, '2026-09-10');
+    select * from public.send_offer(
       (select id from dorg), '絞り込み送信', '説明文', '理由', '9月14日（日）', '摩耶山',
       array['weekend']::public.day_slot[], 'monthly_1_2', 2000, true, 'moderate',
       array['outdoor']::public.interest_category[], array['friends']::public.purpose[],
       10, '2026-09-10')$$,
   'P0001', 'insufficient_audience',
-  'T10: 3人へ絞り込んでも配信は拒否され、送信をoracleに使えない（k=5・D036）'
+  'T10: previewを通した条件でも、3人へ絞り込んだ配信は拒否される（k=5・D036）'
 );
 reset role;
 

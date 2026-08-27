@@ -63,6 +63,12 @@ update public.organizations
  where id = (select id from borg);
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000b01","role":"authenticated"}', true);
 set local role authenticated;
+-- Task 011: 送信前に同一条件のpreviewを通す（24時間以内のpreviewが必須）
+select public.preview_offer_audience(
+    (select id from borg), 'はじめての六甲山ハイク', '説明文', '理由', '9月13日（土）9:00', '六甲ケーブル下',
+    array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+    array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
+    12, '2026-09-11');
 create temp table bdelivery as
   select s.delivery_id as id from public.send_offer(
     (select id from borg), 'はじめての六甲山ハイク', '説明文', '理由', '9月13日（土）9:00', '六甲ケーブル下',

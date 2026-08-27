@@ -23,6 +23,8 @@ export type FunnelCounts = {
 export type CampaignView = {
   offer: ClubOffer
   funnel: FunnelCounts | DisclosedFunnel
+  // 集計の基準日（サーバー由来のときだけ入る。1日1回の安定したsnapshot・D037）
+  snapshotDate?: string
 }
 
 export function buildFunnel(

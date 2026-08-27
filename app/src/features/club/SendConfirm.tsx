@@ -34,15 +34,40 @@ type SendConfirmBaseProps = {
 // - band: 認証済みのサーバー経路。正確な人数は返らず区分だけが届く（D036）
 type SendConfirmProps = SendConfirmBaseProps &
   (
-    | { summary: AudienceSummary; band?: never }
-    | { band: AudienceBand; summary?: never }
+    | {
+        summary: AudienceSummary
+        band?: never
+        previewConditionsUsed?: never
+        previewConditionsLimit?: never
+        bandComputedAt?: never
+      }
+    | {
+        band: AudienceBand
+        summary?: never
+        // 24時間あたりの条件数の消費状況。予告なく上限に当たらないよう団体へ見せる
+        previewConditionsUsed: number
+        previewConditionsLimit: number
+        // 区分がいつ確定した値か（同一条件は24時間固定・D038）
+        bandComputedAt: string
+      }
   )
 
-// 送信確認（集中モード）。主役は「N人の新入生とマッチしています」の実計算値
+// 区分が確定した時刻を「H:MM」で表す。日付や秒は確認画面には要らない
+function formatBandComputedAt(iso: string | undefined): string {
+  if (iso === undefined) return ''
+  const parsed = new Date(iso)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return `${parsed.getHours()}:${String(parsed.getMinutes()).padStart(2, '0')}`
+}
+
+// 送信確認（集中モード）。主役は対象規模（デモは実数・サーバーは区分）
 export function SendConfirm({
   offer,
   summary,
   band,
+  previewConditionsUsed,
+  previewConditionsLimit,
+  bandComputedAt,
   sentThisWeek,
   weeklyLimit,
   duplicate,
@@ -103,6 +128,13 @@ export function SendConfirm({
               <span className="audience-band-suffix">の新入生へ届きます</span>
             </p>
             <p className="audience-breakdown">{AUDIENCE_BAND_NOTE}</p>
+            <p className="audience-quota">
+              {formatBandComputedAt(bandComputedAt)}時点の区分です（同じ条件は24時間このまま）
+            </p>
+            <p className="audience-quota">
+              対象条件の確認 {previewConditionsUsed}/{previewConditionsLimit}
+              （24時間あたり・同じ条件の再確認は数えません）
+            </p>
           </>
         )}
         {canSend && (

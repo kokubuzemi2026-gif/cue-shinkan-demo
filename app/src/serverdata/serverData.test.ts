@@ -215,6 +215,7 @@ describe('offerApi', () => {
     expect(view.snapshotDate).toBe('2026-08-25')
     expect(view.funnel).toEqual({
       available: true,
+      rounded: true,
       delivered: 15,
       viewed: 10,
       engaged: 10,
@@ -251,6 +252,7 @@ describe('offerApi', () => {
     const view = campaignRowToView('44444444-4444-4444-4444-444444444444', row)
     expect(view.funnel).toEqual({
       available: false,
+      rounded: true,
       delivered: null,
       viewed: null,
       engaged: null,

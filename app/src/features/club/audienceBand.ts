@@ -36,7 +36,11 @@ export function canDeliverBand(band: AudienceBand): boolean {
 
 // 配信できない区分の理由。できる場合はnull
 export function audienceBandBlockReason(band: AudienceBand): string | null {
-  if (band === '0') return '現在の条件に合う新入生がいないため送信できません'
+  // 区分0は「条件に合う新入生がいない」場合と「全員が今週の受信上限に達している」場合の
+  // 両方を含む。サーバーは両者を区別しない（どちらも no_recipients）ため断定しない
+  if (band === '0') {
+    return '現在の条件に合う新入生がいないか、全員が今週の受信上限に達しているため送信できません'
+  }
   if (band === '1-4') {
     return `対象の新入生が${MIN_DELIVERABLE_AUDIENCE}人未満のため、個人が特定されないよう送信できません。条件を広げてください`
   }

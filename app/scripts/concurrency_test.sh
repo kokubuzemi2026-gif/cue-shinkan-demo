@@ -86,10 +86,18 @@ update public.organizations set status = 'verified'
  where name in ('$ORG_A', '$ORG_B', '$ORG_C', '$ORG_D');
 SQL
 
+# Task 011: 送信は24時間以内の同一条件previewを必須とするため、送信前にpreviewを通す。
+# previewは同一条件なら回数を消費しないので、何度呼んでも条件数は1のまま
 send_sql() { # send_sql <団体名> <イベント名>
   cat <<SQL
 select set_config('request.jwt.claims', '$CLAIMS', true);
 set local role authenticated;
+select 1 from public.preview_offer_audience(
+  (select id from public.organizations where name = '$1'),
+  '$2', '説明文', '届けたい理由', '9月13日（土）', '六甲ケーブル下',
+  array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+  array['international']::public.interest_category[],
+  array['friends','challenge']::public.purpose[], 10, '2026-09-10');
 select s.audience_band from public.send_offer(
   (select id from public.organizations where name = '$1'),
   '$2', '説明文', '届けたい理由', '9月13日（土）', '六甲ケーブル下',
@@ -112,7 +120,6 @@ PID_A=$!
 
 # Aがロックを取るのを待ってからBを走らせる（Bは枠のロック待ちでブロックする）
 sleep 1.5
-BLOCKED="$("${PSQL[@]}" -c "select count(*)::int from pg_stat_activity where datname = current_database() and state = 'active' and wait_event_type is not null and pid <> pg_backend_pid()" || echo 0)"
 # Bも明示トランザクションで囲む。SET LOCAL / set_config(..., true) は
 # トランザクション外では捨てられ、権限コンテキストが設定されない
 {
@@ -122,8 +129,13 @@ BLOCKED="$("${PSQL[@]}" -c "select count(*)::int from pg_stat_activity where dat
 } | "${PSQL[@]}" >"$OUT_B" 2>&1 &
 PID_B=$!
 sleep 1.5
-# Bがロック待ちで止まっていることを観測する（直列化が効いている証拠）
-LOCK_WAITERS="$("${PSQL[@]}" -c "select count(*)::int from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'" || echo 0)"
+# Bがロック待ちで止まっていることを観測する。
+# 注意: これは「直列化されている」ことの傍証にすぎない。
+#   枠のFOR UPDATEを外しても、枠行への UPDATE / ON CONFLICT DO NOTHING が
+#   同じ待ちを生むため、この観測だけでは実装の正しさを判別できない
+#   （変異テストで確認済み）。判別しているのは第2フェーズ。
+# 対象を「送信中のRPCを実行しているバックエンド」に限定して偽陽性を減らす
+LOCK_WAITERS="$("${PSQL[@]}" -c "select count(*)::int from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock' and query like '%send_offer%'" || echo 0)"
 
 wait $PID_A || true
 wait $PID_B || true
@@ -132,7 +144,7 @@ RESULT_A="$(tr -d '\r' < "$OUT_A" | grep -E '^[0-9]+-[0-9]+$|^[0-9]+\+$|^0$' | h
 RESULT_B="$(tr -d '\r' < "$OUT_B" | head -20 | tr '\n' ' ')"
 
 note 'Task 011 並行配信テスト: 検証'
-check '2つ目の送信がロック待ちになる（団体をまたいで直列化される）' 'yes' \
+check '2つ目の送信がロック待ちになる（直列化の傍証。判別は第2フェーズ）' 'yes' \
   "$([ "${LOCK_WAITERS:-0}" -ge 1 ] && echo yes || echo no)"
 check '1つ目の送信は6人へ成立し、区分 5-9 を返す' '5-9' "$RESULT_A"
 check '2つ目の送信は週上限を検知して失敗する' 'yes' \

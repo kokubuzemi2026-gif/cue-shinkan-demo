@@ -19,6 +19,8 @@ export function serverErrorMessage(error: unknown): string {
       return '現在の条件で配信できる新入生がいないため送信できません'
     case 'insufficient_audience':
       return '対象の新入生が5人未満のため、個人が特定されないよう送信できません。条件を広げてください'
+    case 'preview_required':
+      return '対象の確認から24時間が過ぎています。もう一度「対象を確認する」からやり直してください'
     case 'preview_quota_exceeded':
       return '対象人数の確認は24時間に20条件までです。しばらく時間をおいてからお試しください'
     case 'payload_too_large':
@@ -51,6 +53,7 @@ export function serverErrorCode(error: unknown): string {
     'weekly_limit_reached',
     'no_recipients',
     'insufficient_audience',
+    'preview_required',
     'preview_quota_exceeded',
     'payload_too_large',
     'invalid_offer',

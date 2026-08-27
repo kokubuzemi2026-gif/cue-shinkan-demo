@@ -35,9 +35,15 @@
 - `app/src/org/OrgOffersPanel.tsx` / `app/src/styles/club.css`（区分・抑制の表示）
 - `app/src/lib/database.types.ts`（生成型の更新）
 - `app/e2e/task011-anonymity.spec.ts`（新規）
-- `docs/decisions.md`（D036〜D039の追記）、`docs/server_data_model.md`（§10の追記）、
-  `docs/launch_plan.md`（進捗）
+- `docs/decisions.md`（D036〜D039の追記）、`docs/server_data_model.md`（§9の追記）、
+  `docs/launch_plan.md`（進捗）、`docs/runbook_supabase_hosted.md`（§8の切り戻し注意）
 - `tasks/011-anonymity-safety-concurrency.md`（本ファイル）
+- `app/scripts/concurrency_test.sh` / `app/package.json` / `.github/workflows/ci.yml`
+  （受入条件「並行RPCを実際に走らせるテストを追加する」の検証手段。
+  pgTAPは1ファイル=1セッションのため本物の並行実行を作れず、別スクリプトが必要）
+- `tasks/010-*.md` と `tasks/013-*.md`〜`018-*.md`
+  （本セッションの依頼が「Task 011の実装に入る前に、残りのlaunch readinessを
+  複数の小さなTaskへ分割する」ことを明示的に含むため。実装は伴わず仕様のみ）
 
 ## Out of scope（変更してはいけない範囲）
 
@@ -111,8 +117,11 @@
 | preview 24時間固定・20回制限・fingerprint | pgTAP | `supabase/tests/19_preview_quota_test.sql` |
 | 差分攻撃の再現と防止 | pgTAP | `supabase/tests/20_differential_attack_test.sql` |
 | ファネル10–5・丸め・日次snapshot | pgTAP | `supabase/tests/21_funnel_suppression_test.sql` |
-| 並行配信でのquota原子性 | pgTAP（2セッション実接続） | `supabase/tests/22_concurrent_quota_test.sql` |
-| 入力検証・DoS境界 | pgTAP | `supabase/tests/17_min_audience_test.sql` 内の検証節 |
+| 並行配信でのquota原子性（決定的な部分） | pgTAP | `supabase/tests/22_concurrent_quota_test.sql` |
+| 並行配信でのquota原子性（実際の同時実行） | psql複数プロセス | `app/scripts/concurrency_test.sh` |
+| 入力検証・DoS境界（上限+1） | pgTAP | `supabase/tests/17_min_audience_test.sql` |
+| 入力検証の境界（上限ちょうど・両側） | pgTAP | `supabase/tests/23_input_boundary_test.sql` |
+| 送信経路が差分攻撃のoracleにならない | pgTAP | `supabase/tests/20_differential_attack_test.sql` |
 | 区分・抑制の表示モデル | unit test | `src/features/club/audienceBand.test.ts` / `funnel.test.ts` |
 | 抑制を0人と表示しない | unit test + E2E | 同上 / `e2e/task011-anonymity.spec.ts` |
 | 390px表示 | E2E（390×844） | `e2e/task011-anonymity.spec.ts` |
@@ -196,4 +205,83 @@
 - 10-5ルールは公開手法を参考にしたものであり、**法令準拠を主張しない**（D037）。
   運営者による最終確認が必要。
 - hosted stagingへの0011 migration適用は未実施（`docs/launch_plan.md` §7 H1）。
-- 独立レビュー（reviewer / security-reviewer）の結論と対応: 後述のとおり実施し、追記する。
+### 独立レビューと対応
+
+reviewer と security-reviewer を独立に実施した（互いの結論を見せていない）。
+**両者が独立に同じBlockerを検出した。**
+
+#### Blocker（実証済み・修正済み）
+
+**`send_offer` の失敗コードが、回数制限も監査記録も無い差分攻撃oracleになっていた。**
+
+送信の失敗は例外で全体をrollbackするため、失敗した送信は配信行も
+previewの条件数も週枠も**一切消費・記録しない**。にもかかわらず
+`no_recipients`（0人）と `insufficient_audience`（1〜4人）を区別して返すため、
+previewへ課した「20条件/24時間」「24時間固定」を完全に迂回して、
+**1人単位の判定を無制限・無痕跡で繰り返せた**。
+
+自分でも再現した（`fee` を1円ずつ動かす二分探索）:
+
+```
+ 1999 | insufficient_audience   ← 標的は対象内
+ 2000 | insufficient_audience
+ 2001 | no_recipients           ← 標的が外れた（＝予算上限）
+特定した予算上限 = 2000 円 / 呼び出し回数 = 16 回
+攻撃後の痕跡: preview_consumed=0 / delivery_rows=0 / quota_rows=0
+```
+
+security-reviewer はさらに、標的1人の**受信カテゴリ・本気度・参加可能曜日・
+予算上限**を30回のprobeで復元し、他団体が標的へ配信した事実まで
+観測できることを示した。
+
+**対応**: `send_offer` に「同一対象条件の24時間以内のpreviewが存在すること」を
+必須条件として追加した（無ければ `preview_required`）。これで探索の手数が
+previewの予算（20条件/24時間）に縛られる。受入条件が要求する
+`no_recipients` と `insufficient_audience` の区別は維持している。
+あわせて送信の戻り値を、送信時点で数え直した区分ではなく
+**previewで確定した区分**にした（24時間固定を送信の応答でも守る）。
+
+修正後の実測:
+
+```
+送信で500条件を掃引 → preview_required 500件 / 人数を示すエラー 0件
+```
+
+`20_differential_attack_test.sql` へ回帰テストを4件追加し、
+**ゲートを外す変異でこのテストが落ちること**も確認した。
+
+#### Non-blocker（対応したもの）
+
+| 指摘元 | 内容 | 対応 |
+|---|---|---|
+| 両方 | D037・タスクファイルが「dblinkで2セッション」と書いたまま（実体はシェルスクリプトへ移行済み） | 正本を実装に合わせて修正 |
+| reviewer | 「境界値（上限**ちょうど**）」のテストが無く、拒否側（+1）しか無い | `23_input_boundary_test.sql` を新設（16件・両側を固定） |
+| reviewer | 区分`0`の理由文が「条件に合う新入生がいない」と断定するが、「全員が今週の受信上限」の場合も含む | 両方を含む文言へ修正 |
+| reviewer | 送信の区分がpreviewの24時間固定を経由せず、preview `5-9` → 完了画面 `10-24` が起こり得る | Blocker対応で解消（保存済みの区分を返す） |
+| reviewer | `canDeliver` / `previewConditionsUsed` / `bandComputedAt` / `snapshotDate` がどこからも読まれていない。団体は予告なく `preview_quota_exceeded` に当たる | `canDeliver` は重複のため削除。残りは確認画面・ダッシュボードへ表示 |
+| reviewer | ファネルの `join` がINNER JOINで、snapshot確定と本問い合わせの間にcommitされた配信が一覧から消える | LEFT JOIN + `coalesce` へ変更 |
+| reviewer | 並行テスト第1フェーズが実効性を持たない（`FOR UPDATE` を外しても6件すべてok＝偽陽性） | ロック待ちの観測を送信中のバックエンドへ限定し、第1フェーズが傍証にすぎないことをコメントで明示。判別は第2フェーズが行う |
+| reviewer | Phase 1デモ（実数ファネル）に「5人単位に丸めています」という事実と異なる注記が出る。読み上げも「約N人」 | 注記はサーバー由来のときだけ表示。`rounded` フラグを追加し、実数は「N人」と読み上げる |
+| reviewer | 他タスクの仕様書7本がIn scopeに無い | 本セッションの依頼に「残りのlaunch readinessを複数の小さなTaskへ分割する」が含まれるため、根拠をIn scopeへ明記 |
+| security | fingerprintを「一方向変換」と書いたが、saltもHMAC鍵も無く探索空間が小さい（逆算を実証された） | 「秘匿性は主張しない。grantゼロに依拠する」へ表現を修正（D038・migrationコメント） |
+| security | D036「区分への変換点は`audience_band()`のみ」とD037のファネル5人丸めが矛盾 | D036の適用範囲を「対象規模（preview・send）」へ明確化 |
+
+#### 対応せず（正本の改定が必要なため、運営者の判断へ回した）
+
+| 指摘元 | 内容 | 理由 |
+|---|---|---|
+| 両方 | preview単体でも区分 `0` と `1-4` を区別するため、20条件/24時間の範囲内で「小グループの在／不在」を1人単位で観測できる。`0` と `1-4` を1区分へ統合すべき | **6区分は確定仕様**（`docs/launch_plan.md` §4.2）であり、統合は決定の改定を伴う。残余リスクとしてD036へ明記した |
+| security | 決定的な5人単位の丸めは、閾値をまたいだ1人の返答日を特定できる。ONSはrandom rounding / barnardisationを推奨 | 「5人単位へ丸める」は確定仕様。残余リスクとしてD037へ明記し、Task 017以降の課題とした |
+| security | `offer_preview_cache` に古い行の削除経路が無い | 運用の話としてTask 017へ引き継ぐ（D038へ明記） |
+| security | `foreach ... FOR UPDATE` が母集団に比例して遅い（5000人で約1秒） | Blocker対応で無制限に叩けなくなったため増幅経路は解消。閉鎖βの規模では許容し、`server_data_model.md` §9へ記録 |
+
+#### レビューが「防げている」と確認した主なもの
+
+- 新規3テーブルのgrant・RLS（deny by default）、`private` スキーマへの到達不能性
+- 新規関数すべてのPUBLIC/anon EXECUTE残存なし、全関数の `search_path=''`
+- 他団体owner・memberロール・非メンバー・学生からの越権呼出しの拒否
+- 複数団体を作ってpreviewの条件数制限を回避する経路（`status=pending` のため成立しない）
+- 完全同時起動20ラウンドでの週上限違反ゼロ・部分配信ゼロ・デッドロックなし
+- `ON CONFLICT DO NOTHING` の待機により、ロックされていない学生への配信経路が存在しないこと
+- 入力検証（100KB payload・NULL要素・空配列）がマッチング計算より前に効くこと
+- 団体向けRPCの戻り列にPII・学生IDが無いこと、secret・実在個人情報のコミットが無いこと
