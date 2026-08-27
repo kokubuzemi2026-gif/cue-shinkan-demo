@@ -76,8 +76,8 @@ migrationの連番は0016を飛ばして**0017**にする（Task 016はmigration
 |---|---|
 | `20260827220000_0017_operations.sql` | `public.platform_health()`（service_role専用・**14列**。うち認証側4列）・`private.prune_audit_logs(days)`・`private.prune_preview_cache(hours)` |
 | `34_ops_health_test.sql` | **29テスト**（権限固定・PUBLIC不在・返す列の固定・監査ログの列の固定・保持期間の境界・**各列の値の実測**） |
-| `docs/runbook_operations.md`（新規・227行） | 環境と役割 / 環境変数（値は書かない）/ migration適用 / rollback / backup・restore / secret rotation / 公開停止 / 定期作業 / **ログの方針** |
-| `docs/runbook_incident.md`（新規・132行） | 最初の3つ / health check の読み方 / メールが届かない / quota異常 / 差分攻撃の疑い / 監査の確認 / 状況別の初手 / 事後 |
+| `docs/runbook_operations.md`（新規・233行） | 環境と役割 / 環境変数（値は書かない）/ migration適用 / rollback / backup・restore / secret rotation / 公開停止 / 定期作業 / **ログの方針** |
+| `docs/runbook_incident.md`（新規・187行） | 最初の3つ / health check の読み方 / メールが届かない / quota異常 / 差分攻撃の疑い / 監査の確認 / 状況別の初手 / 事後 |
 | `docs/runbook_supabase_hosted.md` §6.3 | Task 014・015・017 のPhase B人間タスク（同意ゲート・削除・auth identity・health check） |
 | `docs/launch_plan.md` §7 | **H6〜H10を追加**（公開用Supabaseプロジェクト・Actions variables・Auth Site URL・Edge Functionデプロイ・auth.users削除の確認） |
 | `docs/launch_plan.md` §7.1 | **既知リスク一覧25件**（法務4 / プライバシー・セキュリティ6 / a11y・UX4 / 機能の穴6 / 運用4、A1〜E4） |
@@ -100,9 +100,9 @@ migrationの連番は0016を飛ばして**0017**にする（Task 016はmigration
 
 | 検証 | 結果 |
 |---|---|
-| pgTAP | 34ファイル **620テスト PASS**（Task 016時点の591から+29） |
+| pgTAP | 34ファイル **622テスト PASS**（Task 016時点の591から+31） |
 | 並行テスト | 10件 PASS |
-| oxlint / tsc / vitest / vite build | すべてgreen（ユニット362テスト） |
+| oxlint / tsc / vitest / vite build | すべてgreen（ユニット365テスト） |
 | `npm audit --audit-level=high` | **found 0 vulnerabilities** |
 | CI workflow のYAML構文 | `yaml.safe_load` でパースできることを確認（jobs: quality / db-tests / e2e / audit） |
 
@@ -160,6 +160,18 @@ Non-blocker・Nitも反映した。
 - `audit` ジョブの2ステップを1つにまとめ、`npm ci` + audit の二重実行をやめた
 - `npm audit` の適用範囲（npmレジストリのみ。Deno依存とActionsは対象外）をrunbookへ明記
 - テストのヘッダコメントを D051 → **D052** へ
+
+#### 機能面の再レビュー（3周目）
+
+Blockerは1件のみで、いずれも同じPRで直した。
+
+| 指摘 | 内容 | 対応 |
+|---|---|---|
+| B5 | `admin_audit_rows` の検査が `= 0` だけで**恒真**。リテラル`0`を返す変異体が素通りする（B3で足した「値を実測する」基準の取りこぼし） | 監査2行をinsertした直後に `= 2` を追加。**同じ変異体が落ちる**ことを確認（test 24） |
+| Q1（Blocker外） | B2の除外（「最後の配信より後にパスポートが更新された行は除く」）は、**本当に枠が破れた後に本人が別項目を編集した**場合を取りこぼす | 上限の定義域は `CHECK (between 1 and 5)`（0009）なので、`or q.window_count > 5` を無条件で足した。**節を消す変異体が落ちる**ことを確認（test 17） |
+| N-1 | 週1の定期作業にログインの生存確認が無い。`platform_health()` はAuthの生存を確認できない | `runbook_operations.md` §8 に「合成アカウントでOTPを1往復」を追加 |
+| N-4 | 認証4列はhostedで `permission denied` になり得るが、Phase Bチェックリストが「値を返すこと」を求めていない | `runbook_supabase_hosted.md` §6.3 項目5 へ4列を明記 |
+| Nit | migrationのコメントが `runbook_incident.md §2` を指していた（正しくは §2.5）／本ファイルの行数・テスト数が古い | 修正 |
 
 ### 残る課題
 

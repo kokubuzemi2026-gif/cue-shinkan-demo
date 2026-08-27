@@ -130,7 +130,12 @@ Task 013時点のチェックリストに加えて、次を確認する。
    JSON payload にメールが残り続けないかを確認する。
    **残る場合はAdmin API（`auth.admin.deleteUser`）へ寄せることを検討する**
 5. [ ] **health check**（Task 017）。`select * from public.platform_health();` を
-   service_role で実行し、1行返ること・値が実態と合っていることを確認する
+   service_role で実行し、1行返ること・値が実態と合っていることを確認する。
+   とくに `auth.users` から作る4列（`confirmed_identities` /
+   `identities_created_last_7d` / `non_university_identities` /
+   `orphan_identities`）が `permission denied` にならず**値を返す**ことを見る。
+   hosted は `auth` スキーマの権限がローカルスタックと同じとは限らないため、
+   ここだけはローカルのpgTAPで担保できない
 6. [ ] **緊急停止の往復**（Task 013 §6.2の2と同じ）を、公開直前にもう一度行う
 
 ## 7. 料金・運用上の注意（残余リスク）

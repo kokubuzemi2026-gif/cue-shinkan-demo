@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(29);
+select plan(31);
 
 -- ---- 権限: 運営（service_role）だけが health を見られる ----
 select is(
@@ -169,6 +169,15 @@ update private.student_delivery_quota
  where user_id = '00000000-0000-0000-0000-00000000e101';
 select is((select quota_over_limit from public.platform_health()), 0,
   'T1: 本人が後から上限を下げただけの正常操作は異常として数えない');
+-- ただし上の除外だけでは、「本当に枠が破れた後に、本人がパスポートの別項目を
+-- もう一度編集した」場合を取りこぼす。上限の定義域は CHECK (between 1 and 5)（0009）
+-- なので、**5を超える window_count は本人の操作では作れない**。ここは無条件で数える
+update public.student_passports set reception_weekly_limit = 5
+ where user_id = '00000000-0000-0000-0000-00000000e101';
+update private.student_delivery_quota set window_count = 7
+ where user_id = '00000000-0000-0000-0000-00000000e101';
+select is((select quota_over_limit from public.platform_health()), 1,
+  'T1: 定義域（1..5）を超えた受信回数は、その後に本人の編集があっても異常として数える');
 
 -- 期限切れpreview
 insert into private.offer_preview_cache (organization_id, audience_fingerprint, band, first_computed_at)
@@ -207,6 +216,11 @@ insert into private.admin_audit_log (action, actor_label, created_at) values
 insert into private.deletion_audit_log (action, occurred_on, event_count, removed_rows) values
   ('passport_deleted', (now() - interval '400 days')::date, 3, 3),
   ('account_deleted', (now() - interval '10 days')::date, 1, 5);
+
+-- 上の `= 0` は「まだ入れていない」ことしか示さない（0を返す実装でも通る）。
+-- 2行入れた直後に実数を検査する
+select is((select admin_audit_rows from public.platform_health()), 2,
+  'T1: 運営監査の行数を実際に数える（2行入れた直後は2）');
 
 select is(
   (select admin_rows_deleted from private.prune_audit_logs(365)),

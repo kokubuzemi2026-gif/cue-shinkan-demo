@@ -83,12 +83,16 @@ as $$
     -- ただし **本人が後から上限を下げただけ**の正常操作を数えてはいけない
     -- （window_count は配信時にしか再計算されない観測値で、
     --   reception_weekly_limit は利用者がいつでも下げられる）。
-    -- 最後の配信より後にパスポートが更新されている行は除く
+    -- 最後の配信より後にパスポートが更新されている行は除く。
+    -- ただしこの除外は「本人が上限を下げた後、別の項目をもう一度編集した」場合に
+    -- 本物の破れを取りこぼす。上限の定義域は CHECK (between 1 and 5)（0009）なので、
+    -- **5を超える window_count は本人の操作では作れない**。これは無条件で数える
     (select count(*)::integer
        from private.student_delivery_quota q
        join public.student_passports p on p.user_id = q.user_id
-      where q.window_count > p.reception_weekly_limit
-        and p.updated_at <= coalesce(q.last_delivered_at, q.updated_at)),
+      where (q.window_count > p.reception_weekly_limit
+             and p.updated_at <= coalesce(q.last_delivered_at, q.updated_at))
+         or q.window_count > 5),
     (select count(*)::integer from private.offer_preview_cache c
       where c.first_computed_at < now() - interval '24 hours'),
     (select count(*)::integer from private.admin_audit_log),
@@ -97,7 +101,7 @@ as $$
     -- hosted stagingでの動作も確認済みの経路（Task 008 Phase B）。
     -- **DB側のRPCではAuthの生存を確認できない**（Auth APIを叩けない）ので、
     -- ここで返すのは「DBから観測できる兆候」だけ。生存の確認は実際にOTPを
-    -- 往復させる人間の手順で行う（docs/runbook_incident.md §2）。
+    -- 往復させる人間の手順で行う（docs/runbook_incident.md §2.5）。
     -- 件数と時刻だけで、誰が・いつログインしたかは返さない
     (select count(*)::integer from auth.users u where u.email_confirmed_at is not null),
     -- 「登録が成立しているか」を件数だけで返す。時刻を返すと、閉鎖βの規模では
