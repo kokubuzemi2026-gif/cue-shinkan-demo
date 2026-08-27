@@ -118,3 +118,32 @@ jobs:
           } >> "$GITHUB_ENV"
       - name: Run Playwright E2E
         run: npm run e2e
+
+  # Task 017: 依存関係の既知脆弱性を確認する。**無料の範囲だけ**を使う
+  # （外部の有料監視・SCAサービスは承認なしに追加しない）。
+  # secretを一切参照しないジョブなので、権限は contents: read のまま
+  audit:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Set up Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+      # high以上で落とす。moderate以下は警告として一覧に出すだけにして、
+      # 開発を止めずに気づけるようにする
+      - name: Audit dependencies (high and above)
+        run: npm audit --audit-level=high
+      - name: Audit dependencies (informational)
+        if: always()
+        run: |
+          npm audit --audit-level=moderate || \
+            echo "::warning::moderate以下の警告があります。npm audit で確認してください"
