@@ -52,6 +52,21 @@ def _init_repo(path: str, branch: str) -> None:
     )
 
 
+# ケース表（DENY_CASES / ALLOW_CASES / RULE_EXPECTATIONS）の判定に使う作業ディレクトリ。
+# リポジトリの現在ブランチに依存すると、develop / main をチェックアウトしている状態で
+# `git push origin --tags` のようなrefspecなしのケースが落ちるため、
+# feature branchの一時リポジトリを正本にする。
+_CASE_TMPDIR = tempfile.TemporaryDirectory()
+CASE_CWD = os.path.join(_CASE_TMPDIR.name, "cases")
+os.makedirs(CASE_CWD)
+subprocess.run(
+    ["git", "init", "--quiet", "-b", "feat/012-agent-harness", CASE_CWD],
+    check=True,
+    capture_output=True,
+    text=True,
+)
+
+
 def _run_hook(script: str, payload: dict, env_overrides: dict | None = None):
     env = dict(os.environ)
     env.pop("CLAUDE_PROJECT_DIR", None)
@@ -163,6 +178,9 @@ DENY_CASES = (
     "git -c remote.origin.push=+refs/heads/*:refs/heads/* push origin",
     "git -c remote.origin.mirror=true push origin",
     "git -c push.default=matching push",
+    # --tags を伴っていても、ブランチrefを送る形は拒否する
+    "git push origin main --tags",
+    "git push --tags --force origin",
     # -e（--exclude）の値として現れた -n をdry-runと誤認しないこと
     "git clean -f -e -n",
     "git clean -f --exclude -n",
@@ -170,7 +188,7 @@ DENY_CASES = (
 )
 
 for command in DENY_CASES:
-    reason = guard_git.evaluate(command, os.getcwd())
+    reason = guard_git.evaluate(command, CASE_CWD)
     check(reason is not None, f"deny期待だが許可された: {command!r}")
 
 
@@ -182,7 +200,9 @@ ALLOW_CASES = (
     "git push -u origin feat/012-agent-harness",
     "git push origin feat/012-x:feat/012-x",
     "git push origin HEAD:feat/012-x",
+    # タグだけを送るpushはブランチrefを更新しないので、保護ブランチ上でも許可する
     "git push origin --tags",
+    "git push --tags origin",
     "git status",
     "git status --porcelain",
     "git log --oneline -5",
@@ -229,7 +249,7 @@ ALLOW_CASES = (
 )
 
 for command in ALLOW_CASES:
-    reason = guard_git.evaluate(command, os.getcwd())
+    reason = guard_git.evaluate(command, CASE_CWD)
     check(reason is None, f"allow期待だが拒否された: {command!r} -> {reason}")
 
 check(len(set(DENY_CASES)) == len(DENY_CASES), "DENY_CASESに重複がある")
@@ -258,7 +278,7 @@ RULE_EXPECTATIONS = (
     ("env git push origin main", "保護ブランチ"),
 )
 for command, expected in RULE_EXPECTATIONS:
-    reason = guard_git.evaluate(command, os.getcwd()) or ""
+    reason = guard_git.evaluate(command, CASE_CWD) or ""
     check(expected in reason, f"拒否理由が期待と異なる: {command!r} -> {reason!r}（期待: {expected}）")
 
 
@@ -327,14 +347,14 @@ EOF
 )"
 """
 check(
-    guard_git.evaluate(HEREDOC_BODY, os.getcwd()) is None,
+    guard_git.evaluate(HEREDOC_BODY, CASE_CWD) is None,
     "ヒアドキュメント本文のコマンド例を誤って拒否している",
 )
 
 # 解析不能かつ巨大な入力で、判定時間が発散しないこと（timeoutによるfail-open防止）
 _huge = 'echo "' + ("git push origin main " * 6000)
 _started = time.monotonic()
-guard_git.evaluate(_huge, os.getcwd())
+guard_git.evaluate(_huge, CASE_CWD)
 _elapsed = time.monotonic() - _started
 check(_elapsed < 2.0, f"巨大な入力の判定に時間がかかりすぎる（{_elapsed:.1f}秒）")
 
