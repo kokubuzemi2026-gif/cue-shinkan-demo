@@ -88,20 +88,24 @@
 ## Verification record（検証記録）
 
 - 実行モード: Standard（`app/` を変更せず、認証・DB・PIIに触れないためDeep条件に非該当）
-- ブランチ: `feat/012-agent-harness`（`develop` の最新 `b28d0ba` から作成）
+- ブランチ: `feat/012-agent-harness`（作成時点の `develop` 最新 `b28d0ba` から作成。
+  その後、Task 009マージ後の `develop`（`8e77397`）を通常のmergeで取り込み済み）
 - Python構文チェック: `python3 -m py_compile .claude/hooks/{guard_git,quality_gate,test_hooks}.py` → OK
 - settings.jsonのparse: OK（deny 10件 / PreToolUse matcher `Bash` / Stopはmatcherなし / timeout 30秒・1500秒）
 - subagentのfrontmatter: `claude plugin validate .claude/agents` → Validation passed（4件）
-- hookテスト: `python3 .claude/hooks/test_hooks.py` → **198 checks passed**
+- hookテスト: `python3 .claude/hooks/test_hooks.py` → **198 checks passed**（develop取り込み後も同数）
 - Stop hookの実挙動（本リポジトリ）:
   - `app/` 変更なし → exit 0（ゲート未実行）
   - `app/` に未追跡ファイルあり → lint / test / build を実行し7秒でexit 0
   - `app/node_modules` なし → exit 2（`npm ci` を案内）
 - lint: `npm run lint` → green（指摘0件）
-- unit test: `npm run test -- --run` → 21ファイル / **281件すべてpass**（既存と同数。減っていない）
+- unit test: `npm run test -- --run` → 24ファイル / **317件すべてpass**
+  （Task 009取り込み後の件数。ハーネスは `app/` を変更していないため、developと同数）
 - build: `npm run build` → 成功（`tsc -b && vite build`）
 - `git diff --check`: 問題なし
-- pgTAP / E2E: **未実施**（`app/` と `app/supabase/` を変更していないため対象外）
+- pgTAP: Task 009取り込み後の回帰確認として、PostgreSQL 16 + Supabase相当スキャフォールドへ
+  全8migrationを順に適用し、`pg_prove` で16ファイル **229件すべてPASS**
+- E2E: **ローカルでは未実施**（Dockerデーモンが無く `supabase start` を起動できないため）。CIの `e2e` ジョブで担保する
 - 手動QA（390px）: **未実施**（UI変更なし）
 
 ### 独立レビューと対応
