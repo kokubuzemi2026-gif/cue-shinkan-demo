@@ -192,6 +192,8 @@
   margin: 0;
   font-size: 18px;
   font-weight: 800;
+  /* 抑制セルの「—」と数値が同じ幅で並ぶようにする（Task 011） */
+  font-variant-numeric: tabular-nums;
 }
 
 .club-metric-note,
@@ -393,3 +395,22 @@
 .club-profile-name {
   overflow-wrap: anywhere;
 }
+
+/* Task 011: 対象規模の区分表示と、ファネルの抑制表示（D036・D037） */
+
+/* 区分は「10〜24人」のように実数より長いため、390px幅で収まるよう少し小さくする */
+.audience-count-number.audience-count-band {
+  font-size: 32px;
+}
+
+.audience-band-suffix {
+  display: inline;
+  margin-left: 0.25rem;
+}
+
+.campaign-funnel-note {
+  margin: 0.5rem 0 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+

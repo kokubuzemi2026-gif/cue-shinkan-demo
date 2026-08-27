@@ -4,6 +4,7 @@ import type {
   OfferReadMark,
   OfferResponse,
 } from '../../domain/types'
+import type { DisclosedFunnel } from './funnelDisclosure'
 
 // 団体ファネル（D022）。配信イベント・既読・返答から導出し、独立保存しない。
 // すべて受信者集合との積をstudentId単位で重複排除した匿名の件数で、
@@ -16,10 +17,12 @@ export type FunnelCounts = {
   planned: number
 }
 
-// ダッシュボード1行分。オファーsnapshotと匿名件数のみで、受信者情報は持たない
+// ダッシュボード1行分。オファーsnapshotと匿名件数のみで、受信者情報は持たない。
+// funnelはPhase 1デモの実数（FunnelCounts）と、サーバー由来の抑制済み値
+// （DisclosedFunnel・D037）のどちらも受け取る
 export type CampaignView = {
   offer: ClubOffer
-  funnel: FunnelCounts
+  funnel: FunnelCounts | DisclosedFunnel
 }
 
 export function buildFunnel(

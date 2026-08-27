@@ -203,14 +203,59 @@ describe('offerApi', () => {
       target_purposes: ['friends', 'challenge'],
       capacity: 10,
       deadline: '2026-09-10',
-      delivered_count: 3,
-      viewed_count: 2,
-      engaged_count: 2,
-      planned_count: 1,
+      funnel_available: true,
+      delivered_count: 15,
+      viewed_count: 10,
+      engaged_count: 10,
+      planned_count: 10,
+      snapshot_date: '2026-08-25',
     })
     expect(view.offer.id).toBe('55555555-5555-5555-5555-555555555555')
     expect(view.deliveredAt).toBe('2026-08-25T03:00:00Z')
-    expect(view.funnel).toEqual({ delivered: 3, viewed: 2, engaged: 2, planned: 1 })
+    expect(view.snapshotDate).toBe('2026-08-25')
+    expect(view.funnel).toEqual({
+      available: true,
+      delivered: 15,
+      viewed: 10,
+      engaged: 10,
+      planned: 10,
+    })
+  })
+
+  it('抑制されたセル（NULL）を0へ潰さずnullのまま運ぶ', () => {
+    // サーバーは配信10人未満・セル10人未満をNULLで返す。生成型はnon-nullだが実際はNULLが届く
+    const row = {
+      delivery_id: '55555555-5555-5555-5555-555555555555',
+      delivered_at: '2026-08-25T03:00:00Z',
+      event_name: 'テント泊体験会',
+      description: '説明',
+      reason_note: '理由',
+      date_text: '9月12日（土）',
+      place: '北テラス広場',
+      event_days: ['weekend'],
+      frequency: 'monthly_1_2',
+      fee_per_event_yen: 1500,
+      beginner_friendly: true,
+      intensity: 'moderate',
+      target_categories: ['outdoor'],
+      target_purposes: ['friends', 'challenge'],
+      capacity: 10,
+      deadline: '2026-09-10',
+      funnel_available: false,
+      delivered_count: null,
+      viewed_count: null,
+      engaged_count: null,
+      planned_count: null,
+      snapshot_date: '2026-08-25',
+    } as unknown as Parameters<typeof campaignRowToView>[1]
+    const view = campaignRowToView('44444444-4444-4444-4444-444444444444', row)
+    expect(view.funnel).toEqual({
+      available: false,
+      delivered: null,
+      viewed: null,
+      engaged: null,
+      planned: null,
+    })
   })
 })
 
