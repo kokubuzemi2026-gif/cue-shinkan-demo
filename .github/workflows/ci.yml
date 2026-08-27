@@ -138,12 +138,11 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - name: Install dependencies
         run: npm ci
-      # high以上で落とす。moderate以下は警告として一覧に出すだけにして、
-      # 開発を止めずに気づけるようにする
-      - name: Audit dependencies (high and above)
-        run: npm audit --audit-level=high
-      - name: Audit dependencies (informational)
-        if: always()
+      # high以上で落とす。moderate以下は同じ実行の中で警告として出すだけにして、
+      # 開発を止めずに気づけるようにする（auditを2回走らせない）
+      - name: Audit dependencies
         run: |
+          set -euo pipefail
           npm audit --audit-level=moderate || \
             echo "::warning::moderate以下の警告があります。npm audit で確認してください"
+          npm audit --audit-level=high

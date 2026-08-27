@@ -6,3 +6,8 @@ dist/
 # Claude Codeの個人設定（共有設定は .claude/settings.json をコミットする）
 .claude/settings.local.json
 __pycache__/
+
+# DBダンプ（実在する学生のメールを含む）。出力先はリポジトリ外が原則だが、
+# 取り違えたときのための多重防御（docs/runbook_operations.md §5）
+backup_*.sql
+*.dump

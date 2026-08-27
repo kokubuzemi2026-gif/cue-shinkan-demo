@@ -92,8 +92,10 @@ migrationはファイル名の昇順で1度だけ適用される。**適用済�
 
 - **`grant` が失われる**。逆migrationでも `grant execute ... to authenticated` を書き直す
 - **依存するビュー・関数があると `drop` が失敗する**。依存側も同じmigrationで作り直す
-- 本リポジトリで `drop`→`create` した関数: `list_my_inbox` / `list_org_campaigns`（Task 013）。
-  逆migrationを書くときは、Task 013直前の定義を `git show` で取り出して使う
+- **対象の完全な一覧は `docs/runbook_supabase_hosted.md` §8 が正本**。ここに写しを置くと
+  必ずずれるので置かない（実際、当初この節は0011の `send_offer`・`preview_offer_audience` を
+  落としていた。団体側の中核RPCなので、その一覧で切り戻すと送信もプレビューもできなくなる）
+- 逆migrationを書くときは、対象migrationの直前の定義を `git show` で取り出して使う
 
 ### データを消すrollbackはしない
 
@@ -108,8 +110,10 @@ Supabaseのプロジェクト設定でバックアップが有効なことを確
 それとは別に、**migration適用の直前**には手元でもダンプを取る。
 
 ```bash
-# スキーマとデータ（実データを含むため、取得先は暗号化された端末のみ）
-npx supabase db dump --db-url "<connection string>" -f backup_$(date +%Y%m%d).sql
+# 出力先は**リポジトリの外**へ固定する。カレントディレクトリへ出すと、
+# 直後の `git add -A` で本番のPIIがそのままステージされる
+mkdir -p ~/cue-backup && chmod 700 ~/cue-backup
+npx supabase db dump --db-url "<connection string>" -f ~/cue-backup/backup_$(date +%Y%m%d).sql
 ```
 
 **ダンプには実在する学生の大学メールが含まれる。** リポジトリ・チャット・共有ドライブへ置かない。
@@ -118,7 +122,7 @@ npx supabase db dump --db-url "<connection string>" -f backup_$(date +%Y%m%d).sq
 ### restore
 
 ```bash
-psql "<connection string>" -f backup_YYYYMMDD.sql
+psql "<connection string>" -f ~/cue-backup/backup_YYYYMMDD.sql
 ```
 
 restoreは**最後の手段**。実行前に、緊急停止（`docs/operations.md` §5）で
@@ -163,9 +167,10 @@ restoreは**最後の手段**。実行前に、緊急停止（`docs/operations.m
 | 頻度 | 作業 | 手順 |
 |---|---|---|
 | 毎日（β期間中） | health check | `select * from public.platform_health();`（`docs/runbook_incident.md` §1） |
-| 週1 | 依存関係の警告確認 | GitHubのDependabot alerts / CIの `audit` ジョブ |
+| 週1 | 依存関係の警告確認 | GitHubのDependabot alerts / CIの `audit` ジョブ。**`npm audit` はnpmレジストリの既知脆弱性だけ**を見る。Edge Functionの Deno 依存（`denomailer`）とGitHub Actionsは対象外 |
 | 週1 | ドメイン外identityの掃除 | `docs/runbook_supabase_hosted.md` §7 |
 | 月1 | 退会済みauth identityの掃除 | `docs/operations.md` §9 |
+| 月1 | 期限切れpreviewの掃除 | `select private.prune_preview_cache(48);`（DB管理者権限）。24時間で無効になる行を残し続けないため（D052） |
 | 年1 | 監査ログの剪定 | `select * from private.prune_audit_logs(365);`（DB管理者権限） |
 | 年1 | secret rotation | §6 |
 

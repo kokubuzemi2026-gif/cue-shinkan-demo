@@ -50,10 +50,14 @@ returns table (
   outbox_pending integer,
   outbox_failed integer,
   outbox_stuck_sending integer,
-  oldest_pending_age_minutes integer,
+  oldest_pending_overdue_minutes integer,
   quota_over_limit integer,
   stale_preview_rows integer,
-  admin_audit_rows integer
+  admin_audit_rows integer,
+  confirmed_identities integer,
+  newest_identity_at timestamptz,
+  non_university_identities integer,
+  orphan_identities integer
 )
 language sql
 stable
@@ -69,17 +73,39 @@ as $$
     -- sendingのまま15分以上残っているのは、ワーカーが落ちたか詰まっている合図
     (select count(*)::integer from private.email_outbox e
       where e.status = 'sending' and e.updated_at < now() - interval '15 minutes'),
+    -- 予定時刻（next_attempt_at）からの超過分。**負値は正常**で、
+    -- まとめメールのように将来の時刻を予約している行があることを意味する。
+    -- 本当に滞留した行があれば min() が拾って大きな正の値になる
     (select coalesce(
        extract(epoch from (now() - min(e.next_attempt_at))) / 60, 0)::integer
        from private.email_outbox e where e.status = 'pending'),
-    -- 本来起きない。起きていれば枠の確保が壊れている
+    -- 本来起きない。起きていれば枠の確保が壊れている。
+    -- ただし **本人が後から上限を下げただけ**の正常操作を数えてはいけない
+    -- （window_count は配信時にしか再計算されない観測値で、
+    --   reception_weekly_limit は利用者がいつでも下げられる）。
+    -- 最後の配信より後にパスポートが更新されている行は除く
     (select count(*)::integer
        from private.student_delivery_quota q
        join public.student_passports p on p.user_id = q.user_id
-      where q.window_count > p.reception_weekly_limit),
+      where q.window_count > p.reception_weekly_limit
+        and p.updated_at <= coalesce(q.last_delivered_at, q.updated_at)),
     (select count(*)::integer from private.offer_preview_cache c
       where c.first_computed_at < now() - interval '24 hours'),
-    (select count(*)::integer from private.admin_audit_log)
+    (select count(*)::integer from private.admin_audit_log),
+    -- 認証側。**DB側のRPCではAuthの生存を確認できない**（Auth APIを叩けない）ので、
+    -- ここで返すのは「DBから観測できる兆候」だけ。生存の確認は実際にOTPを
+    -- 往復させる人間の手順で行う（docs/runbook_incident.md §2）。
+    -- 件数と時刻だけで、誰が・いつログインしたかは返さない
+    (select count(*)::integer from auth.users u where u.email_confirmed_at is not null),
+    (select max(u.created_at) from auth.users u),
+    -- ドメイン外のidentity。掃除の待ち行列であり、ドメインゲートを試されている兆候でもある
+    (select count(*)::integer from auth.users u
+      where not private.is_university_email(u.email)),
+    -- CUEのデータを持たず作成から30日以上経ったidentity（docs/operations.md §9の待ち行列）
+    (select count(*)::integer from auth.users u
+      where u.created_at < now() - interval '30 days'
+        and not exists (select 1 from public.student_accounts sa where sa.user_id = u.id)
+        and not exists (select 1 from public.organization_memberships m where m.user_id = u.id))
 $$;
 revoke execute on function public.platform_health() from public;
 revoke execute on function public.platform_health() from anon;
