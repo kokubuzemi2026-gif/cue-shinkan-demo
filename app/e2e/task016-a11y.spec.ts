@@ -227,6 +227,14 @@ test('1: 新入生の完全導線を、キーボードだけ・390px・フォー
     await clickByRole(page, '通知設定')
     await expectFocusOnHeading(page, 'メール通知')
     await expectNoHorizontalScroll(page, '通知設定(390px)')
+
+    await clickByRole(page, 'アカウント')
+    await expectFocusOnHeading(page, 'アカウントとデータ')
+    await expectNoHorizontalScroll(page, 'アカウントとデータ(390px)')
+
+    // 通知設定へ戻す（次の手順が既定の「オファーごとに通知」から始まるように）
+    await clickByRole(page, '通知設定')
+    await expectFocusOnHeading(page, 'メール通知')
   })
 
   await test.step('1-6: 通知設定をキーボードだけで変更でき、再読み込み後も保たれる', async () => {
@@ -266,8 +274,12 @@ test('1: 新入生の完全導線を、キーボードだけ・390px・フォー
     await expectNoHorizontalScroll(page, 'ブラウザバック後(390px)')
   })
 
-  await test.step('1-9: セッションが切れても、白画面にならずログイン画面へ戻る', async () => {
-    // 期限切れ・別端末でのログアウトに相当する状態を作る
+  await test.step('1-9: 端末からセッション情報が失われても、白画面にならずログイン画面へ戻る', async () => {
+    // 検証するのは「この端末からセッション情報が失われた」場合
+    // （サイトデータ消去・別プロファイル）。
+    // access tokenの**期限切れ**は autoRefreshToken が更新するためログアウトにならず、
+    // **別端末でのログアウト**は古いtokenが残るため getSession() が成功して
+    // シェルが描画され、以後のRPCが落ちる。この2つは別の経路であり未検証
     await page.evaluate(() => {
       for (const key of Object.keys(window.localStorage)) {
         if (key.startsWith('sb-')) window.localStorage.removeItem(key)

@@ -170,6 +170,21 @@ NGの2組は**実際には使われていない**ことを確認した。
 本環境にはDockerが無く、Playwrightとローカルsupabaseスタックを起動できない。
 E2Eの実行はCIでのみ確認している（`docs/launch_plan.md` §5の制約）。
 
+### 独立レビューの結論と対応
+
+**security-reviewer**: Blocker 0件（承認可）。指摘はすべて自分で確認したうえで対応した。
+
+| 指摘 | 深刻度 | 内容 | 対応 |
+|---|---|---|---|
+| N1（アーティファクトへの秘密値） | Non-blocker（優先度高） | **Playwright 1.51以降は、失敗時に必ず `page.ariaSnapshot()` を撮って `test-results/<test>/error-context.md` へ書き出す。** `trace`/`video`/`screenshot` の無効化とは無関係で、gateは `PLAYWRIGHT_NO_COPY_PROMPT` 環境変数だけ。aria snapshotは `input`/`textarea` の**値をそのまま含む**ため、6桁コードの入力直後や招待リンク表示中に失敗すると、それらがファイルへ落ちる | **CI実ログで裏を取った**（Task 016の失敗runに `Error Context: test-results/.../error-context.md` が出ている）。`playwright.config.ts`・`package.json`・`ci.yml` は本タスクのIn scope外のため、**別PRで `PLAYWRIGHT_NO_COPY_PROMPT=1` を設定し、config/CIのコメントも実態へ直す**（AGENTS §2「対象外ファイルを変更しない」）。現状の実害は限定的: `test-results/` はgitignore、CIに `upload-artifact` が無く使い捨てrunnerで破棄、値はローカル使い捨てSupabaseの合成アカウント向け1回限りのもの |
+| N2（セッション切れの主張が広すぎる） | Non-blocker | `sb-*` を消す操作は「この端末からセッション情報が失われた」場合であり、**access tokenの期限切れ**（`autoRefreshToken`が更新する）とも**別端末でのログアウト**（古いtokenが残り `getSession()` が成功する）とも別経路 | specのコメントと本ファイルの記述を実態へ訂正。2つの未検証経路を明記 |
+| N5（フォーカス移動の抜け） | Non-blocker | `AccountDataPanel` の `h1 アカウントとデータ` と、`OrgOffersPanel` のダッシュボード読み込みエラー分岐に見出しrefが無い | 両方へ追加。E2Eにアカウントタブのフォーカス検査を足した。CSSのフォーカス枠に `.auth-card-title[tabindex='-1']` を追加 |
+| N3（合成学生が残る） | Non-blocker | `seedStudentPool` の8人が消えない | 対応不要と判断。CIは毎回 `supabase start` で作り直す使い捨てDB。`outdoor` の下限側assertionは無く（`task011` は `travel` 4人で検査）、「本来ブロックされるはずが通る」向きの汚染は起きないことをレビュー側が確認 |
+| N6（受信箱のスクロール位置） | Non-blocker | 詳細から戻ると `window.scrollTo(0,0)` で読んでいた位置が失われる | 対応不要と判断。`ServerOfferDetail` も表示時に先頭へ戻すため、詳細を開いた時点で既にスクロールは0。回帰ではない |
+| N4（execSqlの文字列連結） | Non-blocker | 値はすべてテスト内の定数で注入は成立しない。既存specより安全側（`-c` ではなく標準入力・`ON_ERROR_STOP=1`） | 対応不要 |
+
+**確認して問題が無かったと明示されたもの**: OTP入力欄・招待リンクへの自動フォーカスは無い（見出しへ移すだけ）/ `DeletionCard` は説明を飛ばす方向に働かない（DOM順が 見出し→注意→消えるもの→残るもの→実行ボタン）/ CSS追加は情報露出の経路にならない / secretの混入なし / 受信停止・返答3択・削除導線は無傷 / migration・RPC・RLSに未接触。
+
 ### 残る課題
 
 - コントラストは**計算値**であり、実機のディスプレイ・OSの設定（ダークモード・
@@ -179,3 +194,5 @@ E2Eの実行はCIでのみ確認している（`docs/launch_plan.md` §5の制�
 - `NotificationSettings`・`OrgOffersPanel`・`ServerOfferDetail`は
   `useScreenFocus`を使わず、以前からの個別実装のまま残している
   （挙動が微妙に異なり、書き換えると回帰リスクだけが増えるため）
+- **`PLAYWRIGHT_NO_COPY_PROMPT` の設定は別PR**（本タスクのIn scope外。上記N1）
+- セッションの**期限切れ**と**別端末でのログアウト**は未検証（上記N2）

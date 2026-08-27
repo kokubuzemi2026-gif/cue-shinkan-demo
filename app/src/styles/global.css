@@ -370,7 +370,8 @@ button {
    :focus-visible なのでマウス操作では出ない */
 .page-title[tabindex='-1']:focus-visible,
 .wizard-heading[tabindex='-1']:focus-visible,
-.danger-heading[tabindex='-1']:focus-visible {
+.danger-heading[tabindex='-1']:focus-visible,
+.auth-card-title[tabindex='-1']:focus-visible {
   outline: 2px solid var(--color-ink);
   outline-offset: 4px;
   border-radius: 4px;

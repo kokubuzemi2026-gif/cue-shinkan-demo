@@ -281,7 +281,9 @@ export function OrgOffersPanel({
   if (campaignState.status === 'error' || orgRow === null) {
     return (
       <section className="auth-card" aria-label="再試行の案内">
-        <h2 className="auth-card-title">オファー配信</h2>
+        <h2 className="auth-card-title" tabIndex={-1} ref={headingRef}>
+          オファー配信
+        </h2>
         <p className="auth-text">
           キャンペーン情報を読み込めませんでした。通信環境を確認して再試行してください。
         </p>
