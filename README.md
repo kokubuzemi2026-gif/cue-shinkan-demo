@@ -53,11 +53,30 @@ CUE は、新入生が事前に登録した「興味パスポート」をもと�
 - `docs/competition_strategy.md`: 競争で勝つための見せ方
 - `docs/implementation_plan.md`: 8月22日までの技術構成と実装順序
 - `docs/decisions.md`: 決定事項と保留事項
+- `docs/agent_harness.md`: 自律開発ハーネス（実行モード・実行ループ・完了の定義・エスカレーション）
 - `CLAUDE.md`: Claude Code の作業規則
 - `AGENTS.md`: Codexなど開発エージェントの作業規則
+- `tasks/_template.md`: 新規タスクの型
 - `tasks/001-bootstrap.md`〜`007-ci-pages-qa.md`: 順番に実行する小タスク
+- `prompts/autonomous_task.md`: 自律実行の指示例
 - `prompts/task_prompt_template.md`: Claudeへ渡す個別タスクの型
-- `prompts/002-execution-sequence.md`: Claude Codeへ貼る実行プロンプト集
+- `prompts/002-execution-sequence.md`: Claude Codeへ貼る実行プロンプト集（Phase 1の記録）
+
+## AIエージェントによる開発
+
+このリポジトリは、AIエージェント（主にClaude Code）が短い指示から自走できるよう構成しています。詳細は `docs/agent_harness.md` を参照してください。
+
+- 実行の型: Plan → Implement → Verify → Review → Repair
+- 独立レビュー: `.claude/agents/`（architect / test-engineer / reviewer / security-reviewer）
+- 自動ガード: `.claude/hooks/`
+  - `guard_git.py`: `main` / `develop` への直接push、force push、`git reset --hard`、
+    `git clean -f`、`git branch -D` を拒否する
+  - `quality_gate.py`: `app/` に変更があるときの終了時に lint / unit test / build を実行する
+- 権限設定: `.claude/settings.json` の `permissions.deny` が `.env`系ファイルと `.git/config` の
+  Readツールでの読み取りを拒否します（`app/.env.example` は読めます）。
+  Bash経由（`cat` など）は防げません。限界は `docs/agent_harness.md` §6・§9 を参照してください
+- hookの実行にはpython3が必要です。変更したら `python3 .claude/hooks/test_hooks.py` を実行してください
+- `.claude/settings.json` は共有設定です。個人設定は `.claude/settings.local.json`（git管理外）に書きます
 
 ## 現在地
 
