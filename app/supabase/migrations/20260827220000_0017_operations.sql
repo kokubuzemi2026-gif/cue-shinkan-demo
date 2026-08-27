@@ -55,7 +55,7 @@ returns table (
   stale_preview_rows integer,
   admin_audit_rows integer,
   confirmed_identities integer,
-  newest_identity_at timestamptz,
+  identities_created_last_7d integer,
   non_university_identities integer,
   orphan_identities integer
 )
@@ -92,12 +92,19 @@ as $$
     (select count(*)::integer from private.offer_preview_cache c
       where c.first_computed_at < now() - interval '24 hours'),
     (select count(*)::integer from private.admin_audit_log),
-    -- 認証側。**DB側のRPCではAuthの生存を確認できない**（Auth APIを叩けない）ので、
+    -- 認証側。`auth.users` の読み取りは `is_university_user()`（0008）・
+    -- `claim_email_batch`（0010）・`admin_delete_auth_identity`（0014）が既に行っており、
+    -- hosted stagingでの動作も確認済みの経路（Task 008 Phase B）。
+    -- **DB側のRPCではAuthの生存を確認できない**（Auth APIを叩けない）ので、
     -- ここで返すのは「DBから観測できる兆候」だけ。生存の確認は実際にOTPを
     -- 往復させる人間の手順で行う（docs/runbook_incident.md §2）。
     -- 件数と時刻だけで、誰が・いつログインしたかは返さない
     (select count(*)::integer from auth.users u where u.email_confirmed_at is not null),
-    (select max(u.created_at) from auth.users u),
+    -- 「登録が成立しているか」を件数だけで返す。時刻を返すと、閉鎖βの規模では
+    -- 「さっき登録した」という場外情報と結びついて個人を指せてしまう
+    -- （`docs/runbook_operations.md` §9 の判断基準）
+    (select count(*)::integer from auth.users u
+      where u.created_at > now() - interval '7 days'),
     -- ドメイン外のidentity。掃除の待ち行列であり、ドメインゲートを試されている兆候でもある
     (select count(*)::integer from auth.users u
       where not private.is_university_email(u.email)),

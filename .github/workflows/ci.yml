@@ -146,8 +146,8 @@ jobs:
           cache-dependency-path: app/package-lock.json
       - name: Install dependencies
         run: npm ci
-      # high以上で落とす。moderate以下は同じ実行の中で警告として出すだけにして、
-      # 開発を止めずに気づけるようにする（auditを2回走らせない）
+      # high以上で落とす。moderate以下は警告として出すだけにして、
+      # 開発を止めずに気づけるようにする（npm ci は1回で済ませる）
       - name: Audit dependencies
         run: |
           set -euo pipefail

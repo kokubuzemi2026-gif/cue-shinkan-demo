@@ -31,6 +31,9 @@ select * from public.platform_health();
 | `stale_preview_rows` | 増減する | 掃除の目安。異常ではない |
 | `admin_audit_rows` | 増える一方 | 年1回の剪定の目安（`docs/runbook_operations.md` §8） |
 
+`platform_health()` は**認証側の4列**（`confirmed_identities` / `identities_created_last_7d` /
+`non_university_identities` / `orphan_identities`）も返す。読み方は **§2.5**。
+
 `platform_health()` は **件数と時刻しか返さない**。学生の希望条件・メール・受信者IDは含まない（D029）。
 
 ## 2. メール通知が届かない
@@ -67,14 +70,14 @@ DBから観測できる兆候だけで、OTPを送っているのは Supabase Au
 ### まず見る
 
 ```sql
-select confirmed_identities, newest_identity_at,
+select confirmed_identities, identities_created_last_7d,
        non_university_identities, orphan_identities
   from public.platform_health();
 ```
 
 | 見え方 | 見立て |
 |---|---|
-| `newest_identity_at` が数日前で止まっている | 新規登録が成立していない。Auth側の異常を疑う |
+| `identities_created_last_7d` が0のまま | 新規登録が成立していない。Auth側の異常を疑う |
 | `non_university_identities` が急に増えた | ドメインゲートを試されている（ゲート自体は効いている） |
 | `orphan_identities` が増える一方 | 登録直後に離脱している。同意画面やパスポートで詰まっている可能性 |
 

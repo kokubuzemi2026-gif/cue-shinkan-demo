@@ -74,8 +74,8 @@ migrationの連番は0016を飛ばして**0017**にする（Task 016はmigration
 
 | 対象 | 内容 |
 |---|---|
-| `20260827220000_0017_operations.sql` | `public.platform_health()`（service_role専用・**14列**）・`private.prune_audit_logs(days)`・`private.prune_preview_cache(hours)` |
-| `34_ops_health_test.sql` | **25テスト**（権限固定・PUBLIC不在・返す列の固定・監査ログの列の固定・保持期間の境界・**各列の値の実測**） |
+| `20260827220000_0017_operations.sql` | `public.platform_health()`（service_role専用・**14列**。うち認証側4列）・`private.prune_audit_logs(days)`・`private.prune_preview_cache(hours)` |
+| `34_ops_health_test.sql` | **29テスト**（権限固定・PUBLIC不在・返す列の固定・監査ログの列の固定・保持期間の境界・**各列の値の実測**） |
 | `docs/runbook_operations.md`（新規・227行） | 環境と役割 / 環境変数（値は書かない）/ migration適用 / rollback / backup・restore / secret rotation / 公開停止 / 定期作業 / **ログの方針** |
 | `docs/runbook_incident.md`（新規・132行） | 最初の3つ / health check の読み方 / メールが届かない / quota異常 / 差分攻撃の疑い / 監査の確認 / 状況別の初手 / 事後 |
 | `docs/runbook_supabase_hosted.md` §6.3 | Task 014・015・017 のPhase B人間タスク（同意ゲート・削除・auth identity・health check） |
@@ -100,7 +100,7 @@ migrationの連番は0016を飛ばして**0017**にする（Task 016はmigration
 
 | 検証 | 結果 |
 |---|---|
-| pgTAP | 34ファイル **616テスト PASS**（Task 016時点の591から+25） |
+| pgTAP | 34ファイル **620テスト PASS**（Task 016時点の591から+29） |
 | 並行テスト | 10件 PASS |
 | oxlint / tsc / vitest / vite build | すべてgreen（ユニット362テスト） |
 | `npm audit --audit-level=high` | **found 0 vulnerabilities** |
@@ -128,6 +128,22 @@ migrationの連番は0016を飛ばして**0017**にする（Task 016はmigration
 | B4（reviewer）: rollbackの関数一覧が不正確で正本と矛盾 | Blocker | `drop`→`create` した関数として013の2本しか挙げていなかったが、実際は**0011の `send_offer`・`preview_offer_audience`** も該当。団体側の中核RPCで、この一覧で切り戻すと送信もプレビューもできなくなる。しかも `runbook_supabase_hosted.md` §8 に正しい完全な一覧が既にあった | 写しを置くのをやめ、§8を正本として参照する形へ |
 | B-1（security）: 権限テストがPUBLICを検査していない | Blocker | `a.grantee <> 0` でPUBLIC擬似ロールを除外していた。**関数のEXECUTEはPostgreSQLの既定でPUBLICへ付く**ため、最も起きやすい退行そのもの。レビュー側が「PUBLICへgrantしても607件全部green」を実証 | `29_admin_boundary_test.sql` と同じ2本目（PUBLIC・anon・authenticated不在）を追加。**PUBLICへgrantすると実際に落ちる**ことを確認 |
 | B-2（security）: backup手順が本番ダンプをリポジトリへ書き出す | Blocker | `-f backup_$(date).sql` はカレントディレクトリへ出る。同じ節の次の行が「リポジトリへ置かない」と警告しており、**手順が自分の警告と矛盾**していた。`backup_*.sql` はgitignoreにも無く、`git add -A` でPIIがステージされる | 出力先を `~/cue-backup/` へ固定し、`.gitignore` へ `backup_*.sql` / `*.dump` を多重防御として追加 |
+
+**security-reviewer の再レビューは承認可**（Blocker 0件）。指摘された Non-blocker のうち
+**N-1（最優先）** も同じPRで直した。
+
+| 指摘 | 内容 | 対応 |
+|---|---|---|
+| N-1 | **新設した認証4列に値の検査が無い**。リテラル`0`/`null` の変異体が616件全部passする。20行上で自分が書いた基準（「列名を固定するだけでは通ってしまう」）を、同じリビジョンで足した列に適用し損ねていた | 値の検査を4件追加。**同じ変異体が4件落ちる**ことを確認 |
+| `newest_identity_at` の精度 | service_role専用なので新しい露出経路ではないが、秒精度の時刻は「さっき登録した」という場外情報と結びつくと個人を指せる。runbookの用途は「止まっているか」だけ | **`identities_created_last_7d`（件数）へ置き換え、時刻を一切返さないようにした**。`runbook_operations.md` §9 の判断基準と整合させる |
+| N-2 | `platform_health()` が `auth.users` に依存するようになった。hosted で `postgres` にSELECTが無いと**関数全体**がエラーになる | `auth.users` の読み取りは `is_university_user()`（0008）・`claim_email_batch`（0010）・`admin_delete_auth_identity`（0014）が既に行っており、**hosted stagingで動作確認済みの経路**（Task 008 Phase B）。migrationへ根拠をコメントし、Phase Bチェックリスト（§6.3 項目5）でも確認する |
+| N-3 | `runbook_incident.md` §1 の表に新4列が無い | §1へ「認証側の4列は §2.5」の導線を追加 |
+| N-4 | `ci.yml` のコメント「auditを2回走らせない」が実態と違う（`npm ci` が1回になっただけ） | コメントを実態へ |
+
+**`quota_over_limit` の除外が新しい穴を作っていないか**もレビュー側が4パターンで実測し、
+「隠せない」と結論している（団体側には `student_passports` への到達経路が無い／
+次の配信で `window_count` が正本から再計算されて必ず再武装する／
+そもそも `send_offer` の受信者確定は `window_count` を見ていない）。
 
 Non-blocker・Nitも反映した。
 

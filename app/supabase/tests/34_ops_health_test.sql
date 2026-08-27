@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(25);
+select plan(29);
 
 -- ---- 権限: 運営（service_role）だけが health を見られる ----
 select is(
@@ -66,7 +66,7 @@ select set_eq(
   array['checked_at', 'delivery_paused', 'pending_organizations', 'outbox_pending',
         'outbox_failed', 'outbox_stuck_sending', 'oldest_pending_overdue_minutes',
         'quota_over_limit', 'stale_preview_rows', 'admin_audit_rows',
-        'confirmed_identities', 'newest_identity_at', 'non_university_identities',
+        'confirmed_identities', 'identities_created_last_7d', 'non_university_identities',
         'orphan_identities'],
   'T1: healthが返すのは件数と時刻だけ（メール・氏名・受信者IDを返さない）'
 );
@@ -177,6 +177,28 @@ select is((select stale_preview_rows from public.platform_health()), 1,
   'T1: 24時間を過ぎたpreviewの行を数える');
 select is((select admin_audit_rows from public.platform_health()), 0,
   'T1: 運営監査の行数を数える（この時点では0件）');
+
+-- ---- 認証側の兆候も、列名だけでなく値を検査する ----
+-- 既存列と同じ理由。リテラル0を返す実装でも通ってしまってはいけない
+insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
+  -- ドメイン外（掃除の待ち行列＋ドメインゲートを試されている兆候）
+  ('00000000-0000-0000-0000-00000000e201', 'demo-outside@example.com', now(), now(), now()),
+  -- メール未確認（確認済みには数えない）
+  ('00000000-0000-0000-0000-00000000e202', 'demo-ops-c@stu.kobe-u.ac.jp', null, now(), now()),
+  -- CUEのデータを持たず、作成から30日以上（孤児）
+  ('00000000-0000-0000-0000-00000000e203', 'demo-ops-d@stu.kobe-u.ac.jp', now(),
+   now() - interval '40 days', now());
+select is(
+  (select confirmed_identities from public.platform_health()),
+  (select count(*)::int from auth.users where email_confirmed_at is not null),
+  'T1: 確認済みidentityの件数を数える（未確認は数えない）'
+);
+select cmp_ok((select identities_created_last_7d from public.platform_health()), '>=', 1,
+  'T1: 直近7日の登録件数を数える（40日前の1件は含まない）');
+select is((select non_university_identities from public.platform_health()), 1,
+  'T1: ドメイン外のidentityを数える');
+select is((select orphan_identities from public.platform_health()), 1,
+  'T1: CUEのデータを持たず30日以上経ったidentityを数える');
 
 -- ---- 掃除: 保持期間より古い行だけを消す ----
 insert into private.admin_audit_log (action, actor_label, created_at) values
