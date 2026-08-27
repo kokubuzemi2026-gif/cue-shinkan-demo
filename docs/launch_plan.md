@@ -371,6 +371,12 @@ H6〜H8 が揃うまで **`main` へmergeしない**。**H11 は公開前に必�
 
 ### 揃ったあとの手順
 
+0. **`main` へmergeする前に、deployを1回空撃ちする。**
+   `deploy-pages.yml` の検証ステップは `push: main` と `workflow_dispatch` でしか
+   走らないため、**PRのCIでは一度も実行されない**。初回実行が本番deployになるのを
+   避ける。Actionsタブ → 「Deploy to GitHub Pages」→ Run workflow（`main`を選ぶ）で、
+   H7設定後の値が検証を通ることを先に確かめる
+   （この時点の `main` はPhase 1のままなので、成功しても公開内容は変わらない）
 1. `develop → main` の release PR を**新規に作る**
    （`feat/018-release-v1` は base=`develop` の通常タスクPRで、release PRではない）
 2. 独立レビュー + security-reviewer → CI green を確認して `main` へmerge

@@ -271,6 +271,31 @@ H6〜H8 が無いまま `main` へmergeすると:
 H11 が無いまま公開すると、publishable keyは公開バンドルに必ず入るため、
 誰でもAuth APIを直接呼べます（§7.1 B7・**P1**）。
 
+### 独立レビュー2本の結論と対応
+
+**どちらも承認不可（Blocker 各4件）。** 指摘はすべて再現して直した。
+中核（buildへvariableを渡す／deploy前に成果物を検証する）の設計自体は、
+両レビューとも「正しく、fail-closedも実測で確認できた」としている。
+
+| 指摘 | 内容 | 対応 |
+|---|---|---|
+| **B4（security）** | **検証ステップが鍵の種類を見ておらず、`sb_secret_*` を貼るとそのまま世界公開される**。secret keyはRLSを迂回するため、公開時点で全学生のデータが誰からでも読み書き可能になり、revertでは戻せない。**自分でも再現した**（バンドルへ1件埋め込まれ、検証ステップは通過） | 鍵の種類を**許可リスト**（`sb_publishable_*`）で検査。旧形式のJWT鍵も拒否する（anonとservice_roleがどちらも `eyJ` 始まりで区別できない）。URLも Project URL の形式で検査。7ケースを実測 |
+| **B2（security）** | **smoke test §11 の後片付けが完結しない**。団体を作ると `leave_organization` は `last_owner`、`delete_my_account` は所属を残す、`admin_delete_auth_identity` は `account_data_remains` で拒否。**運営者の大学メールが production に残り続ける**。レビュー側が実際に再現した | smoke testをA（production・運営者1人で完結）とB（staging・合成アカウントが要る）へ分割。A5に「団体を作ると identity を消せない」ことと、その先の選択肢を明記。「団体を削除する」（未実装）という指示を削除 |
+| **B3（security）** | **§6後半〜§9 が、記載の制約下では実行不能**。配信は対象5人以上（D036）、ファネルは配信10人以上（D037）、`+` エイリアスは不可。守ると実在の新入生を集めるしかない | 上記の分割で、配信・受信箱・ファネル・メール通知をBへ移した |
+| **B1（両方）** | **未mergeのPR #21（Task 019）の内容を既存の状態として書いていた**。pgTAP件数・migration本数・D053・outbox剪定・「019がmerge済み」がすべて事実でない | PR #21 を先に develop へmergeし、本ブランチへ取り込んでから数字を実測し直した。`35 migration` → `18 migration` も訂正 |
+| **B3（独立）/ N2（security）** | 「release PRはdraftのまま」が事実でない。PR #22 は draft ではなく base=`develop` で、そもそも release PR ではない。§6 は独立レビュー行を自己言及で「達成」にしていた | 「`develop → main` の release PR をまだ作っていない理由」へ書き換え。§6 の該当行を **未達** へ。§9 の手順を「release PR を新規に作る」へ |
+| **B4（独立）** | §7.1 に severity 列が無く、「P0/P1ゼロ」の根拠が空。さらに **D030がTask 011へ委ねたCAPTCHA・レート制限が、011のscopeに入っておらず未実施**で、§7・§7.1 のどこにも無い | 27件へ重大度を付与（**P0:0 / P1:5**）。**H11**（Auth Attack Protection）と **§7.1 B7**（P1）を追加。§6 の根拠を分類へ置き換え |
+| N-3（独立） | 検証ステップは `push: main` と `workflow_dispatch` でしか走らないため、**PRのCIでは一度も実行されない**。初回実行が本番deployになる | §9 に手順0「mergeの前に workflow_dispatch で1回空撃ちする」を追加 |
+| N1（security） | PR本文の「ログにはコマンド本体しか出ない」は不正確。runnerは各stepの冒頭に `env:` マップを**値ごと**出力し、`vars.*` はマスクされない | workflowのコメントを訂正し、「このstepへsecretを足さないこと」を明記 |
+| N-1（独立） | §7 本文が「build は `VITE_SUPABASE_*` を渡していない」と現在形のまま | 実装済みへ更新。mergeを止める理由（H6〜H8）は変わらない |
+| N-5（独立） | README のドキュメント一覧が Phase 1 のまま | 設計・仕様／公開・運用／開発の進め方の3群へ再構成 |
+| N7・Nit（security） | 既知リスク「25件」→ 実際27件。§2.2 の `C系`／§2.4 の `D系` が入れ替わっていた | 実測へ訂正（D1・D2 / C1・C2） |
+| N-4（独立） | §9 の H9 説明が §7 の定義（Edge Functionのデプロイ）とずれ、OTP往復（H2）を混ぜていた | H1・H2・H9・H11 を分けて記載 |
+| Nit（独立） | `grep` の値が `-` で始まるとオプション扱い／`dist/assets` 不在のメッセージが区別できない | `-e` を付与、不在専用のメッセージを追加 |
+
+**持ち越し**: `app/index.html` の `<title>` が「デモ」のまま（公開前の判断項目）。
+In scope 外のため触っていない。
+
 ### 残る課題
 
 - **hosted staging の通し確認が未実施**（H1・H9）。smoke testの手順は書いたが、
