@@ -13,41 +13,54 @@
 -- 「誰の」は user_id のSHA-256だけを残す。既にその人のIDを持っている運営者が
 -- 「削除が実際に走ったか」を確認できる一方、記録そのものからは人を特定できない。
 -- 削除された利用者のIDを平文で持ち続けると「削除した」と言えない
+-- 主体（誰が消したか）を**記録しない**。
+-- 当初は user_id のSHA-256を残す設計だったが、独立レビューで
+-- `join auth.users u on subject_hash = digest('cue-deletion-subject:'||u.id, 'sha256')`
+-- によりメールアドレスへ戻せることを実証された。saltもHMAC鍵も無く、
+-- プレフィックスは公開リポジトリの定数で、候補IDは**同じDBの中**にある。
+-- しかもD047の設計上、退会後もauth.usersは運営が消すまで残るため、
+-- 「退会直後の利用者」がもっとも確実に特定できてしまう。
+--
+-- 同じDBにauth.usersがある以上、user_idの決定的な関数はどれも照合可能になる。
+-- そこで主体を持たず、**日次の集計**だけを残す。
+-- 運営が知りたい「削除が動いているか・どれだけ消えたか」には足り、
+-- 利用者1人が保存と削除を繰り返しても行が増え続けない（DoSの入口を塞ぐ）
 create table private.deletion_audit_log (
-  id uuid primary key default gen_random_uuid(),
   action text not null
     constraint deletion_audit_log_action_values check (action in (
       'passport_deleted', 'account_deleted', 'membership_left'
     )),
-  subject_hash text not null
-    constraint deletion_audit_log_subject_hash_format check (subject_hash ~ '^[0-9a-f]{64}$'),
-  -- 脱退のときだけ団体を記録する（団体側の「担当者が減った」調査のため）。
-  -- 団体IDは学生個人を指さない
-  organization_id uuid references public.organizations (id) on delete set null,
+  occurred_on date not null,
+  event_count integer not null default 0
+    constraint deletion_audit_log_event_count_range check (event_count >= 0),
   removed_rows integer not null default 0
-    constraint deletion_audit_log_removed_rows_range check (removed_rows between 0 and 100000),
-  occurred_at timestamptz not null default now()
+    constraint deletion_audit_log_removed_rows_range check (removed_rows >= 0),
+  updated_at timestamptz not null default now(),
+  constraint deletion_audit_log_pkey primary key (action, occurred_on)
 );
 comment on table private.deletion_audit_log is
-  '本人による削除の記録。user_idはSHA-256でのみ保持し、平文の識別子・メール・希望条件を持たない（D029・D046）';
-create index deletion_audit_log_occurred_idx on private.deletion_audit_log (occurred_at desc);
+  '本人による削除の日次集計。主体（誰が）を持たない。同一DBにauth.usersがある限り、user_idの決定的な関数はすべて照合可能になるため（D046）';
 alter table private.deletion_audit_log enable row level security;
 revoke all on table private.deletion_audit_log from anon;
 revoke all on table private.deletion_audit_log from authenticated;
 
-create function private.subject_hash(subject uuid)
-returns text
+-- 日次1行へ畳む。行数は「操作の種類 × 日数」で有界
+create function private.record_deletion(deletion_action text, rows_removed integer)
+returns void
 language sql
-immutable
+volatile
 set search_path = ''
 as $$
-  select encode(extensions.digest('cue-deletion-subject:' || subject::text, 'sha256'), 'hex');
+  insert into private.deletion_audit_log (action, occurred_on, event_count, removed_rows)
+  values (deletion_action, (now() at time zone 'Asia/Tokyo')::date, 1, rows_removed)
+  on conflict (action, occurred_on) do update set
+    event_count = private.deletion_audit_log.event_count + 1,
+    removed_rows = private.deletion_audit_log.removed_rows + excluded.removed_rows,
+    updated_at = now();
 $$;
-comment on function private.subject_hash(uuid) is
-  '削除監査用の一方向ハッシュ。既にIDを知っている場合だけ照合できる（D046）';
-revoke execute on function private.subject_hash(uuid) from public;
-revoke execute on function private.subject_hash(uuid) from anon;
-revoke execute on function private.subject_hash(uuid) from authenticated;
+revoke execute on function private.record_deletion(text, integer) from public;
+revoke execute on function private.record_deletion(text, integer) from anon;
+revoke execute on function private.record_deletion(text, integer) from authenticated;
 
 -- ---- F29: 興味パスポートの削除（本人のみ） ----
 -- 削除すると新規配信の対象にならない（evaluate_offer_audienceは
@@ -74,8 +87,15 @@ begin
     raise exception 'passport_not_found';
   end if;
 
-  insert into private.deletion_audit_log (action, subject_hash, removed_rows)
-  values ('passport_deleted', private.subject_hash(v_uid), v_removed);
+  -- M-1: 「新しい案内は届かなくなります」と伝える以上、送信待ちの案内メールも止める。
+  -- パスポート削除は利用者の最も強い「止めて」の意思表示で、
+  -- ここが素通りすると削除後にオファー通知が届く
+  update private.email_outbox o
+     set status = 'cancelled', updated_at = now()
+   where o.user_id = v_uid
+     and o.status = 'pending';
+
+  perform private.record_deletion('passport_deleted', v_removed);
 end;
 $$;
 comment on function public.delete_student_passport() is
@@ -118,8 +138,7 @@ begin
      and m.user_id = v_uid;
   get diagnostics v_removed = row_count;
 
-  insert into private.deletion_audit_log (action, subject_hash, organization_id, removed_rows)
-  values ('membership_left', private.subject_hash(v_uid), leave_organization.org_id, v_removed);
+  perform private.record_deletion('membership_left', v_removed);
 end;
 $$;
 comment on function public.leave_organization(uuid) is
@@ -133,8 +152,18 @@ grant execute on function public.leave_organization(uuid) to authenticated;
 -- 受信者行（さらに既読・返答）がFKのcascadeで落ちる。
 -- 所属も同時に外す。**auth identity（大学メール）はここでは消せない**ため、
 -- 運営手順として docs/operations.md §9 に残す
+-- 戻り値で「何が残ったか」を伝える。
+-- 当初は void で、最後のownerである団体が1つでもあると
+-- **学生側のデータも含めて全部巻き戻っていた**（独立レビューH-1で実証）。
+-- 団体を1人で作った担当者は `create_organization` の仕様上ほぼ全員が単独ownerで、
+-- ownerを増やす経路が無い（招待はownerを招待できず、role変更RPCも無い）。
+-- つまり「退会も、学生としてのデータ削除も、運営経由の削除も一切できない」
+-- 利用者が構造的に生まれていた。
+--
+-- 新入生としてのデータと、団体担当者としての所属は別のもの。
+-- 前者の削除を後者の事情で止めない
 create function public.delete_my_account()
-returns void
+returns table (removed_rows integer, blocking_organizations integer)
 language plpgsql
 volatile
 security definer
@@ -149,28 +178,45 @@ begin
     raise exception 'not_university_user';
   end if;
 
-  -- 最後のownerである団体があると、所属の削除で protect_last_owner トリガが
-  -- last_owner を送出し、トランザクション全体が巻き戻る（部分削除は起きない）。
-  -- 同じ判定をここへ書いても結果は変わらないため置かない。構造の保証はトリガ側
-  delete from public.organization_memberships m where m.user_id = v_uid;
+  -- 1. 自分が最後のownerでない所属だけを外す。
+  --    最後のownerの団体を外すと管理者不在になるため残す（D048）
+  delete from public.organization_memberships m
+   where m.user_id = v_uid
+     and not (
+       m.role = 'owner'
+       and not exists (
+         select 1 from public.organization_memberships other
+          where other.organization_id = m.organization_id
+            and other.role = 'owner'
+            and other.user_id <> v_uid
+       )
+     );
   get diagnostics v_count = row_count;
   v_removed := v_removed + v_count;
 
-  -- 新入生権限の行を消すと、学生側のデータはFKのcascadeですべて落ちる
+  -- 2. 新入生権限の行を消すと、学生側のデータはFKのcascadeですべて落ちる
   delete from public.student_accounts sa where sa.user_id = v_uid;
   get diagnostics v_count = row_count;
   v_removed := v_removed + v_count;
 
-  if v_removed = 0 then
+  -- 3. 外せなかった所属（＝自分が最後のownerの団体）の数を返す
+  select count(*)::integer into blocking_organizations
+    from public.organization_memberships m
+   where m.user_id = v_uid;
+
+  if v_removed = 0 and blocking_organizations = 0 then
     raise exception 'nothing_to_delete';
   end if;
 
-  insert into private.deletion_audit_log (action, subject_hash, removed_rows)
-  values ('account_deleted', private.subject_hash(v_uid), v_removed);
+  if v_removed > 0 then
+    perform private.record_deletion('account_deleted', v_removed);
+  end if;
+  removed_rows := v_removed;
+  return next;
 end;
 $$;
 comment on function public.delete_my_account() is
-  'CUEに保存した自分のデータをすべて消す。auth identity（大学メール）は残るため運営手順で削除する（D047）';
+  'CUEに保存した自分のデータを消す。最後のownerである団体の所属だけは残し、その数を返す（D047・D049）。auth identity（大学メール）は運営手順で削除する';
 revoke execute on function public.delete_my_account() from public;
 revoke execute on function public.delete_my_account() from anon;
 grant execute on function public.delete_my_account() to authenticated;
@@ -196,7 +242,13 @@ begin
   end if;
 
   delete from auth.users u where u.id = target_user_id;
+  -- 存在しないIDでも成功していると、呼び出し側は消えたか判別できず、
+  -- 監査行だけが無意味に積み上がる（独立レビューM-2）
+  if not found then
+    raise exception 'identity_not_found';
+  end if;
 
+  -- 対象のIDは記録しない。削除した利用者の識別子を残せば「削除した」と言えない
   insert into private.admin_audit_log (action, actor_label)
   values ('auth_identity_deleted', btrim(actor_label));
 end;
@@ -216,3 +268,64 @@ alter table private.admin_audit_log
     'organization_status_changed', 'offer_stopped', 'offer_resumed',
     'delivery_paused', 'delivery_resumed', 'auth_identity_deleted'
   ));
+
+-- ---- 最終ownerガードを並行実行でも守る（独立レビューB1） ----
+-- 元の存在判定はロックを取らない素のSELECTだった。ownerが2人いる団体で
+-- 2人が同時に脱退（または退会）すると、READ COMMITTEDでは互いに相手の行を
+-- 「まだ存在する」と見るため**両方が通過**し、ownerが0人の団体が残る。
+--
+-- 復旧できないのが致命的で、owner membershipを作れる経路は create_organization
+-- だけ（招待は organization_invitations_role_not_owner CHECK で owner を招待できない）。
+-- role変更RPCも団体削除も未実装のため、ownerを二度と作れない団体が残る。
+--
+-- 存在判定へ for update を足し、相手の削除対象行をロックする。
+-- 先にcommitした側の結果を見てから再評価されるため、後続は last_owner で止まる。
+-- Task 014が organization_memberships への最初のDELETE経路であり、
+-- この競合はここで初めて到達可能になった
+create or replace function private.protect_last_owner()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  -- 親団体が既に削除されている＝organizationsのon delete cascade実行中
+  if not exists (select 1 from public.organizations o where o.id = old.organization_id) then
+    if tg_op = 'DELETE' then
+      return old;
+    end if;
+    return new;
+  end if;
+
+  if old.role = 'owner' and (
+    tg_op = 'DELETE'
+    or new.role is distinct from old.role
+    or new.organization_id is distinct from old.organization_id
+  ) then
+    if not exists (
+      select 1
+      from public.organization_memberships m
+      where m.organization_id = old.organization_id
+        and m.role = 'owner'
+        and m.id <> old.id
+      -- 並行する脱退・退会を直列化する（B1）
+      for update
+    ) then
+      raise exception 'last_owner';
+    end if;
+  end if;
+
+  if tg_op = 'DELETE' then
+    return old;
+  end if;
+  return new;
+end;
+$$;
+
+-- M-4: 最終ownerガードが唯一の防御になった以上、Task 013の2つのトリガと同じ基準へ揃える。
+-- 既定の ENABLE は session_replication_role='replica'（論理レプリケーションのapply・
+-- pg_restore --data-only --disable-triggers・PITR/branch復元）で不発になる
+alter table public.organization_memberships enable always trigger trg_protect_last_owner;
+
+-- L-2: 退会時のcascadeが email_outbox だけO(N)になっていた
+-- （既存indexは (kind, user_id, dedupe_key) で先頭列が違う）
+create index email_outbox_user_idx on private.email_outbox (user_id);

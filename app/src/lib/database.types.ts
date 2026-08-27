@@ -282,7 +282,13 @@ export type Database = {
         Args: { org_description?: string; org_name: string }
         Returns: string
       }
-      delete_my_account: { Args: never; Returns: undefined }
+      delete_my_account: {
+        Args: never
+        Returns: {
+          blocking_organizations: number
+          removed_rows: number
+        }[]
+      }
       delete_student_passport: { Args: never; Returns: undefined }
       email_outbox_health: {
         Args: Record<PropertyKey, never>

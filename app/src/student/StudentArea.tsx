@@ -379,7 +379,15 @@ export function StudentArea({
       {tab === 'account' && (
         <AccountDataPanel
           client={client}
-          hasPassport={passport.status === 'ready' && passport.preference !== null}
+          passportPresence={
+            passport.status === 'loading'
+              ? 'loading'
+              : passport.status === 'error'
+                ? 'error'
+                : passport.preference !== null
+                  ? 'present'
+                  : 'none'
+          }
           onPassportDeleted={() => {
             setPassportReloadCount((count) => count + 1)
             setInboxReloadCount((count) => count + 1)

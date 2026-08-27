@@ -4,7 +4,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(15);
+select plan(17);
 
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('00000000-0000-0000-0000-00000000f001', 'demo-pd-owner@stu.kobe-u.ac.jp', now(), now(), now());
@@ -119,23 +119,40 @@ select is(
   'T1: 削除した本人は候補に現れない'
 );
 
--- ---- 監査記録に平文の識別子を残さない（D046） ----
+-- ---- 監査記録は日次集計で、主体を持たない（D046） ----
 select is(
-  (select count(*)::int from private.deletion_audit_log
-    where action = 'passport_deleted'),
+  (select event_count from private.deletion_audit_log where action = 'passport_deleted'),
   1,
   'T1: 削除が記録される'
 );
+-- 同じ日の2回目は行を増やさず、件数だけが増える（無制限に積み上がらない）
 select is(
-  (select subject_hash from private.deletion_audit_log where action = 'passport_deleted'),
-  private.subject_hash('00000000-0000-0000-0000-00000000f101'),
-  'T1: 本人のIDを知っていれば照合できる（一方向ハッシュ）'
+  (select count(*)::int from information_schema.columns
+    where table_schema = 'private' and table_name = 'deletion_audit_log'
+      and (column_name ilike '%user%' or column_name ilike '%subject%'
+        or column_name ilike '%hash%' or column_name ilike '%email%')),
+  0,
+  'T1: 監査記録に主体を指す列が存在しない（auth.usersとjoinして戻せない）'
+);
+select set_eq(
+  $$select column_name::text from information_schema.columns
+     where table_schema = 'private' and table_name = 'deletion_audit_log'$$,
+  array['action', 'occurred_on', 'event_count', 'removed_rows', 'updated_at'],
+  'T1: 監査記録の列は「何を・いつ・何件」だけ'
+);
+
+-- ---- 「新しい案内は届かなくなります」の通り、送信待ちのメールも止まる ----
+select is(
+  (select count(*)::int from private.email_outbox o
+     where o.user_id = '00000000-0000-0000-0000-00000000f101' and o.status = 'pending'),
+  0,
+  'T1: パスポート削除で送信待ちの案内メールが残らない'
 );
 select is(
-  (select count(*)::int from private.deletion_audit_log
-    where subject_hash like '%00000000-0000%' or subject_hash like '%@%'),
-  0,
-  'T1: 記録そのものに平文のID・メールが現れない'
+  (select count(*)::int from private.email_outbox o
+     where o.user_id = '00000000-0000-0000-0000-00000000f101' and o.status = 'cancelled'),
+  1,
+  'T1: 送信待ちだった案内メールは取り消される'
 );
 
 -- ---- 他人のパスポートは消せない ----

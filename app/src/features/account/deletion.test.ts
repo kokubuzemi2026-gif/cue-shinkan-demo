@@ -67,6 +67,18 @@ describe('DELETION_COPY', () => {
     expect(DELETION_COPY.account.kept.join('')).toContain('あなた個人は含まれません')
   })
 
+  // M-5: 最も重要な残存物（大学メール）を、決定の瞬間の一覧から外さない
+  it('アカウント削除では、大学メールのログイン情報が残ることを明示する', () => {
+    const kept = DELETION_COPY.account.kept.join('')
+    expect(kept).toContain('大学メール')
+    expect(kept).toContain('運営が行います')
+  })
+
+  // L-1: 届いた案内には「届いた理由」として登録時の条件が書かれている
+  it('パスポート削除では、案内に書かれた「届いた理由」が残ることを明示する', () => {
+    expect(DELETION_COPY.passport.kept.join('')).toContain('届いた理由')
+  })
+
   it('取り消せない旨の文言がある', () => {
     expect(IRREVERSIBLE_NOTICE).toContain('取り消せません')
   })

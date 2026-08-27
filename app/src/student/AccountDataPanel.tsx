@@ -1,4 +1,4 @@
-import { useReducer } from 'react'
+import { useReducer, useState } from 'react'
 
 import {
   deletionReducer,
@@ -9,9 +9,14 @@ import type { CueSupabaseClient } from '../lib/supabaseClient'
 import { serverErrorMessage } from '../serverdata/apiText'
 import { deleteMyAccount, deleteStudentPassport } from '../serverdata/lifecycleApi'
 
+// パスポートの状態は3値のまま受け取る（N1）。
+// loading / error を「無い」へ潰すと、取得に失敗しただけの利用者へ
+// 「新しい案内は届かない状態です」と誤って断定してしまう
+export type PassportPresence = 'loading' | 'error' | 'none' | 'present'
+
 type AccountDataPanelProps = {
   client: CueSupabaseClient
-  hasPassport: boolean
+  passportPresence: PassportPresence
   onPassportDeleted: () => void
   onAccountDeleted: () => void
 }
@@ -21,7 +26,7 @@ type AccountDataPanelProps = {
 // 実行前に「何が消えて何が残るか」を必ず出す（DeletionCard）
 export function AccountDataPanel({
   client,
-  hasPassport,
+  passportPresence,
   onPassportDeleted,
   onAccountDeleted,
 }: AccountDataPanelProps) {
@@ -42,11 +47,13 @@ export function AccountDataPanel({
     })()
   }
 
+  const [blockingOrganizations, setBlockingOrganizations] = useState(0)
   const runAccountDelete = () => {
     accountDispatch({ type: 'start' })
     void (async () => {
       try {
-        await deleteMyAccount(client)
+        const result = await deleteMyAccount(client)
+        setBlockingOrganizations(result.blockingOrganizations)
         accountDispatch({ type: 'succeeded' })
         // シェルの再読込はここでは行わない。先に結果を見せ、
         // 利用者が「はじめの画面へ」を押してから切り替える
@@ -63,10 +70,10 @@ export function AccountDataPanel({
         CUEに保存されているあなたのデータを、自分で削除できます。削除した内容は元に戻せません。
       </p>
 
-      {/* 削除に成功すると hasPassport は false になるが、完了表示は残す。
+      {/* 削除に成功すると passportPresence は none になるが、完了表示は残す。
           結果を見せずにカードが「登録されていません」へ切り替わると、
           消えたのかどうかが利用者に分からない */}
-      {hasPassport || passportState.phase === 'done' ? (
+      {passportPresence === 'present' || passportState.phase === 'done' ? (
         <DeletionCard
           kind="passport"
           state={passportState}
@@ -77,9 +84,20 @@ export function AccountDataPanel({
       ) : (
         <section className="danger-card" aria-label="興味パスポートを削除">
           <h2 className="danger-heading">興味パスポートを削除</h2>
-          <p className="danger-note">
-            興味パスポートは登録されていません。新しい案内は届かない状態です。
-          </p>
+          {/* N1: 読み込み中・失敗を「無い」と断定しない */}
+          {passportPresence === 'loading' && (
+            <p className="danger-note">興味パスポートの状態を確認しています…</p>
+          )}
+          {passportPresence === 'error' && (
+            <p className="danger-note">
+              興味パスポートの状態を確認できませんでした。通信環境を確認して、ホームから再試行してください。
+            </p>
+          )}
+          {passportPresence === 'none' && (
+            <p className="danger-note">
+              興味パスポートは登録されていません。新しい案内は届かない状態です。
+            </p>
+          )}
         </section>
       )}
 
@@ -91,10 +109,15 @@ export function AccountDataPanel({
         onConfirm={runAccountDelete}
         doneAction={{ label: 'はじめの画面へ', onClick: onAccountDeleted }}
       />
+      {/* H-1: 自分が唯一の代表者の団体は残る。何が残ったかを結果で伝える */}
+      {accountState.phase === 'done' && blockingOrganizations > 0 && (
+        <p className="form-error" role="status">
+          あなたが唯一の代表者になっている団体（{blockingOrganizations}件）の担当は残っています。団体の削除や代表者の交代が必要な場合は、運営へ連絡してください。
+        </p>
+      )}
 
       <p className="auth-hint">
-        大学メールでのログイン情報（アカウントそのもの）の削除は、運営が行います。アカウントを削除したあと、
-        ログインしても利用できる権限はありません。
+        大学メールでのログイン情報（アカウントそのもの）の削除は、運営が行います。それまでの間、あらためて新入生として登録し直すことはできます。
       </p>
     </>
   )

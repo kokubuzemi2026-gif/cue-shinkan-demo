@@ -329,13 +329,17 @@ test('Task 014: 本人がデータを削除でき、復元可能な個人情報�
             `where d.event_name = '留学生交流会-${RUN}'`,
         ),
       ).toBe('5')
-      // 監査記録に平文の識別子が残らない
+      // 監査記録は主体を持たない日次集計（メール・IDへ戻せない）
       expect(
         execSql(
-          `select count(*)::int from private.deletion_audit_log ` +
-            `where subject_hash = '${studentId}' or subject_hash like '%@%'`,
+          `select count(*)::int from information_schema.columns ` +
+            `where table_schema='private' and table_name='deletion_audit_log' ` +
+            `and (column_name ~ 'user' or column_name ~ 'subject' or column_name ~ 'hash' or column_name ~ 'email')`,
         ),
       ).toBe('0')
+      expect(
+        execSql(`select event_count::text from private.deletion_audit_log where action='account_deleted'`),
+      ).toBe('1')
     })
 
     await test.step('6: 結果を読んでから利用者の操作で次へ進む', async () => {
@@ -348,6 +352,11 @@ test('Task 014: 本人がデータを削除でき、復元可能な個人情報�
       // 再読込しても権限は戻らない
       await pageStudent.reload()
       await expect(pageStudent.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
+        timeout: 15_000,
+      })
+      // L-3: 削除後も、あらためて新入生として登録し直せる（正規の初回登録経路）
+      await pageStudent.getByRole('button', { name: '新入生として登録する' }).click()
+      await expect(pageStudent.getByRole('heading', { name: '新入生ホーム' })).toBeVisible({
         timeout: 15_000,
       })
     })

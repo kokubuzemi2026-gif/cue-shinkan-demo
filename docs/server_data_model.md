@@ -171,12 +171,12 @@ migrationは`app/supabase/migrations/20260827040000〜20260827040004_0011_*.sql`
 
 | オブジェクト | 役割 |
 |---|---|
-| `private.deletion_audit_log` | 本人による削除の記録。主体は`user_id`のSHA-256のみ |
-| `private.subject_hash(uuid)` | 削除監査用の一方向ハッシュ |
-| `delete_student_passport()` | 興味パスポートだけを消す（受信済みは残る・D023） |
-| `delete_my_account()` | `student_accounts`と`organization_memberships`を消す（残りはcascade） |
+| `private.deletion_audit_log` | 本人による削除の**日次集計**。主体（誰が）を持たない（D046） |
+| `private.record_deletion(text, integer)` | 日次1行へ畳んで記録する |
+| `delete_student_passport()` | パスポートを消し、送信待ちの案内メールも取り消す（受信済みは残る・D023） |
+| `delete_my_account()` | 学生データと、最後のownerでない所属を消す。外せなかった団体の数を返す（D049） |
 | `leave_organization(uuid)` | 自分の所属を外す（最後のownerはトリガが止める） |
-| `admin_delete_auth_identity(uuid, text)` | **service_role専用**。CUEのデータが無いauth identityを消す |
+| `admin_delete_auth_identity(uuid, text)` | **service_role専用**。CUEのデータが無いauth identityを消す（存在しないIDは`identity_not_found`） |
 
 ### 削除がcascadeで届く範囲
 
@@ -195,3 +195,8 @@ organization_memberships --SET NULL--> offer_deliveries.created_by_membership_id
   `created_by_membership_id`はNULLになる。
 - 検証（`31_account_delete_test.sql`）はテーブルを列挙せず、`user_id`列を持つ
   `public`・`private`の全テーブルを**動的に走査**する。テーブルが増えても自動的に対象になる。
+  走査は「利用者を指すFK列の名前は`user_id`だけ」という前提に依存するため、
+  その前提が今も成立すること（`auth.users`・`student_accounts`を参照するFK列名が
+  `user_id`のみ）も同じテストで検査する（別名の列でPIIを持つテーブルが増えたら落ちる）。
+- 最終ownerガードは並行脱退でも破れないよう`for update`で直列化し、トリガを
+  `ENABLE ALWAYS`にした（D049）。`scripts/concurrency_test.sh`が2人同時脱退で検査する。

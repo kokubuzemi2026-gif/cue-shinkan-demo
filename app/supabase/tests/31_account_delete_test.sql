@@ -5,7 +5,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(20);
+select plan(21);
 
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('00000000-0000-0000-0000-00000000a001', 'demo-ad-owner@stu.kobe-u.ac.jp', now(), now(), now()),
@@ -69,14 +69,18 @@ select is(
 -- ---- 削除 ----
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-00000000a101","role":"authenticated"}', true);
 set local role authenticated;
-select lives_ok($$select public.delete_my_account()$$, 'T2: 本人はアカウントを削除できる');
+select is(
+  (select d.blocking_organizations from public.delete_my_account() d),
+  0,
+  'T2: 本人はアカウントを削除でき、残る所属は無い'
+);
 select throws_ok(
   $$select public.list_my_inbox()$$,
   'P0001', 'not_student',
   'T2: 削除後は受信箱を取得できない'
 );
 select throws_ok(
-  $$select public.delete_my_account()$$,
+  $$select * from public.delete_my_account()$$,
   'P0001', 'nothing_to_delete',
   'T2: 2回目の削除は nothing_to_delete（黙って成功しない）'
 );
@@ -172,11 +176,29 @@ select is(
   'T2: 団体側の配信snapshotは残る（D023）'
 );
 
--- ---- 監査記録 ----
+-- ---- 監査記録（主体を持たない日次集計） ----
 select is(
-  (select subject_hash from private.deletion_audit_log where action = 'account_deleted'),
-  private.subject_hash('00000000-0000-0000-0000-00000000a101'),
-  'T2: 削除が一方向ハッシュで記録される'
+  (select event_count from private.deletion_audit_log where action = 'account_deleted'),
+  1,
+  'T2: 削除が日次集計へ記録される'
+);
+
+-- ---- N2: 走査の前提（利用者を指すFK列は必ず user_id）が今も成立していること ----
+-- 別名の列（例 reporter_id）でauth.users・student_accountsを参照するテーブルが増えると、
+-- user_id だけを見る走査は空振りして合格してしまう
+select is(
+  (
+    select coalesce(string_agg(distinct a.attname, ',' order by a.attname), '')
+    from pg_constraint con
+    join lateral unnest(con.conkey) k(attnum) on true
+    join pg_attribute a on a.attrelid = con.conrelid and a.attnum = k.attnum
+    join pg_namespace n on n.oid = con.connamespace
+    where con.contype = 'f'
+      and n.nspname in ('public', 'private')
+      and con.confrelid in ('auth.users'::regclass, 'public.student_accounts'::regclass)
+  ),
+  'user_id',
+  'T2: 利用者を参照するFK列の名前は user_id だけ（走査の前提が成立している）'
 );
 
 select * from finish();
