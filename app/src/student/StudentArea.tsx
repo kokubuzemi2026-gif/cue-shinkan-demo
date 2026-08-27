@@ -481,9 +481,10 @@ function HomePanel({
   if (homeView === 'wizard') {
     return (
       <>
-        <h1 className="page-title" tabIndex={-1} ref={headingRef}>
-          興味パスポート
-        </h1>
+        {/* wizard中はフォーカスをPassportWizard側（各stepの見出し）へ任せる。
+            Reactは子のeffectを先に走らせるため、ここでrefを渡すと
+            step1だけ親がstep見出しのフォーカスを奪い、着地点がstep2以降と食い違う */}
+        <h1 className="page-title">興味パスポート</h1>
         <p className="wizard-privacy">名前や顔写真は、団体には公開されません</p>
         {saveError !== null && (
           <p className="form-error" role="alert">

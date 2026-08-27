@@ -135,7 +135,12 @@ export function OrgOffersPanel({
   useEffect(() => {
     window.scrollTo(0, 0)
     headingRef.current?.focus({ preventScroll: true })
-  }, [view, confirmState.status, campaignState.status])
+  //
+  // organizationId も依存に入れる。コンテキスト切替（団体A -> 団体B）では
+  // どちらもverifiedだとこのコンポーネントは再マウントされず、
+  // 取得effectも成功時に status を 'ready' のまま入れ直すだけなので、
+  // organizationId が無いとフォーカスが切替前のボタンに残る
+  }, [organizationId, view, confirmState.status, campaignState.status])
 
   // 集中モードの通知。ダッシュボード・アンマウントの全経路で必ず解除する
   useEffect(() => {

@@ -5,7 +5,12 @@
   --color-mint: #dff6e8;
   --color-cream: #fff8f0;
   --color-white: #ffffff;
-  --color-muted: #66727d;
+  /* Task 016: mint背景（最もコントラストが取りにくい背景）でも4.5以上になるまで
+     暗くした。#66727d はmint上で4.33しかなく、AA本文を満たしていなかった */
+  --color-muted: #5f6a75;
+  /* 危険な操作の文字・枠。coralは白背景で2.79しかなく文字色に使えないため、
+     読める赤を別トークンとして持つ（白5.48 / cream5.21 / mint4.83） */
+  --color-danger: #c62f21;
 
   --font-family:
     system-ui, -apple-system, 'Hiragino Sans', 'Hiragino Kaku Gothic ProN',

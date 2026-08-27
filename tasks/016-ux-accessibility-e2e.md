@@ -108,26 +108,42 @@ Task 008〜015で追加したPhase 2の画面には入っていなかった
 | フォーカスリング | `.button`・`.choice-chip`・`.text-input`・`.club-input`・`.offer-card`・`.context-switcher-button`・`.bottom-nav-item`に`:focus-visible` |
 | タップ領域 | `--tap-target: 44px` / `.button { min-height: 48px }` |
 
-### コントラスト（`tokens.css`・WCAG 2.1 相対輝度で計算）
+### コントラスト（WCAG 2.1 相対輝度で計算）
 
-| 前景 | 背景 | 比 | AA本文(4.5) | AA大字(3.0) |
-|---|---|---|---|---|
-| ink #17212b | cream #fff8f0 | 15.47 | OK | OK |
-| ink | white #ffffff | 16.29 | OK | OK |
-| ink | mint #dff6e8 | 14.34 | OK | OK |
-| ink | coral #ff6b5e | 5.83 | OK | OK |
-| muted #66727d | cream | 4.67 | OK | OK |
-| muted | white | 4.92 | OK | OK |
-| muted | mint | 4.33 | NG | OK |
-| white | coral | 2.79 | NG | NG |
+**最初の測定方法が誤っていた。** 同一CSSルールの中に前景色と背景色が
+両方書かれている場合しか走査しておらず、**入れ子と継承で成立する組み合わせを
+取りこぼしていた**。独立レビューが、取りこぼした2件が実際に使われていることを
+指摘した（下記「独立レビューの結論と対応」B1）。
 
-NGの2組は**実際には使われていない**ことを確認した。
+- `.danger-button`（coral文字・15px bold）が `.danger-card`（白）の上 → **2.79**
+- `.audience-quota`（muted・12px）が `.audience-hero`（mint）の**中** → **4.33**
 
-- `passport.css`冒頭に「coral背景に白文字は載せない」と明記され、
-  `.button-primary`は`color: var(--color-ink)`（5.83）
-- mint背景のルール内に`color: var(--color-muted)`を持つものは0件（走査で確認）
-- `.button:disabled { opacity: 0.45 }`はコントラストを下げるが、WCAG 1.4.3は
-  無効コントロールを対象外とする。状態は文言（「送信しています…」等）でも示す
+**走査で個別に潰す方法をやめ、トークンの側で成立しないようにした。**
+前景として使うトークンが、背景として使う全トークンに対して4.5以上なら、
+どんな入れ子でも失敗しようがない。
+
+| 変更 | 前 | 後 | 理由 |
+|---|---|---|---|
+| `--color-muted` | `#66727d` | `#5f6a75` | mint上で4.33しかなかった（最も条件が厳しい背景） |
+| `--color-danger`（新規） | — | `#c62f21` | coralは白背景で2.79。**文字色には使えない**ため、読める赤を別に持つ |
+| `.danger-button` の文字・枠 | coral | danger | 「興味パスポートを削除」「アカウントを削除」「団体から脱退」 |
+| `.danger-card--open` の枠 | coral | danger | 確認が開いた状態の枠 |
+| `.context-switcher-button[aria-pressed]` の枠 | coral | ink | 選択中を示す主要な手がかり。1.4.11（非テキスト3:1）を満たしていなかった |
+| `.bottom-nav-item[aria-current] .bottom-nav-icon` | coral | ink | coralを文字色に使う最後の1件（到達不能なPhase 1デモ側）。**`color: var(--color-coral)` の使用を0件にして、grepで機械的に確認できる状態にした** |
+
+変更後の**許可する組み合わせ全件**（これ以外の組み合わせは実装に存在しない）:
+
+| 前景 | 背景 | 比 | AA本文(4.5) |
+|---|---|---|---|
+| ink #17212b | white / cream / mint / coral | 16.29 / 15.47 / 14.34 / 5.83 | OK |
+| muted #5f6a75 | white / cream / mint | 5.52 / 5.24 / 4.86 | OK |
+| white #ffffff | ink | 16.29 | OK |
+| danger #c62f21 | white / cream / mint | 5.48 / 5.21 / 4.83 | OK |
+
+非テキスト（1.4.11・3:1）: 選択中の枠 ink on white = 16.29。
+
+`.button:disabled { opacity: 0.45 }`はコントラストを下げるが、WCAG 1.4.3は
+無効コントロールを対象外とする。状態は文言（「送信しています…」等）でも示す。
 
 ### 「完全なE2E」の対応
 
@@ -155,8 +171,10 @@ NGの2組は**実際には使われていない**ことを確認した。
 3. 390px幅で横スクロールが起きない（各画面で個別に検査）
 4. メールのリンク（`#notifications`）で着地でき、URLにhashが残らない
 5. 別ページから戻ってもセッションが残り、白画面にならない
-6. `sb-*`を消した（＝期限切れ・別端末でのログアウト相当）状態でも
+6. `sb-*`を消した（＝この端末からセッション情報が失われた）状態でも
    白画面にならずログイン画面へ戻る
+   （**期限切れ**は`autoRefreshToken`が更新するため別経路、
+     **別端末でのログアウト**は古いtokenが残るため別経路。どちらも未検証）
 
 ### 実行した検証
 
@@ -171,6 +189,21 @@ NGの2組は**実際には使われていない**ことを確認した。
 E2Eの実行はCIでのみ確認している（`docs/launch_plan.md` §5の制約）。
 
 ### 独立レビューの結論と対応
+
+**reviewer**: Blocker 2件（修正後に再レビュー）。**どちらも自分で再現したうえで修正した。**
+
+| 指摘 | 深刻度 | 再現内容 | 対応 |
+|---|---|---|---|
+| B1（コントラストのNG組が実際に使われている） | Blocker | 自分の走査は**同一ルール内に前景と背景が両方書かれている場合しか見ておらず**、入れ子と継承の組み合わせを取りこぼしていた。`.danger-button`（coral文字）が `.danger-card`（白）の上で**2.79**、`.audience-quota`（muted 12px）が `.audience-hero`（mint）の中で**4.33**。どちらもPhase 2から到達する画面（削除導線・送信確認）。受入条件に`[x]`を付けていたが実際には未達だった | 個別に潰すのをやめ、**トークン側で成立しないようにした**（`--color-muted` を暗く、`--color-danger` を新設）。許可する前景×背景の全組み合わせが4.5以上であることを確認（上表）。`color: var(--color-coral)` の使用は**0件**にして、grepで機械的に確認できるようにした |
+| B2（verified団体どうしの切替でフォーカスが移らない） | Blocker | `6ac94dc` で `OrgHome` の ref を verified のとき外したが、`OrgOffersPanel` のフォーカスeffectの依存に `organizationId` が無く、`AuthenticatedShell` は `key` を渡さず、取得effectも成功時に `status` を `'ready'` のまま入れ直すだけ。よって**effectが一度も再実行されず**、フォーカスは切替前のボタンに残る。**自分が `6ac94dc` で作った穴** | 依存へ `organizationId` を追加 |
+| N1（wizard step1だけ着地点が違う） | Non-blocker | `HomePanel`（親）の key が wizard 突入で変わるため、`PassportWizard`（子）が step見出しへ移した直後に親が h1 を奪う。step2以降は子だけが走るので**step1だけ挙動が違う** | wizard分岐では親がrefを渡さない |
+| N2（横スクロール判定が甘い） | Non-blocker | `window.innerWidth` は縦スクロールバー幅を含むため、実際に横スクロールが出ていても通る | `documentElement.clientWidth` と比較する |
+| N3（キーボード検証の範囲） | Non-blocker | オファー作成〜送信は全てマウス操作だった | **キーボードだけで通すよう書き換えた**（入力4件＋チップ3件＋理由＋2ボタン） |
+| N4（AppRoot直下のエラー画面） | Non-blocker | 「読み込みに失敗しました」「このアカウントでは利用できません」「はじめる前に（同意の読み込み失敗）」にフォーカス移動が無い | 3つへ共通のrefを追加 |
+| N5（E2Eのトートロジー） | Non-blocker | 「文字がある」の検査が直前のassertionから自明で、何も検証していない | 状態の説明文と、配信導線が出ていないことを検査する形へ |
+| N7（bandラベル依存） | Non-blocker | `/人の新入生へ配信しました/u` は band が `50人以上` だとマッチしない | `/新入生へ配信しました/u` へ |
+| N6（e2eが恒常的な型検査の網に無い） | Non-blocker | `tsc -b` は `e2e/` を見ない | **別PR**（`tsconfig` はIn scope外） |
+| Nit（引数名 `step`） | Nit | wizardのstepと紛らわしい | `screenKey` へ改名 |
 
 **security-reviewer**: Blocker 0件（承認可）。指摘はすべて自分で確認したうえで対応した。
 
@@ -195,4 +228,10 @@ E2Eの実行はCIでのみ確認している（`docs/launch_plan.md` §5の制�
   `useScreenFocus`を使わず、以前からの個別実装のまま残している
   （挙動が微妙に異なり、書き換えると回帰リスクだけが増えるため）
 - **`PLAYWRIGHT_NO_COPY_PROMPT` の設定は別PR**（本タスクのIn scope外。上記N1）
+- **`e2e/` を恒常的な型検査へ入れるのも別PR**（`tsconfig` はIn scope外。reviewer N6）。
+  現状は一時tsconfigで手元検査しているだけで、CIには網が無い
+- **透過が絡む合成色は未計算**（`rgba(23,33,43,0.08)` の枠線、`opacity: 0.45` の
+  disabled など）。トークン同士の組み合わせだけを保証している
+- レビュー中にブランチが5回動いた。reviewerは最終状態（`2600ad6`）で判定しているが、
+  **B1・B2の修正はその後**なので、修正内容そのものは独立レビューを通していない
 - セッションの**期限切れ**と**別端末でのログアウト**は未検証（上記N2）

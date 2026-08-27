@@ -331,7 +331,9 @@ button {
 }
 
 .bottom-nav-item[aria-current='page'] .bottom-nav-icon {
-  color: var(--color-coral);
+  /* coralは背景専用にする（文字色では白背景2.79）。選択中はラベルの
+     ink+太字と aria-current で示す */
+  color: var(--color-ink);
 }
 
 /* ---- 押下フィードバックと選択抑止（Task 006） ---- */

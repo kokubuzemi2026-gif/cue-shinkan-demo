@@ -7,14 +7,14 @@ import { useEffect, useRef } from 'react'
 // スクリーンリーダーは新しい画面を読み上げず、キーボード利用者は毎回
 // 先頭からTabをやり直すことになる。
 //
-// 画面（またはステップ）が変わるたびに見出しへフォーカスを移し、
+// screenKeyが変わるたびに（＝画面またはステップが変わるたびに）見出しへ移し、
 // スクロール位置も先頭へ戻す。見出し側には `tabIndex={-1}` が必要。
 // `preventScroll`で、フォーカスによる意図しないスクロールを避ける。
-export function useScreenFocus<T extends HTMLElement>(step: unknown) {
+export function useScreenFocus<T extends HTMLElement>(screenKey: unknown) {
   const ref = useRef<T>(null)
   useEffect(() => {
     window.scrollTo(0, 0)
     ref.current?.focus({ preventScroll: true })
-  }, [step])
+  }, [screenKey])
   return ref
 }

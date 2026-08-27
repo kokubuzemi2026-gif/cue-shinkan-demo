@@ -62,8 +62,11 @@ function seedStudentPool(tag: string, count: number, category: string) {
 }
 
 async function expectNoHorizontalScroll(page: Page, situation: string) {
+  // window.innerWidth は縦スクロールバーの幅（Chromiumで約15px）を含むため、
+  // それと比べると実際に横スクロールバーが出ていても通ってしまう。
+  // 表示領域そのものを表す documentElement.clientWidth と比べる
   const fits = await page.evaluate(
-    () => document.documentElement.scrollWidth <= window.innerWidth + 1,
+    () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
   )
   expect(fits, `${situation}: 横スクロールが発生しない`).toBe(true)
 }
@@ -319,10 +322,14 @@ test('2: 団体の完全導線でも、フォーカスと390pxが破綻しない
   })
 
   await test.step('2-3: 審査待ちの状態が、色だけでなく文字でも示される', async () => {
-    const chip = page.getByText('審査待ち', { exact: true })
-    await expect(chip).toBeVisible()
-    // 状態チップは文字を持つ（色だけに意味を依存させない）
-    expect((await chip.innerText()).trim().length).toBeGreaterThan(0)
+    // チップの文字と、その意味を説明する文の両方が出ていること。
+    // 色を落として読んでも「いま何ができないか」が分かる必要がある
+    await expect(page.getByText('審査待ち', { exact: true })).toBeVisible()
+    await expect(
+      page.getByText('運営の確認が終わるまで', { exact: false }),
+    ).toBeVisible()
+    // 配信導線そのものが出ていない（状態が見た目だけでなく機能へも反映されている）
+    await expect(page.getByRole('button', { name: '新しいオファーを作成' })).toBeHidden()
     await expectNoHorizontalScroll(page, '審査待ちの団体画面(390px)')
   })
 
@@ -342,28 +349,45 @@ test('2: 団体の完全導線でも、フォーカスと390pxが破綻しない
     await expectNoHorizontalScroll(page, '団体ダッシュボード(390px)')
   })
 
-  await test.step('2-5: オファー作成・確認・完了の各画面でフォーカスが移る', async () => {
+  await test.step('2-5: オファー作成〜送信をキーボードだけで通し、各画面でフォーカスが移る', async () => {
     await clickByRole(page, '新しいオファーを作成')
     await expectFocusOnHeading(page, '新しいオファー')
     await expectNoHorizontalScroll(page, 'オファー作成(390px)')
 
-    await page.getByLabel('イベント名').fill(`はじめての山歩き-${RUN}`)
-    await page.getByLabel('イベント紹介').fill('はじめての方でも参加できる新歓イベントです。')
-    await page.getByLabel('開催日時').fill('9月13日（土）9:00')
-    await page.getByLabel('場所').fill('六甲ケーブル下')
-    await page
-      .getByLabel('なぜこの人たちに届けたいか')
-      .fill('外で体を動かすのが好きな人と一緒に歩きたいからです。')
-    await clickByRole(page, 'アウトドア')
-    await clickByRole(page, '友達を作る')
-    await clickByRole(page, '土日')
-    await clickByRole(page, '対象を確認する')
+    // ここから送信までマウスを使わない。DOM順（入力4つ → 対象条件のチップ →
+    // 理由 → 対象を確認する）にTabで進む
+    for (const [label, value] of [
+      ['イベント名', `はじめての山歩き-${RUN}`],
+      ['イベント紹介', 'はじめての方でも参加できる新歓イベントです。'],
+      ['開催日時', '9月13日（土）9:00'],
+      ['場所', '六甲ケーブル下'],
+    ] as const) {
+      const field = page.getByLabel(label)
+      await tabTo(page, field, `入力「${label}」`)
+      await page.keyboard.type(value)
+    }
+    for (const choice of ['アウトドア', '友達を作る', '土日'] as const) {
+      const chip = page.getByRole('button', { name: choice, exact: true }).first()
+      await tabTo(page, chip, `選択肢「${choice}」`)
+      await page.keyboard.press('Enter')
+    }
+    const reason = page.getByLabel('なぜこの人たちに届けたいか')
+    await tabTo(page, reason, '入力「なぜこの人たちに届けたいか」')
+    await page.keyboard.type('外で体を動かすのが好きな人と一緒に歩きたいからです。')
+
+    const confirmButton = page.getByRole('button', { name: '対象を確認する', exact: true })
+    await expect(confirmButton).toBeEnabled()
+    await tabTo(page, confirmButton, '対象を確認するボタン')
+    await page.keyboard.press('Enter')
 
     await expectFocusOnHeading(page, '送信内容の確認')
     await expectNoHorizontalScroll(page, '送信内容の確認(390px)')
 
-    await clickByRole(page, 'この内容で送信')
-    await expect(page.getByRole('heading', { name: /人の新入生へ配信しました/u })).toBeVisible({
+    const sendButton = page.getByRole('button', { name: 'この内容で送信', exact: true })
+    await tabTo(page, sendButton, 'この内容で送信ボタン')
+    await page.keyboard.press('Enter')
+    // 見出しは「<区分>の新入生へ配信しました」。区分のラベルに依存しない
+    await expect(page.getByRole('heading', { name: /新入生へ配信しました/u })).toBeVisible({
       timeout: 30_000,
     })
     await expectNoHorizontalScroll(page, '送信完了(390px)')
