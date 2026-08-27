@@ -15,7 +15,7 @@
 - `docs/release_notes_v1.0.md`（新規）
 - `docs/launch_plan.md`（完了記録）
 - `.github/workflows/deploy-pages.yml`（公開ビルドへ接続設定を渡す）
-- `README.md`（公開手順）
+- `README.md`（公開手順）※ 着手時のIn scopeには無く、公開手順の実態がPhase 1のままだったため追加した
 - `tasks/018-release-v1.md`
 - `docs/legal/` は触らない（Task 015の正本）
 
@@ -27,7 +27,7 @@
 ## 前提条件（すべて満たすまでrelease PRを作らない）
 
 - [x] Task 010・011・013〜017が`develop`へmerge済み（008〜017 + 019 = `05e2701`）
-- [x] P0/P1の既知不具合ゼロ
+- [ ] P0/P1の既知不具合ゼロ ← **一部**（P0:0 / **P1:6**。公開判断で明示的に受容が要る。とくに§7.1 B7は「設定するまで公開しない」）
 - [x] 未解決の認証・RLS・privacy blockerゼロ
 - [x] 全CI green（quality / db-tests / e2e / audit）
 - [ ] staging E2E green ← **未実施**（H1・H9。人間の操作が要る）
@@ -58,7 +58,7 @@
 > ことが判明したため分割しました。
 >
 > - **A（production）**: 運営者1人で完結する。公開URLで必ず行う
-> - **B（staging）**: 合成アカウントが5〜10人要る。**productionでは行わない**
+> - **B（staging）**: 合成アカウントが**10人以上**要る（ファネルの開示に配信10人以上が要る）。**productionでは行わない**
 >
 > 配信は対象5人未満だと `insufficient_audience` で拒否され（D036）、
 > ファネルは配信10人未満だと一切開示されません（D037）。
@@ -114,10 +114,14 @@
 - [ ] 作成直後は「審査待ち」で、オファー作成の導線が**出ない**
 - [ ] SQL Editorで `admin_set_organization_status(..., 'verified', ...)` を実行すると
       ダッシュボードが有効になる
+      ← **ここに書かれたSQL以外を実行しない。** SQL Editorは `postgres`（superuser）で
+      動くため、RPC層の保護をすべて迂回できる（§7.1 B4）
 - [ ] 公式窓口を登録できる
 - [ ] オファーを作り「対象を確認する」で**区分**が出る。**生の人数が出ない**
       （対象0人なら「0」。ここまでで privacy-safe preview は確認できる）
 - [ ] 対象が5人未満のとき送信できない（`insufficient_audience`）
+      ← **A4のパスポートを残したまま、自分が当たる条件で試す**（対象=1人）。
+      対象0人だと `no_recipients` になり、この項目は観測できない
 
 ### A6. エラー監視と後片付け
 
@@ -135,9 +139,15 @@
 > （代表者不在を防ぐため残す・D049）でも外せません。
 > **団体の削除・担当者のrole変更は未実装**（`docs/launch_plan.md` §7.1 D1・D2）。
 >
-> A5を行うなら、**運営者が自分のアドレスで行い、identityが残ることを受け入れる**か、
-> **A5をstagingへ回す**かのどちらかを先に決めてください。
-> 「あとで消す」経路はありません。
+> **RPCの経路はありません。** ただしDB管理者なら、SQL Editorから
+> `delete from public.organizations where id = '<団体ID>';` で片付けられます
+> （`organization_memberships` などはすべて `on delete cascade`、
+> `admin_audit_log.target_organization_id` は `set null` で孤児は残りません）。
+> そのうえで `admin_delete_auth_identity` が通ります。
+>
+> したがって選択肢は3つです。**A5を行う前に決めてください。**
+> (a) identityが残ることを受け入れる /
+> (b) 後始末までDB管理者が行う（上のSQL） / (c) A5をstagingへ回す
 
 - [ ] 団体を作っていない場合のみ: `admin_delete_auth_identity` で
       auth identity を消す（`docs/operations.md` §9）
@@ -218,7 +228,7 @@ productionでは行わない。
 |---|---|
 | `.github/workflows/deploy-pages.yml` | build へ `VITE_SUPABASE_*`（Actions **variables**）を渡し、直後に「バンドルへ入っているか」を検証するステップを足した。**値そのものはログへ出さない** |
 | `docs/release_notes_v1.0.md`（新規） | できること / 守っていること（実装との対応表）/ 既知の制限 / 運用の入口 / rollback |
-| 本ファイル §公開後smoke test | 11節・約60項目。**実在する学生を巻き込まない**手順にした |
+| 本ファイル §公開後smoke test | A（production）34項目 / B（staging）24項目。**実在する学生を巻き込まない**手順にした |
 | `README.md` | 「現在地」と「公開（GitHub Pages）」をPhase 2の実態へ。**必要なActions variablesを明記** |
 | `docs/launch_plan.md` §6 | 完了条件の現状を記録 |
 
@@ -241,7 +251,7 @@ productionでは行わない。
 | 条件 | 状態 |
 |---|---|
 | Task 010・011・013〜017 が `develop` へmerge済み | **満たす**（008〜017 + 019 = `05e2701`） |
-| P0/P1 の既知不具合ゼロ | **満たす**（`docs/launch_plan.md` §7.1 に P0/P1 無し） |
+| P0/P1 の既知不具合ゼロ | **一部**。§7.1 の28件へ重大度を付与した結果 **P0:0 / P1:6**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection未設定 / C1 WCAG 1.4.11未達 / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る** |
 | 未解決の認証・RLS・privacy blocker ゼロ | **満たす**（各タスクの独立レビューでBlocker 0） |
 | 全CI green | **満たす**（quality / db-tests / e2e / audit） |
 | staging E2E green | **未実施**（H1・H9。人間の操作が要る） |
@@ -295,6 +305,29 @@ H11 が無いまま公開すると、publishable keyは公開バンドルに必�
 
 **持ち越し**: `app/index.html` の `<title>` が「デモ」のまま（公開前の判断項目）。
 In scope 外のため触っていない。
+
+#### 再レビュー2本（2周目）の結論と対応
+
+**どちらも承認不可**（security: Blocker 1件・新規 / 独立: Blocker 3件）。すべて直した。
+
+| 指摘 | 内容 | 対応 |
+|---|---|---|
+| **B-new-1（security・新規）** | **貼り間違えた secret key が、検証ステップがdeployを止める前に公開Actionsログへ平文で出る。** runnerは各stepの冒頭に `env:` マップを値ごと出力し、`vars.*` はマスクされない。本リポジトリは公開（未認証GETで200を実測）。**自分のworkflowコメントがその事実を書いておきながら、その値をvariableへ置いていた**（自己矛盾） | 2値を **variable → secret** へ移した（**D054**）。値の秘匿ではなく貼り間違いの封じ込めが目的。あわせて検証失敗時に「**設定し直す前にSupabaseで失効（rotate）する**」ことをメッセージ・README・§7 H7 へ明記 |
+| **B-A（独立）** | 前回B4が未閉鎖。`tasks/018` の前提条件 `- [x] P0/P1の既知不具合ゼロ` と Verification record の「満たす」が、同じPRの `launch_plan` §6（「一部」「P1は6件」）と矛盾。**release PR作成のゲートが外れていた** | 両方を「一部（P0:0 / P1:7）」へ。P1を列挙し「公開判断で明示的に受容が要る」と明記 |
+| **B-B（独立）** | 前回「事実でない」と指摘された「**release PRはdraftのまま**」を、§8 進捗ログへ**新しく書いていた**（developには無い行） | 「`develop → main` の release PR は未作成」へ |
+| **B-C（独立）/ N3（security）** | §9 手順0 の「空撃ち」が機能しない。`workflow_dispatch` は**選んだrefの定義**を実行するため、`main` を選ぶと検証ステップの無い旧定義が走り、他refを選ぶと `if: github.ref == 'refs/heads/main'` でjobごとskipされる。**どちらも「通った」という誤った確信だけが残る** | `workflow_dispatch` へ `dry_run` 入力を追加。build job を `github.ref == 'refs/heads/main' \|\| inputs.dry_run` に、deploy job を `!inputs.dry_run` にした。§9 手順0 を「この定義を持つブランチを選ぶ。**`main` を選んではいけない**」へ |
+| N1（security）/ n-1（独立） | URL検査の shell glob は `*` が `/` `?` `#` を跨ぐため、`https://evil.example.com/.supabase.co` が通る（両者が実証） | 正規表現 `^https://[a-z0-9-]+\.supabase\.co/?$` へ。10ケースを実測（3つの迂回はすべて落ち、正当なProject URLは通る） |
+| N-6（独立） | A6 の「**「あとで消す」経路はありません**」は言い過ぎ。DB管理者が SQL Editor から `delete from public.organizations` すれば片付く（cascade / set null で孤児は残らない）ことをレビュー側が実測 | 「RPCの経路はありません。ただしDB管理者なら…」へ。選択肢を(a)受け入れる/(b)DB管理者が後始末/(c)stagingへ回す の3つに |
+| N-5（独立） | A5 の `insufficient_audience` は**対象1人**でないと観測できない（対象0人だと `no_recipients`） | 「A4のパスポートを残したまま、自分が当たる条件で試す」を明記 |
+| N-8（独立） | E3（実メール未検証・送信ワーカー未デプロイ）が **P2 は寛容**。通知が1通も飛ばない可能性がある | **P1 へ格上げ**し、**H9 を公開ゲートへ追加**（§7）。release notes にも明記 |
+| N4（security） | smoke test A が production の SQL Editor 操作を要求するが、実行してよいSQLの線引きが無い（SQL Editorは superuser でRPC層を迂回できる） | A5 へ「**ここに書かれたSQL以外を実行しない**」を追加 |
+| N-1・N-2（独立） | §1「現在地」と §3「Task一覧」が着手時のまま（migration 13本・pgTAP 399・unit 345・並行8・017がレビュー待ち・018が未着手・019の行が無い） | 実測へ更新（19本 / 641 / 365 / 15）。017・019を完了、018をレビュー中に。依存図とdecision/migrationの採番も更新 |
+| N-3・N-4（独立） | §6 導入文「未達の3件」が実際は4行。原因の列挙にH11が無い。1行目が「018もmerge済み・達成」 | 「未達の4件」「H1・H6〜H11」「一部」へ |
+| N2（security） | 鍵の許可リストの限界（`sb_publishable_` を前置しただけの文字列は通る） | 「**貼り間違い対策であって、悪意ある値の検査ではない**」をコメントへ |
+| N-7（独立） | 「別プロジェクトの値を渡していませんか」は検出できているかのように読める（build も verify も同じ値を読むので原理的に検出できない） | 「build step へ env: が渡っていないか、古い dist が残っていませんか」へ |
+| Nit（両方） | 「B: 5〜10人」→10人以上 / 「11節・約60項目」→A 34・B 24 / release notes の所要時間とA/B分割 / B7「既定のまま」→「CAPTCHAが無効で既定のレート制限だけ」 / In scope へREADMEを自分で追加した事実 | すべて反映 |
+
+**持ち越し**: n-2（前後空白の拒否は `readSupabaseConfig()` が `trim()` するので必要より厳しい。安全側なので残す）。
 
 ### 残る課題
 

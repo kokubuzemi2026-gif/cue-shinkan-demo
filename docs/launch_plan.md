@@ -12,20 +12,23 @@
 
 | 項目 | 値 |
 |---|---|
-| `develop` | `18c1e3a`（PR #13 merge後。本書作成時点は `f28d834`） |
-| `main` | `646278f`（Phase 1公開デモ・凍結中） |
-| 完了Task | 000〜009, 012, 013(hook fix) |
-| migration | 13本（0008×4・0009×4・0011×3・0010×2）。`20260824111223`〜`20260827080002` |
-| unit test | 345件 / 28ファイル（Task 011前は317 / 24） |
-| pgTAP | 399件 / 26ファイル（Task 011前は229 / 16） |
-| 並行テスト | 8件（`npm run db:test:concurrency`） |
+| `develop` | `05e2701`（PR #21 merge後） |
+| `main` | `646278f`（Phase 1公開デモ・**公開中**・凍結） |
+| 完了Task | 000〜019（018はPR #22でレビュー中） |
+| migration | **19本**（0008×4・0009×4・0011×3・0010×2・0013×2・0014・0015・0017・0018） |
+| unit test | **365件 / 31ファイル** |
+| pgTAP | **641件 / 35ファイル** |
+| 並行テスト | **15件**（`npm run db:test:concurrency`） |
 | hookテスト | 201件 |
-| lint / build / CI | green |
-| hosted staging | Supabase `cue-shinkan-staging`（`ap-northeast-1`）。0008・0009のmigration適用済み、Task 008 Phase B完了 |
+| lint / build / CI | green（quality / db-tests / e2e / audit の4ジョブ） |
+| hosted staging | Supabase `cue-shinkan-staging`（`ap-northeast-1`）。**0008・0009までしか適用していない**（0010以降は未適用・H1） |
 
-Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）まで完了している。
-学生の登録・パスポート・オファー受信・返答、団体のオファー作成・送信・ファネルは
-サーバー側（RLS + SECURITY DEFINER RPC）で動作する。
+Phase 2の**実装はTask 019まで完了**している。学生の登録・パスポート・オファー受信・返答、
+団体のオファー作成・送信・ファネル、メール通知、運営の確認・停止・緊急停止、
+本人によるデータ削除、同意管理、health checkまでがサーバー側
+（RLS + SECURITY DEFINER RPC）で動作する。
+
+**残るのは人間の操作だけ**（§7 H1・H6〜H11）。実装側からは進められない。
 
 ## 2. v1.0の完成像と現状のgap
 
@@ -83,7 +86,7 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 | 認証・RLS・RPC・匿名性・E2Eの自動テスト | ✅ pgTAP **641件**（35ファイル）/ 並行15件 / unit 365件 / E2E | 008〜019 |
 | staging実環境検証 | ⚠️ **008のみ完了。009以降は未実施**（H1・H9） | Phase B |
 | release PRと公開後smoke test | ⚠️ 手順は用意済み（production用A・staging用Bに分割）。**実行は公開後**（H6〜H8待ち） | 018 |
-| P0/P1既知不具合ゼロ | ⚠️ §7.1 の28件へ重大度を付与。**P0は0件・P1は6件**（公開判断で受容が要る） | 018 |
+| P0/P1既知不具合ゼロ | ⚠️ §7.1 の28件へ重大度を付与。**P0は0件・P1は7件**（公開判断で受容が要る） | 018 |
 
 ## 3. Task一覧と依存関係
 
@@ -92,7 +95,7 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 013 団体確認・運営kill switch ┘                  │
 014 アカウント・データライフサイクル ────────────┤
 015 プライバシー・同意・法的文書draft ───────────┤
-017 運用（logging/health/runbook/secret） ───────┘
+017 運用（logging/health/runbook/secret） ─> 019 outbox剪定・型同期 ┘
 ```
 
 | Task | 内容 | 状態 | PR | 依存 |
@@ -103,11 +106,12 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 | 014 | アカウント・データライフサイクル（削除・脱退・孤児データ） | **完了（developへmerge済み `7da6919`）** | [#15](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/15) | 013 |
 | 015 | プライバシー・同意・利用規約draft・同意バージョン | **完了（developへmerge済み `1c3bb28`）** | [#16](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/16) | — |
 | 016 | UX・アクセシビリティ・完全E2E | **完了（developへmerge済み `623f85a`）** | [#17](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/17) | 010〜015 |
-| 017 | 運用（structured logging・health・runbook・secret rotation） | **実装完了・レビュー待ち** | — | 010 |
-| 018 | リリース（release notes・smoke test・staging記録・main PR） | 未着手（仕様は `tasks/018-*.md`） | — | 全部 |
+| 017 | 運用（structured logging・health・runbook・secret rotation） | **完了（developへmerge済み `cebabdd`）** | [#20](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/20) | 010 |
+| 019 | outboxの剪定・ワーカー並行検証・生成型の同期 | **完了（developへmerge済み `05e2701`）** | [#21](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/21) | 017 |
+| 018 | リリース（release notes・smoke test・deploy設定・main PR） | **レビュー中** | [#22](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/22) | 全部 |
 
 番号の重複回避: 既存Task番号は000〜009・012。013以降を新規に使う（010・011は既存の意味を保持）。
-decision番号は既存D001〜D035。新規はD036以降。
+decision番号は **D054まで使用済み**。新規はD055以降。migrationの連番は **0018まで**（0012・0016は欠番）。
 
 ## 4. Task 011の確定仕様（ユーザー確定事項・2026-08-27）
 
@@ -183,13 +187,13 @@ decision番号は既存D001〜D035。新規はD036以降。
 
 ## 6. 完了条件（Definition of Done for v1.0）
 
-状態は2026-08-27時点。**未達の3件はすべて `docs/launch_plan.md` §7 の
-人間待ち項目（H1・H6〜H10）が原因**で、実装側からは進められない。
+状態は2026-08-27時点。**未達の4件はすべて `docs/launch_plan.md` §7 の
+人間待ち項目（H1・H6〜H11）が原因**で、実装側からは進められない。
 
 | 条件 | 状態 | 根拠・残る作業 |
 |---|---|---|
-| Task 010・011・013〜018がすべて`develop`へmerge済み | **達成**（+019） | 008〜017・019がmerge済み（019は `05e2701`）。018は本タスク |
-| P0/P1の既知不具合ゼロ | **一部** | §7.1 の28件へ重大度を付与した結果、**P0は0件、P1は6件**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection未設定 / C1 WCAG 1.4.11未達 / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る**。2件（B6・E5）は対応済み |
+| Task 010・011・013〜018がすべて`develop`へmerge済み | **一部** | 008〜017・019がmerge済み（019は `05e2701`）。**018は本PR（#22）で未merge** |
+| P0/P1の既知不具合ゼロ | **一部** | §7.1 の28件へ重大度を付与した結果、**P0は0件、P1は7件**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection未設定 / C1 WCAG 1.4.11未達 / **E3 送信ワーカー未デプロイ** / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る**。2件（B6・E5）は対応済み |
 | 未解決の認証・RLS・privacy blockerゼロ | **達成** | 各タスクの独立レビュー・security-reviewerでBlocker 0 |
 | 全CI green | **達成** | quality / db-tests / e2e / audit |
 | staging E2E green | **未達** | H1・H9。Supabaseアカウントが要る |
@@ -216,7 +220,7 @@ decision番号は既存D001〜D035。新規はD036以降。
 | H4 | privacy policy / 利用規約の最終承認 | 法的文書の最終判断 | 未実施 |
 | H5 | `main`へのrelease PR merge判断 | 公開範囲の変更 | 未実施 |
 | H6 | **公開用Supabaseプロジェクトの決定**（stagingを流用するか、productionを新規に作るか） | Supabaseアカウントの操作。Freeプランの範囲なら課金は発生しない | 未実施 |
-| H7 | **GitHub Actions variables へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` を設定** | どちらもブラウザへ出る値なのでsecretではなくvariableでよい。**チャットへ貼らない** | 未実施 |
+| H7 | **GitHub Actions **secrets** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` を設定** | どちらもブラウザへ出る値だが、**貼り間違いの封じ込めのためsecretへ置く**（D054。`vars.*` はログでマスクされない）。**チャットへ貼らない**。貼り間違えたら**先にSupabaseで失効**させる | 未実施 |
 | H8 | **公開ドメインを Supabase Auth の Site URL / Redirect URLs へ追加** | Dashboardの操作 | 未実施 |
 | H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | Supabaseアクセストークンが必要（`docs/runbook_supabase_hosted.md` §6.1） | 未実施 |
 | H10 | 本番Supabaseでの `auth.users` 削除挙動の確認 | Dashboardでの実操作が必要（`docs/operations.md` §9） | 未実施 |
@@ -276,7 +280,7 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 | B4 | **P2** | 運営操作は**SQL Editorから**行う（運営画面UIが無い） | 人間の操作ミスを機械的に防げない。`actor_label` の正しさは運用依存 | 手順を `docs/operations.md` に固定 |
 | B5 | **P2** | 対象人数の `0` と `1–4` を区別する（D036の残余リスク） | 小集団の在・不在が観測できる | 受容済み。preview条件数の上限と24時間固定で回数を制限 |
 | B6 | **—** | E2Eの失敗アーティファクトに入力値が残り得た | OTP・招待URLの露出 | `PLAYWRIGHT_NO_COPY_PROMPT` で停止（D051・PR #19でdevelopへmerge済み）。`test-results/` はgitignore、CIに `upload-artifact` は無い。**`toMatchAriaSnapshot` の失敗は環境変数で止まらない**ため、OTP・招待URLが出ている画面では使わない |
-| B7 | **P1** | **Auth の Attack Protection（CAPTCHA・レート制限）が既定のまま**。D030は緩和策をTask 011へ委ねたが、011のscopeに入っておらず未実施 | publishable keyは公開バンドルに必ず入るため、公開後は誰でもAuth APIを直接呼べる。任意アドレスへOTPを送らせられ、(a) 新歓期間中に実在の新入生がログインできない (b) 送信元Gmailが停止する（E6と複合） | **公開前にDashboardで設定する（H11）**。設定するまで公開しない |
+| B7 | **P1** | **Auth の CAPTCHA が無効**で、Supabase既定のメール送信レート制限だけが防壁。D030は緩和策をTask 011へ委ねたが、011のscopeに入っておらず未実施 | publishable keyは公開バンドルに必ず入るため、公開後は誰でもAuth APIを直接呼べる。任意アドレスへOTPを送らせられ、(a) 新歓期間中に実在の新入生がログインできない (b) 送信元Gmailが停止する（E6と複合） | **公開前にDashboardで設定する（H11）**。設定するまで公開しない |
 
 ### C. アクセシビリティ・UX
 
@@ -304,7 +308,7 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 |---|---|---|---|---|
 | E1 | **P2** | **Freeプロジェクトは約1週間の非アクティブでpauseされ得る** | 突然ログインできなくなる | 定期的に稼働を確認する |
 | E2 | **P2** | **Authログの保持期間が短い** | 認証障害の事後調査ができない | 発生当日中に調査する |
-| E3 | **P2** | 実メール送信がhosted未検証 | 本番で届かない可能性 | H9 で確認する |
+| E3 | **P1** | 実メール送信がhosted未検証。**送信ワーカー（Edge Function）が未デプロイ**（H9） | デプロイしないとメール通知が**1通も飛ばない**。release notesは通知を機能として挙げている | **H9を公開ゲートに含める**（§7）。hosted stagingで実配信を確認してから公開する |
 | E4 | **P2** | 外部の監視サービスを使っていない | 障害に気づくのが遅れる | `platform_health()` を毎日見る運用（`docs/runbook_operations.md` §8）。**有料サービスは承認なしに追加しない** |
 | E5 | **—** | ~~`email_outbox` の古い行を消す経路が無い~~ **対応済み（Task 019）** | — | `private.prune_email_outbox(retain_days)`（既定90日）を追加。**pending・sending は消さない**。定期作業へ登録した（`docs/runbook_operations.md` §8） |
 | E6 | **P1** | **staging のSMTPは個人のGmail（1日500宛先）** | 本番の規模で頭打ちになる。送信元ドメインも借り物 | 本番は独自ドメイン＋専用プロバイダが必要（`docs/runbook_supabase_hosted.md` §7）。**H6と同時に判断する** |
@@ -348,9 +352,11 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
   検証の穴（retain_daysが未検査・並行テストの同期が空振りしうる・
   search_pathの固定が無い）を塞いだ（`05e2701`） |
 
-| 2026-08-27 | Task 018（release準備）。`deploy-pages.yml` へ接続設定の受け渡しと
+| 2026-08-27 | Task 018（release準備・PR #22）。`deploy-pages.yml` へ接続設定の受け渡しと
   検証ステップを追加。release notes・公開後smoke test・READMEの公開手順を用意。
-  **release PRはdraftのまま**（H6〜H8が未了） |
+  独立レビュー・security-reviewer 各2周でBlocker 9件を検出し修正（うち
+  **貼り間違えたsecret keyが公開Actionsログへ平文で出る**経路をD054で塞いだ）。
+  **`develop → main` の release PR は未作成**（H6〜H8・H11 が未了） |
 
 ## 9. 次回再開時の開始点
 
@@ -361,7 +367,7 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 | 番号 | 内容 | これが無いと |
 |---|---|---|
 | **H6** | 公開用Supabaseプロジェクトの作成（または staging を昇格する判断） | 接続先が決まらない |
-| **H7** | GitHub Actions **variables** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` | 公開ビルドが接続設定を持てない（deployが検証ステップで止まる） |
+| **H7** | GitHub Actions **secrets** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`（D054） | 公開ビルドが接続設定を持てない（deployが検証ステップで止まる） |
 | **H8** | Supabase Auth の Site URL / Redirect URL を公開URLへ | OTPのリンク先が壊れる |
 | H1 | hosted staging への migration 適用 | §6 の「migration・rollback確認済み」が埋まらない |
 | H2 | 大学メールでのOTP実機確認 | ログインの生存確認ができない |
@@ -369,16 +375,22 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 | **H11** | **Auth の Attack Protection 設定** | 公開後にOTP送信を濫用されうる（§7.1 B7・**P1**） |
 | H10 | 退会後の `auth.users` 削除の挙動確認 | 退会したのに大学メールが残る |
 
-H6〜H8 が揃うまで **`main` へmergeしない**。**H11 は公開前に必ず設定する**（§7.1 B7）。
+H6〜H8 が揃うまで **`main` へmergeしない**。**H9（送信ワーカーのデプロイ）と H11（Attack Protection）は公開前に必ず済ませる**（§7.1 E3・B7）。
 
 ### 揃ったあとの手順
 
-0. **`main` へmergeする前に、deployを1回空撃ちする。**
-   `deploy-pages.yml` の検証ステップは `push: main` と `workflow_dispatch` でしか
-   走らないため、**PRのCIでは一度も実行されない**。初回実行が本番deployになるのを
-   避ける。Actionsタブ → 「Deploy to GitHub Pages」→ Run workflow（`main`を選ぶ）で、
-   H7設定後の値が検証を通ることを先に確かめる
-   （この時点の `main` はPhase 1のままなので、成功しても公開内容は変わらない）
+0. **`main` へmergeする前に、deployを1回空撃ちする（`dry_run`）。**
+   検証ステップは `push: main` と `workflow_dispatch` でしか走らないため、
+   **PRのCIでは一度も実行されない**。初回実行が本番deployになるのを避ける。
+
+   Actionsタブ → 「Deploy to GitHub Pages」→ Run workflow で、
+   **この定義を持つブランチ**（`develop` など）を選び、`dry_run` を有効にする。
+   build と検証だけが走り、deployはskipされる。
+
+   **`main` を選んではいけない。** `workflow_dispatch` は選んだrefの
+   ワークフロー定義を実行するため、まだこの定義を持たない `main` を選ぶと
+   検証ステップの無い旧定義が走り、**「通った」という誤った確信だけが残る**
+   （独立レビューで実証された）
 1. `develop → main` の release PR を**新規に作る**
    （`feat/018-release-v1` は base=`develop` の通常タスクPRで、release PRではない）
 2. 独立レビュー + security-reviewer → CI green を確認して `main` へmerge

@@ -49,7 +49,7 @@
 ## 既知の制限
 
 **公開前に必ず `docs/launch_plan.md` §7.1 の既知リスク一覧（28件）を読んでください。**
-**P0は0件、P1は6件**で、P1は公開判断で明示的に受容が要ります。
+**P0は0件、P1は7件**で、P1は公開判断で明示的に受容が要ります。
 特に重要なもの:
 
 - **利用規約とプライバシーポリシーはドラフト**。法令適合は未確認で、
@@ -62,8 +62,11 @@
 - 緊急停止は配信済みの案内を止めない（個別停止を使う）
 - 外部の監視サービスを使っていない。運営が毎日 `platform_health()` を見る運用
 - 監査ログ・preview・送信し終えたメール行の剪定は**手作業**（自動実行しない）
-- **Auth の Attack Protection（CAPTCHA・レート制限）が未設定**（§7.1 B7・P1）。
-  公開前にDashboardで設定してください
+- **Auth の CAPTCHA が無効**で、Supabase既定のレート制限だけが防壁です（§7.1 B7・P1）。
+  publishable key は公開バンドルに必ず入るため、公開後は誰でもAuth APIを呼べます。
+  **公開前にDashboardでAttack Protectionを設定してください**（H11）
+- **送信ワーカー（Edge Function）が未デプロイ**（§7.1 E3・P1・H9）。
+  デプロイするまでメール通知は**1通も飛びません**
 - **hosted staging での通し確認が未実施**（`docs/launch_plan.md` §7 H1・H9）。
   migration適用・backup・restore・secret rotation・公開停止の各手順は
   文書としては用意しているが、実行しての確認はできていない
@@ -79,7 +82,11 @@
 
 ## 公開後のsmoke test
 
-`tasks/018-release-v1.md` §公開後smoke test の手順で確認する。所要 20〜30分。
+`tasks/018-release-v1.md` §公開後smoke test の手順で確認する。**2つに分かれている。**
+
+- **A（production・所要15〜20分）**: 運営者1人・大学メール1つで完結する
+- **B（staging）**: 配信・受信箱・ファネル・メール通知。合成アカウントが**10人以上**要る。
+  **productionでは行わない**（実在の新入生を巻き込まないため）
 
 ## rollback
 

@@ -158,23 +158,31 @@ npm run dev             # http://localhost:5173/cue-shinkan-demo/
 - 公開元はGitHub Actions（Settings → Pages → Build and deployment → Source: GitHub Actions）
 - `main`へのpushで自動公開。Actionsタブの「Deploy to GitHub Pages」からworkflow_dispatchで手動再公開できる
 
-### 公開に必要なActions variables
+### 公開に必要なActions secrets
 
-Phase 2のアプリは、ビルド時に接続先が埋め込まれていないと「接続設定が必要です」の案内画面になります。**Settings → Secrets and variables → Actions → Variables** に次の2つを設定してください（`docs/launch_plan.md` §7 H7）。
+Phase 2のアプリは、ビルド時に接続先が埋め込まれていないと「接続設定が必要です」の案内画面になります。**Settings → Secrets and variables → Actions → Secrets**（**Variables ではありません**）に次の2つを設定してください（`docs/launch_plan.md` §7 H7）。
 
-| 変数 | 中身 |
+| secret | 中身 |
 |---|---|
-| `VITE_SUPABASE_URL` | 公開用SupabaseプロジェクトのProject URL |
-| `VITE_SUPABASE_PUBLISHABLE_KEY` | 同プロジェクトのpublishable key（`sb_publishable_...`） |
+| `VITE_SUPABASE_URL` | 公開用SupabaseプロジェクトのProject URL（`https://<project ref>.supabase.co`） |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | 同プロジェクトの publishable key（`sb_publishable_...`） |
 
-**どちらもブラウザへ出る値**なのでsecretではなくvariableで構いません。secret key・service-role key・DBパスワード・アクセストークンは**絶対に置かないでください**（D027）。
+**どちらもブラウザへ出る値です。** それでもsecretへ置くのは、値を隠すためではなく**貼り間違いを封じ込めるため**です（D054）。
+
+> runnerは各stepの冒頭に `env:` マップを**値ごと**出力します。`secrets.*` はマスクされますが **`vars.*` はマスクされません**。このリポジトリは公開なのでActionsログは誰でも読めます。SupabaseのAPI keys画面は `sb_publishable_...` と `sb_secret_...` を並べて表示するため、貼り間違えると **secret key が世界へ出ます**。secret key はRLSを迂回するので、出た時点で全学生のデータが誰からでも読み書きできます。
+
+**secret key・service-role key・DBパスワード・アクセストークンは絶対に置かないでください**（D027）。
 
 未設定のままmergeした場合、build後の「Verify build has Supabase config」がdeployを止めます。**すでに公開されているページはそのまま残ります**（壊れたものが公開されるより、古いものが残るほうがよいという判断です）。
+
+**この検証が落ちたときは、貼った鍵がすでにログへ出ている可能性があります。** 設定し直す前に、Supabase Dashboard でその鍵を失効（rotate）してください。
+
+公開前に一度、公開せずに確認できます。Actionsタブ → 「Deploy to GitHub Pages」→ Run workflow で、**この定義を持つブランチ**（`develop` など）を選び `dry_run` を有効にすると、build と検証だけが走り deploy はskipされます。
 
 ### 公開URLで問題がある場合
 
 1. Actionsタブで「Deploy to GitHub Pages」の最新runが成功しているか確認する
-2. 「Verify build has Supabase config」で落ちている場合は、上記のvariablesを設定する
+2. 「Verify build has Supabase config」で落ちている場合は、上記のsecretsを設定する（**鍵を貼り間違えていたら先に失効させる**）
 3. Settings → Pages のSourceが「GitHub Actions」になっているか確認する
 4. ブラウザを再読み込みする（必要ならキャッシュを削除する）
 5. 公開そのものを止めるときは `docs/runbook_operations.md` §7（公開停止の5段階）

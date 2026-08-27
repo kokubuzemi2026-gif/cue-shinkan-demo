@@ -4,6 +4,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'build と接続設定の検証だけ行い、公開しない（H7設定後の空撃ち用）'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -16,8 +21,12 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    # pushはmain限定だが、workflow_dispatchがmain以外から実行された場合も配信しない
-    if: github.ref == 'refs/heads/main'
+    # pushはmain限定。ただし dry_run のときは**どのrefからでも**走らせる。
+    # `workflow_dispatch` は選んだrefのワークフロー定義を実行するため、
+    # `main` を選ぶと検証ステップを持たない旧定義が走ってしまい、
+    # 「通った」という誤った確信だけが残る（独立レビューN3で実証された）。
+    # 公開前の空撃ちは、この定義を持つrefを選んで dry_run で行う
+    if: github.ref == 'refs/heads/main' || inputs.dry_run
     defaults:
       run:
         working-directory: app
@@ -38,13 +47,17 @@ jobs:
         run: npm run test -- --run
       - name: Build
         # 公開ビルドにはSupabaseのproject URLとpublishable keyが要る。
-        # どちらも**ブラウザへ出る値**なのでsecretではなくActions variableへ置く
-        # （secret key・service-role key・DBパスワードは絶対に置かない・D027）。
+        # どちらもブラウザへ出る値だが、**Actions variableではなくsecretへ置く**（D054）。
+        # 理由は値の秘匿ではなく**貼り間違いの封じ込め**:
+        # runnerは各stepの冒頭に `env:` マップを値ごと出力し、`vars.*` はマスクされない。
+        # このリポジトリは公開なのでActionsログは誰でも読める。
+        # `sb_secret_*` を貼ってしまうと、下の検証ステップがdeployを止める**前に**
+        # 平文で世界へ出る。secretならマスクされ、貼り間違いが致命傷にならない。
         # 未設定のままだと src/lib/supabaseClient.ts が null を返し、
         # 公開URLは「接続設定が必要です」の案内画面になる
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: npm run build
       - name: Verify build has Supabase config
         # **値そのものは出さない。** 埋まっているかどうかだけを見る。
@@ -55,8 +68,7 @@ jobs:
         # `set -x` を使わないこと（展開後の値がログへ出る）。
         # なお **runnerは各stepの冒頭に `env:` マップを値ごと出力する**。
         # `secrets.*` はマスクされるが `vars.*` はマスクされない。
-        # ここの2値は公開前提（バンドルへ入る値そのもの）なので出てよい。
-        # **このstepへ本物のsecretを足さないこと。**
+        # だからこの2値は secret へ置いている（D054）。**variableへ戻さないこと。**
         #
         # **URLとkeyの両方を照合する。** URLだけを見ていると、keyが空白のみ・
         # 誤った値のときにこのステップが通ってしまい、deployされた公開URLが
@@ -64,8 +76,8 @@ jobs:
         # `-e` はvariableが `-` で始まるときに値がオプション扱いされるのを防ぐ。
         # keyは公開値（バンドルへ入る値そのもの）なので、照合しても新たな露出は無い
         env:
-          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
         run: |
           set -euo pipefail
           if [ -z "${VITE_SUPABASE_URL:-}" ] || [ -z "${VITE_SUPABASE_PUBLISHABLE_KEY:-}" ]; then
@@ -89,12 +101,16 @@ jobs:
             echo "variableに空白が混ざっています。貼り付け時の前後の空白を消してください。" >&2
             exit 1
           fi
-          case "$VITE_SUPABASE_URL" in
-            https://*.supabase.co|https://*.supabase.co/) ;;
-            *) echo "VITE_SUPABASE_URL が Project URL の形式ではありません" >&2
-               echo "（https://<project ref>.supabase.co。project refだけを貼っていませんか）。" >&2
-               exit 1 ;;
-          esac
+          # **globではなく正規表現で見る。** `case` の `*` は `/` `?` `#` を跨ぐため、
+          # `https://evil.example.com/.supabase.co` のような値が通ってしまう
+          # （実際に通ることをレビューで実証された）。
+          # supabaseClient.ts はURLを検証せずそのまま createClient へ渡すので、
+          # ここを抜けると全通信の宛先が差し替わる
+          if ! printf '%s' "$VITE_SUPABASE_URL" | grep -qE '^https://[a-z0-9-]+\.supabase\.co/?$'; then
+            echo "VITE_SUPABASE_URL が Project URL の形式ではありません" >&2
+            echo "（https://<project ref>.supabase.co。project refだけを貼っていませんか）。" >&2
+            exit 1
+          fi
           # **鍵の種類を検査する。** ここが最後の関門で、この先はdeployして世界公開になる。
           # SupabaseのAPI keys画面は `sb_publishable_...` と `sb_secret_...` を並べて出し、
           # どちらも `sb_` で始まる。secret keyはRLSを迂回するため、貼り間違えたまま
@@ -103,11 +119,18 @@ jobs:
           # 許可リスト方式にして、想定外の値はすべて落とす。
           # 旧形式のJWT鍵（`eyJ...`）を許さないのは、anon と service_role が
           # **どちらも `eyJ` で始まり、prefixでは区別できない**ため
+          # （stagingでは2026-08-24にlegacyキーを無効化済み）。
+          # **これは貼り間違い対策であって、悪意ある値の検査ではない。**
+          # `sb_publishable_` を前置しただけの文字列は通る
           case "$VITE_SUPABASE_PUBLISHABLE_KEY" in
             sb_publishable_*) ;;
             *) echo "VITE_SUPABASE_PUBLISHABLE_KEY が publishable key の形式ではありません。" >&2
                echo "**sb_secret_... を貼っていませんか。** secret keyは公開ビルドへ入れてはいけません" >&2
                echo "（旧形式のJWT鍵 eyJ... も、anonとservice_roleを区別できないため受け付けません）。" >&2
+               echo "" >&2
+               echo "**貼った鍵が secret key だった場合は、設定し直す前に" >&2
+               echo "Supabase Dashboard でその鍵を失効（rotate）してください。**" >&2
+               echo "このステップはdeployを止めますが、buildは既に同じ値を受け取っています。" >&2
                exit 1 ;;
           esac
           # 途中で切れた貼り付けを弾く。publishable keyは実際にはこれよりずっと長い
@@ -125,7 +148,7 @@ jobs:
           fi
           if ! grep -rqF -e "$VITE_SUPABASE_PUBLISHABLE_KEY" dist/assets; then
             echo "ビルド成果物へ VITE_SUPABASE_PUBLISHABLE_KEY が入っていません。" >&2
-            echo "（別プロジェクトの値を渡していませんか）" >&2
+            echo "（build step へ env: が渡っていないか、古い dist が残っていませんか）" >&2
             exit 1
           fi
           echo "接続設定はビルド成果物へ入っています（値は出力しません）"
@@ -140,6 +163,8 @@ jobs:
   deploy:
     needs: build
     runs-on: ubuntu-latest
+    # dry_run では公開しない（buildと検証だけ行う）
+    if: ${{ !inputs.dry_run }}
     # デプロイに必要な昇格権限はこのjobにだけ与える
     permissions:
       pages: write
