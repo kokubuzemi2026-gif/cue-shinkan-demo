@@ -82,6 +82,10 @@ select public.admin_set_offer_stopped('<delivery id>'::uuid, false, 'ops-1', '�
 返さなくなります。団体側の一覧にも「停止中」と表示されます（停止理由の本文は
 団体へ渡しません）。
 
+**団体が`verified`でないと、個別の案内を戻すことはできません**（`org_not_verified`）。
+団体そのものに問題があって止めた場合、個別に戻すと公式窓口と返答導線が再び開いて
+しまうためです。戻す順序は必ず「§3で団体を`verified`へ戻す → §4で必要な案内だけ戻す」です。
+
 対象の`delivery id`は、団体名やイベント名から探せます。
 
 ```sql
@@ -134,6 +138,22 @@ select * from public.admin_list_audit(100);
 書かないでください（案件番号など、運営内で追える識別子を使います）。
 
 `max_rows`は1〜1000の範囲外だと`invalid_admin_action`になります。
+`actor_label`が60文字超、`reason`が200文字超のときも`invalid_admin_action`になります
+（生の制約違反にすると、エラーのDETAILへ対象行の全列が展開されてログに残るため）。
+
+### 監査として何がどこに残るか
+
+`admin_audit_log`は**運営操作だけ**の記録です。他の3種類は既存の構造が担っています。
+
+| 対象 | どこに残るか |
+|---|---|
+| 認証 | Supabase Authのログ（保持期間は短い。§7の注意を参照） |
+| 配信 | `private.offer_deliveries` の `delivered_at` と `created_by_membership_id`（誰の団体の誰が作ったか）、`stopped_at` / `stopped_reason` |
+| 通知 | `private.email_outbox` の `status` / `attempts` / `sent_at` / `last_error_code`（本文・宛先は保存しない・D041） |
+| 権限変更 | `private.organization_invitations` の `created_by_membership_id` / `used_by_membership_id` / `invited_role` と `public.organization_memberships` の `joined_at` |
+| 運営操作 | `private.admin_audit_log`（この文書の対象） |
+
+いずれも**学生の希望条件・氏名・メールを含みません**（D029）。
 
 ## 7. 事故対応の手順（想定）
 

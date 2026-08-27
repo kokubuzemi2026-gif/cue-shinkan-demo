@@ -141,4 +141,11 @@ PR・チャットへ置かない。**
   `private.assert_delivery_allowed()`とトリガ・2テーブル（`platform_controls` / `admin_audit_log`）・
   `offer_deliveries`の2列をdropする。**停止済みのオファーは`stopped_at`列とともに消えるため、
   切り戻し前に停止対象を控えておく**（正本の配信・受信者・既読・返答は失われない）。
+- **data-only restore（`pg_restore --data-only --disable-triggers`・論理レプリケーションのapply）を
+  行うときは注意する**: Task 013の2つのトリガは`ENABLE ALWAYS`のため、
+  `session_replication_role='replica'`でも発火する。復元前に
+  ①`private.platform_controls`の`delivery_paused`を`false`に戻す
+  ②`public.organizations`を先に復元する（未確認のまま配信行を入れると`org_not_verified`で失敗する）
+  のいずれかを行うか、`alter table ... disable trigger`で一時的に外して復元後に戻す。
+  `ENABLE ALWAYS`にしているのは、将来のレプリカ経路で安全装置が黙って外れないようにするため。
 - Auth設定: テンプレート・OTP設定を既定へ戻し、テストで作成したauthユーザーを削除する。

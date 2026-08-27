@@ -42,7 +42,9 @@ as $$
 declare
   v_previous public.org_status;
 begin
-  if new_status is null or actor_label is null or char_length(btrim(actor_label)) = 0 then
+  if new_status is null or actor_label is null or char_length(btrim(actor_label)) = 0
+     or char_length(btrim(actor_label)) > 60
+     or (reason is not null and char_length(reason) > 200) then
     raise exception 'invalid_admin_action';
   end if;
 
@@ -110,7 +112,9 @@ as $$
 declare
   v_org uuid;
 begin
-  if stopped is null or actor_label is null or char_length(btrim(actor_label)) = 0 then
+  if stopped is null or actor_label is null or char_length(btrim(actor_label)) = 0
+     or char_length(btrim(actor_label)) > 60
+     or (reason is not null and char_length(reason) > 200) then
     raise exception 'invalid_admin_action';
   end if;
 
@@ -120,6 +124,16 @@ begin
      for update;
   if v_org is null then
     raise exception 'delivery_not_found';
+  end if;
+
+  -- 確認済みでない団体の案内は戻せない（独立レビューB1）。
+  -- 停止の理由が団体そのものであるとき（偽団体・危険な勧誘）、個別に戻すと
+  -- 公式窓口と返答導線が静かに再び開く。団体を verified へ戻すのが先。
+  -- admin_set_organization_status 側と同じ不変条件を、こちらでも構造で守る
+  if not admin_set_offer_stopped.stopped
+     and (select o.status from public.organizations o where o.id = v_org)
+         is distinct from 'verified' then
+    raise exception 'org_not_verified';
   end if;
 
   update private.offer_deliveries d
@@ -160,7 +174,9 @@ security definer
 set search_path = ''
 as $$
 begin
-  if paused is null or actor_label is null or char_length(btrim(actor_label)) = 0 then
+  if paused is null or actor_label is null or char_length(btrim(actor_label)) = 0
+     or char_length(btrim(actor_label)) > 60
+     or (reason is not null and char_length(reason) > 200) then
     raise exception 'invalid_admin_action';
   end if;
 
@@ -170,6 +186,11 @@ begin
                               then admin_set_delivery_paused.reason else null end,
          updated_at = now()
    where c.id;
+  -- 単一行が失われていると0行更新で「成功」し、監査記録だけが
+  -- 「止めた」と残る（独立レビューN2）。事実と食い違う記録を残さない
+  if not found then
+    raise exception 'platform_controls_missing';
+  end if;
 
   insert into private.admin_audit_log (action, actor_label, reason, new_value)
   values (
@@ -448,3 +469,141 @@ comment on function public.list_org_campaigns(uuid) is
 revoke execute on function public.list_org_campaigns(uuid) from public;
 revoke execute on function public.list_org_campaigns(uuid) from anon;
 grant execute on function public.list_org_campaigns(uuid) to authenticated;
+
+-- ---- 停止した案内は「送信時」にも止める（独立レビューN3） ----
+-- 通知設定と同じく **送信時が権威ある関門** にする。
+-- 定義は 20260827080002_0010_notification_rpcs.sql の claim_email_batch と同一で、
+-- 手順1bだけを追加している
+create or replace function public.claim_email_batch(batch_size integer)
+returns table (
+  outbox_id uuid,
+  kind public.email_kind,
+  recipient_email text,
+  offer_count integer,
+  attempt integer
+)
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_now timestamptz := now();
+  -- ワーカーが落ちたまま放置された行を回収するまでの猶予
+  v_lease interval := interval '15 minutes';
+begin
+  if batch_size is null or batch_size not between 1 and 200 then
+    raise exception 'invalid_batch_size';
+  end if;
+
+  -- 1. 現在の設定に合わない未送信分を取り消す。
+  --    設定はenqueue時に一度読むだけでは足りない（積まれてから送信までに
+  --    最大で約18時間あり、その間に本人が停止しても送られてしまう）。
+  --    **送信時が権威ある関門**で、enqueue時の判定は先出しの最適化にすぎない
+  update private.email_outbox o
+     set status = 'cancelled', updated_at = v_now
+    from public.student_accounts sa
+    left join public.student_notification_settings s on s.user_id = sa.user_id
+   where o.user_id = sa.user_id
+     and o.status in ('pending', 'sending')
+     and (
+       coalesce(s.mode, 'each'::public.notification_mode) = 'off'
+       or (coalesce(s.mode, 'each'::public.notification_mode) = 'each'
+           and o.kind = 'daily_digest')
+       or (coalesce(s.mode, 'each'::public.notification_mode) = 'daily'
+           and o.kind = 'offer_arrival')
+     );
+
+  -- 1b. 停止された案内の通知は送らない（D044・独立レビューN3）。
+  --     `private.cancel_offer_mail` は停止時点の pending だけを取り消すため、
+  --     ちょうどワーカーが掴んでいた行（sending）や、一時失敗で pending へ戻った行が
+  --     停止済みの案内のまま送られてしまう。ここでも止めて二段構えにする。
+  --     突き合わせは offer_arrival の dedupe_key が配信IDであることを使う。
+  --     まとめ（daily_digest）は複数の案内をまとめた1行で、どの案内を含むかを
+  --     保持しない設計のため対象外（本文に団体名・イベント名を含まず、
+  --     受信箱では停止済みの案内が「募集終了」と表示されるため誤解を生まない）
+  update private.email_outbox o
+     set status = 'cancelled', updated_at = v_now
+   where o.kind = 'offer_arrival'
+     and o.status in ('pending', 'sending')
+     and exists (
+       select 1
+       from private.offer_deliveries d
+       where d.id::text = o.dedupe_key
+         and d.stopped_at is not null
+     );
+
+  -- 2. 宛先が取れない行は送りようが無いので止める。
+  --    除外するだけだと永久にpendingで残り、運用が気づけない
+  update private.email_outbox o
+     set status = 'failed',
+         last_error_code = 'no_recipient_address',
+         updated_at = v_now
+   where o.status = 'pending'
+     and not exists (
+       select 1 from auth.users u where u.id = o.user_id and u.email is not null
+     );
+
+  -- 3. ワーカーが落ちたまま試行上限を使い切った行を止める（無限に滞留させない）
+  update private.email_outbox o
+     set status = 'failed',
+         last_error_code = coalesce(o.last_error_code, 'worker_lost'),
+         updated_at = v_now
+   where o.status = 'sending'
+     and o.updated_at < v_now - v_lease
+     and o.attempts >= private.email_max_attempts();
+
+  return query
+  with claimed as (
+    update private.email_outbox o
+       set status = 'sending',
+           attempts = o.attempts + 1,
+           updated_at = v_now
+     where o.id in (
+       select c.id
+       from private.email_outbox c
+       join auth.users u on u.id = c.user_id
+       where (
+               (c.status = 'pending' and c.next_attempt_at <= v_now)
+               -- 4. ワーカーが落ちて sending のまま残った行を拾い直す。
+               --    これが無いと、その学生には二度と通知が届かない
+               or (c.status = 'sending'
+                   and c.updated_at < v_now - v_lease
+                   and c.attempts < private.email_max_attempts())
+             )
+         -- 宛先が無い行をここで除く。外側で除くと、掴んだのに返らず永久に滞留する
+         and u.email is not null
+       order by c.next_attempt_at
+       for update skip locked
+       limit batch_size
+     )
+    returning o.id, o.kind, o.user_id, o.dedupe_key, o.attempts
+  )
+  select cl.id,
+         cl.kind,
+         -- auth.users.email は Supabase では varchar(255)。戻り値の型（text）へ明示castする
+         -- （castが無いと "structure of query does not match function result type" になる）
+         u.email::text,
+         case
+           when cl.kind = 'daily_digest' then (
+             -- まとめ: その日に届いた件数だけを返す（どの団体かは返さない）。
+             -- 窓はdedupe_key（まとめの送信日）と同じ基準にそろえる
+             select count(*)::integer
+             from private.offer_recipients r
+             join private.offer_deliveries d on d.id = r.delivery_id
+             where r.user_id = cl.user_id
+               and private.digest_window(cl.dedupe_key::date) @> d.delivered_at
+           )
+           else 1
+         end,
+         cl.attempts::integer
+    from claimed cl
+    join auth.users u on u.id = cl.user_id;
+end;
+$$;
+comment on function public.claim_email_batch(integer) is
+  '送信ワーカーが送信待ちを取り出す。宛先メールを返す唯一の経路で、service_role専用（D042）';
+revoke execute on function public.claim_email_batch(integer) from public;
+revoke execute on function public.claim_email_batch(integer) from anon;
+revoke execute on function public.claim_email_batch(integer) from authenticated;
+grant execute on function public.claim_email_batch(integer) to service_role;

@@ -5,7 +5,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(20);
+select plan(24);
 
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000e2001', 'demo-ks-owner@stu.kobe-u.ac.jp', now(), now(), now());
@@ -97,7 +97,8 @@ select is(
   'T2: 停止理由が記録される'
 );
 select is(
-  (select a.new_value from private.admin_audit_log a where a.action = 'delivery_paused'),
+  (select a.new_value from private.admin_audit_log a where a.action = 'delivery_paused'
+    order by a.created_at desc, a.id desc limit 1),
   'true',
   'T2: 緊急停止の監査記録が残る'
 );
@@ -183,6 +184,62 @@ select is(
   'T2: 停止判定のトリガは ENABLE ALWAYS（session_replication_roleで不発にならない）'
 );
 
+-- ---- トリガの団体状態チェックを直接検査する（独立レビューN4） ----
+-- 既存の org_not_verified テストはすべて send_offer 経由で、
+-- send_offer 自身の判定に吸収される。D045が「構造で止める」と宣言している
+-- 以上、トリガ側の分岐そのものを検査する
+set local role service_role;
+select public.admin_set_delivery_paused(false, 'ops-1', null);
+select public.admin_set_organization_status((select id from korg), 'pending', 'ops-1', '審査中へ');
+reset role;
+select throws_ok(
+  $$insert into private.offer_deliveries (
+      organization_id, org_name, org_description, org_contact_label, org_contact_handle,
+      event_name, description, reason_note, date_text, place, event_days, frequency,
+      fee_per_event_yen, beginner_friendly, intensity, target_categories, target_purposes,
+      capacity, deadline, event_fingerprint)
+    values ((select id from korg), '緊急停止テスト団体', '', '', '',
+      '未確認団体の直接配信', '説明', '理由', '9月27日（土）', '音楽室',
+      array['weekend']::public.day_slot[], 'monthly_1_2', 1000, true, 'relaxed',
+      array['music']::public.interest_category[], array['creation']::public.purpose[],
+      10, '2026-09-25', 'bypass-fingerprint-unverified')$$,
+  'P0001', 'org_not_verified',
+  'T2: 未確認団体への直接insertはトリガが止める（RPCの判定に依存しない）'
+);
+set local role service_role;
+select public.admin_set_organization_status((select id from korg), 'verified', 'ops-1', '戻す');
+select public.admin_set_delivery_paused(true, 'ops-1', '検証を続ける');
+reset role;
+
+-- ---- 安全装置が読めないときは止める側へ倒す（独立レビューN2） ----
+select lives_ok(
+  $$delete from private.platform_controls$$,
+  'T2: 検証のため緊急停止の行を消す'
+);
+select throws_ok(
+  $$insert into private.offer_deliveries (
+      organization_id, org_name, org_description, org_contact_label, org_contact_handle,
+      event_name, description, reason_note, date_text, place, event_days, frequency,
+      fee_per_event_yen, beginner_friendly, intensity, target_categories, target_purposes,
+      capacity, deadline, event_fingerprint)
+    values ((select id from korg), '緊急停止テスト団体', '', '', '',
+      '安全装置消失時の配信', '説明', '理由', '9月27日（土）', '音楽室',
+      array['weekend']::public.day_slot[], 'monthly_1_2', 1000, true, 'relaxed',
+      array['music']::public.interest_category[], array['creation']::public.purpose[],
+      10, '2026-09-25', 'bypass-fingerprint-missing')$$,
+  'P0001', 'delivery_paused',
+  'T2: 緊急停止の状態が読めないときは配信を通さない（fail closed）'
+);
+set local role service_role;
+select throws_ok(
+  $$select public.admin_set_delivery_paused(false, 'ops-1', null)$$,
+  'P0001', 'platform_controls_missing',
+  'T2: 行が無いのに「止めた・戻した」と監査記録へ書かない'
+);
+reset role;
+insert into private.platform_controls (id, delivery_paused, paused_reason)
+values (true, true, '誤配信の調査中');
+
 -- ---- 解除 ----
 set local role service_role;
 select lives_ok(
@@ -196,7 +253,8 @@ select is(
   'T2: 解除で停止理由が消える'
 );
 select is(
-  (select a.new_value from private.admin_audit_log a where a.action = 'delivery_resumed'),
+  (select a.new_value from private.admin_audit_log a where a.action = 'delivery_resumed'
+    order by a.created_at desc, a.id desc limit 1),
   'false',
   'T2: 解除の監査記録が残る'
 );

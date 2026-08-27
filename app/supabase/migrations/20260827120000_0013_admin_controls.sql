@@ -74,8 +74,10 @@ declare
   v_status public.org_status;
   v_paused boolean;
 begin
+  -- 状態が読めない（単一行の消失）ときは止める側へ倒す。
+  -- 安全装置が読めないまま配信を通すほうが危険（独立レビューN2）
   select c.delivery_paused into v_paused from private.platform_controls c where c.id;
-  if coalesce(v_paused, false) then
+  if v_paused is null or v_paused then
     raise exception 'delivery_paused';
   end if;
 
@@ -119,7 +121,7 @@ declare
   v_paused boolean;
 begin
   select c.delivery_paused into v_paused from private.platform_controls c where c.id;
-  if coalesce(v_paused, false) then
+  if v_paused is null or v_paused then
     raise exception 'delivery_paused';
   end if;
   return new;

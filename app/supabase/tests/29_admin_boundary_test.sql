@@ -5,7 +5,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(26);
+select plan(28);
 
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('00000000-0000-0000-0000-0000000e4001', 'demo-ab-a@stu.kobe-u.ac.jp', now(), now(), now()),
@@ -238,12 +238,28 @@ select is(
   0,
   'T3: 監査記録の本文にメールアドレスらしき文字列が入らない'
 );
-select is(
-  (select count(*)::int from private.admin_audit_log a
-     join auth.users u on a.actor_label like '%' || u.email || '%'),
-  0,
-  'T3: 監査記録の操作者ラベルへ利用者のメールが入っていない'
+-- 操作者ラベルは「氏名・メールを入れない運用」を、長さ上限と入口検査で支える。
+-- 60文字超・200文字超の理由は生の制約違反ではなく invalid_admin_action にする
+-- （制約違反のDETAILには対象行の全列が出て、SQL Editorのログへ展開される）
+set local role service_role;
+select throws_ok(
+  $$select public.admin_set_organization_status(
+      (select id from aorg), 'verified', repeat('x', 61), null)$$,
+  'P0001', 'invalid_admin_action',
+  'T3: 60文字を超える操作者ラベルは入口で拒否される'
 );
+select throws_ok(
+  $$select public.admin_set_offer_stopped(
+      (select id from bdelivery), true, 'ops', repeat('あ', 201))$$,
+  'P0001', 'invalid_admin_action',
+  'T3: 200文字を超える理由は入口で拒否される（生の制約違反にしない）'
+);
+select throws_ok(
+  $$select public.admin_set_delivery_paused(true, 'ops', repeat('あ', 201))$$,
+  'P0001', 'invalid_admin_action',
+  'T3: 緊急停止の理由も同じ基準で拒否される'
+);
+reset role;
 select is(
   (select count(*)::int from private.admin_audit_log),
   4,

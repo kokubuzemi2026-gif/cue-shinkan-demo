@@ -4,7 +4,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(32);
+select plan(39);
 
 -- ---- 種（団体オーナー1人 + 受信学生6人） ----
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
@@ -243,13 +243,25 @@ select throws_ok(
   'T1: suspended の団体は配信できない'
 );
 
--- 送信済みのメールは取り消さない（既に届いたものを無かったことにはできない）
+-- N3: ワーカーが掴んだ直後（sending）の行も、送信時の関門で止まる。
+-- 停止時点のcancel_offer_mailはpendingしか取り消さないため、ここが二段目
+update private.email_outbox set status = 'sending', attempts = 1
+ where kind = 'offer_arrival' and dedupe_key = (select id from d1)::text
+   and user_id = '00000000-0000-0000-0000-0000000e1003';
+set local role service_role;
 select is(
-  (select count(*)::int from private.email_outbox o
-     where o.kind = 'offer_arrival' and o.dedupe_key = (select id from d1)::text
-       and o.status = 'sent'),
+  (select count(*)::int from public.claim_email_batch(50) b
+     where b.kind = 'offer_arrival'),
   0,
-  'T1: この検証では送信済みメールは無い（取り消し対象は送信待ちだけ）'
+  'T1: 停止済みの案内は送信ワーカーへ渡らない（sendingで滞留していた行も含む）'
+);
+reset role;
+select is(
+  (select o.status::text from private.email_outbox o
+     where o.kind = 'offer_arrival' and o.dedupe_key = (select id from d1)::text
+       and o.user_id = '00000000-0000-0000-0000-0000000e1003'),
+  'cancelled',
+  'T1: 掴まれていた行も取り消される（一時失敗でpendingへ戻って再送されない）'
 );
 
 -- ---- verified から外す操作は pending でも配信中オファーを止める ----
@@ -276,6 +288,60 @@ select throws_ok(
   $$select public.respond_to_offer((select id from d2), 'interested')$$,
   'P0001', 'offer_stopped',
   'T1: pending へ戻したあとは学生も返答できない'
+);
+reset role;
+
+-- ---- 確認済みでない団体の案内は「戻せない」（独立レビューB1） ----
+-- 停止の理由が団体そのものであるとき、個別に戻すと公式窓口と返答導線が
+-- 静かに再び開く。admin_set_organization_status と同じ不変条件を守る
+select is(
+  (select status::text from public.organizations where id = (select id from sorg)),
+  'pending',
+  'T1: 団体は確認済みでない状態にある'
+);
+set local role service_role;
+select throws_ok(
+  $$select public.admin_set_offer_stopped((select id from d2), false, 'ops-4', '個別に戻す')$$,
+  'P0001', 'org_not_verified',
+  'T1: 確認済みでない団体の案内は個別に戻せない'
+);
+reset role;
+select isnt(
+  (select stopped_at from private.offer_deliveries where id = (select id from d2)),
+  null,
+  'T1: 拒否されたので案内は止まったまま'
+);
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000e1002","role":"authenticated"}', true);
+set local role authenticated;
+select is(
+  (select i.org_contact_handle from public.list_my_inbox() i where i.delivery_id = (select id from d2)),
+  '',
+  'T1: 公式窓口も閉じたまま'
+);
+reset role;
+
+-- ---- 団体側の一覧にも停止が出る（D044。SQLの値そのものを検査する） ----
+set local role service_role;
+select public.admin_set_organization_status((select id from sorg), 'verified', 'ops-5', '確認完了');
+reset role;
+select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-0000000e0001","role":"authenticated"}', true);
+set local role authenticated;
+select is(
+  (select c.stopped from public.list_org_campaigns((select id from sorg)) c
+    where c.delivery_id = (select id from d2)),
+  true,
+  'T1: list_org_campaignsは停止中の案内をstopped=trueで返す'
+);
+reset role;
+set local role service_role;
+select public.admin_set_offer_stopped((select id from d2), false, 'ops-5', '確認完了');
+reset role;
+set local role authenticated;
+select is(
+  (select c.stopped from public.list_org_campaigns((select id from sorg)) c
+    where c.delivery_id = (select id from d2)),
+  false,
+  'T1: 戻した案内はstopped=falseで返る'
 );
 reset role;
 

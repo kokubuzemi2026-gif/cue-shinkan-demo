@@ -79,7 +79,7 @@
 
 | 検証 | 結果 |
 |---|---|
-| pgTAP（ローカルPostgres 16 + Supabase相当スキャフォールド） | 29ファイル **477テスト PASS**（Task 012時点の399から+78） |
+| pgTAP（ローカルPostgres 16 + Supabase相当スキャフォールド） | 29ファイル **490テスト PASS**（Task 012時点の399から+91） |
 | 並行配信テスト（`npm run db:test:concurrency`） | 8件 PASS（Task 013のトリガ追加後も不変） |
 | oxlint / tsc / vitest / vite build | すべてgreen（ユニット346テスト） |
 | E2E typecheck | green（実行はCIのローカルSupabaseスタック上） |
@@ -96,6 +96,12 @@
 | 緊急停止中のpreview拒否を削除（L1） | 28: 3件 |
 | `pending`でオファーを止めない（L2） | 27: 2件 |
 | トリガを`ENABLE ALWAYS`から戻す（L3） | 28: 1件 |
+| 未確認団体の案内を戻せるようにする（B1） | 27: 3件 |
+| `platform_controls_missing`を出さない（N2） | 28: 1件 |
+| トリガをfail openへ戻す（N2） | 28: 1件 |
+| 送信直前の取り消しを削除（N3） | 27: 1件 |
+| トリガの`org_not_verified`分岐を削除（N4） | 28: 1件 |
+| `list_org_campaigns.stopped`を常にfalse（N5） | 27: 1件 |
 | offer停止時のメール取り消しを削除 | 27: 2件 |
 | 団体停止時のメール取り消しを削除 | 27: 1件 |
 
@@ -113,7 +119,31 @@
     → `verified`以外へ変える操作すべてで配信中オファーを止める
   - L3: トリガが既定の`ENABLE`（`session_replication_role='replica'`で不発になり得る）
     → 両トリガを`ENABLE ALWAYS`にする
-- **reviewer**: （結果を追記する）
+- **reviewer**: Blocker 1件 / Non-blocker 9件。権限昇格・停止の実効性・原子性・
+  既存機能の破壊・PIIサーフェスは実ロールでの総当たりで問題なしと確認された。
+  **Blocker と実質的なNon-blockerはすべて自分で再現したうえで修正した**:
+  - **B1（Blocker）**: `admin_set_offer_stopped(..., false, ...)` に団体状態の確認が無く、
+    `suspended` のまま個別に戻すと公式窓口（`@b1`）と返答導線が再び開くことを再現。
+    L2で入れた不変条件の鏡像 → 兄弟RPCでも `org_not_verified` で守る
+  - N2: `platform_controls` の単一行が失われると kill switch が fail open になり、
+    監査記録だけが「止めた」と残る → トリガを fail closed にし、0行更新なら
+    `platform_controls_missing` を送出して事実と食い違う記録を残さない
+  - N3: 停止時に `sending` だったメールが取り消されず、一時失敗で `pending` へ戻ると
+    停止済み配信のまま再送される → `claim_email_batch` の送信直前でも取り消す
+    （通知設定と同じ「送信時が権威ある関門」パターン）
+  - N4: トリガの `org_not_verified` 分岐が pgTAP で無検査（削除しても477件PASS）
+    → 未確認団体への直接insertを検査するテストを追加
+  - N5: `list_org_campaigns.stopped` が pgTAP で無検査（常にfalseにしても477件PASS）
+    → SQLの値そのものを検査するテストを追加
+  - N6: `ENABLE ALWAYS` は data-only restore でも発火する
+    → `runbook_supabase_hosted.md` §8 へ手順を記載
+  - N7: 既定値のある引数の生成型が `?` になっていない → 4本を修正
+  - N8: 「認証・配信・通知・権限変更の監査」がどこで担保されるかが未記載
+    → `operations.md` §6 に対応表を追加
+  - N9: 実効性の無いアサーション2件 → 意味のある検査へ置換
+  - N10: `reason` 200文字超が生の制約違反になり、DETAILへ対象行の全列が展開される
+    → 入口で長さを検査して `invalid_admin_action` に統一
+  - 指摘のうちコード変更が不要と判断したものはありません
 
 ### CIで見つけて直したもの
 

@@ -215,7 +215,7 @@ export type Database = {
         }[]
       }
       admin_list_audit: {
-        Args: { max_rows: number }
+        Args: { max_rows?: number }
         Returns: {
           action: string
           actor_label: string
@@ -228,14 +228,14 @@ export type Database = {
         }[]
       }
       admin_set_delivery_paused: {
-        Args: { actor_label: string; paused: boolean; reason: string }
+        Args: { actor_label: string; paused: boolean; reason?: string }
         Returns: undefined
       }
       admin_set_offer_stopped: {
         Args: {
           actor_label: string
           delivery_id: string
-          reason: string
+          reason?: string
           stopped: boolean
         }
         Returns: undefined
@@ -245,7 +245,7 @@ export type Database = {
           actor_label: string
           new_status: Database["public"]["Enums"]["org_status"]
           org_id: string
-          reason: string
+          reason?: string
         }
         Returns: undefined
       }
