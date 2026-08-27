@@ -48,19 +48,36 @@ CUE は、新入生が事前に登録した「興味パスポート」をもと�
 
 ## ドキュメント
 
+### 設計・仕様
+
 - `docs/product_spec.md`: プロダクト要件
 - `docs/matching_and_safety.md`: マッチング・安全設計
-- `docs/competition_strategy.md`: 競争で勝つための見せ方
-- `docs/implementation_plan.md`: 8月22日までの技術構成と実装順序
-- `docs/decisions.md`: 決定事項と保留事項
-- `docs/agent_harness.md`: 自律開発ハーネス（実行モード・実行ループ・完了の定義・エスカレーション）
-- `CLAUDE.md`: Claude Code の作業規則
-- `AGENTS.md`: Codexなど開発エージェントの作業規則
+- `docs/decisions.md`: **決定事項の正本**（D001〜D053）
+- `docs/auth_and_authorization.md`: 認証・権限の正本（Phase 2）
+- `docs/server_data_model.md`: サーバーデータの正本
+- `docs/notifications.md`: メール通知の設計
+
+### 公開・運用
+
+- `docs/launch_plan.md`: **閉鎖β v1.0 の完了条件・人間が行う操作・既知リスク一覧**
+- `docs/release_notes_v1.0.md`: リリースノート（できること・守っていること・既知の制限）
+- `docs/operations.md`: 運営操作（団体の確認・停止・緊急停止・退会後の仕上げ）
+- `docs/runbook_operations.md`: 環境変数・migration・rollback・backup・secret・公開停止
+- `docs/runbook_incident.md`: 障害対応（状況別の初手）
+- `docs/runbook_supabase_hosted.md`: hosted環境の構築とPhase Bチェックリスト
+- `docs/legal/terms_draft.md` / `docs/legal/privacy_draft.md`: **ドラフト**
+  （法令適合は未確認。`【要確認】`が運営者の判断を要する箇所）
+
+### 開発の進め方
+
+- `docs/agent_harness.md`: 自律開発ハーネス（実行モード・実行ループ・完了の定義）
+- `CLAUDE.md` / `AGENTS.md`: 開発エージェントの作業規則
 - `tasks/_template.md`: 新規タスクの型
-- `tasks/001-bootstrap.md`〜`007-ci-pages-qa.md`: 順番に実行する小タスク
-- `prompts/autonomous_task.md`: 自律実行の指示例
-- `prompts/task_prompt_template.md`: Claudeへ渡す個別タスクの型
-- `prompts/002-execution-sequence.md`: Claude Codeへ貼る実行プロンプト集（Phase 1の記録）
+- `tasks/001`〜`007`: Phase 1（凍結済み）
+- `tasks/008`〜`019`: Phase 2（アカウント・権限・サーバーデータ・通知・運用・公開）
+- `docs/implementation_plan.md`: Phase 1の実装順序（凍結済みの歴史文書）
+- `docs/competition_strategy.md`: 競争で勝つための見せ方
+- `prompts/`: Claude Codeへ渡す指示の型（Phase 1の記録）
 
 ## AIエージェントによる開発
 
