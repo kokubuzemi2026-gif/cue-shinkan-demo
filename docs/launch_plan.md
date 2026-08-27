@@ -12,24 +12,28 @@
 
 | 項目 | 値 |
 |---|---|
-| `develop` | `18c1e3a`（PR #13 merge後。本書作成時点は `f28d834`） |
-| `main` | `646278f`（Phase 1公開デモ・凍結中） |
-| 完了Task | 000〜009, 012, 013(hook fix) |
-| migration | 13本（0008×4・0009×4・0011×3・0010×2）。`20260824111223`〜`20260827080002` |
-| unit test | 345件 / 28ファイル（Task 011前は317 / 24） |
-| pgTAP | 399件 / 26ファイル（Task 011前は229 / 16） |
-| 並行テスト | 8件（`npm run db:test:concurrency`） |
+| `develop` | `423b2c3`（PR #24 merge後） |
+| `main` | `646278f`（Phase 1公開デモ・**公開中**・凍結） |
+| 完了Task | 000〜017・019（**018は本PR #22でレビュー中**） |
+| migration | **20本**（0008×4・0009×4・0011×3・0010×2・0013×2・0014・0015・0017・0018・0019） |
+| unit test | **365件 / 31ファイル** |
+| pgTAP | **653件 / 36ファイル** |
+| 並行テスト | **15件**（`npm run db:test:concurrency`） |
 | hookテスト | 201件 |
-| lint / build / CI | green |
-| hosted staging | Supabase `cue-shinkan-staging`（`ap-northeast-1`）。0008・0009のmigration適用済み、Task 008 Phase B完了 |
+| lint / build / CI | green（quality / db-tests / e2e / audit の4ジョブ） |
+| hosted staging | Supabase `cue-shinkan-staging`（`ap-northeast-1`）。**0008・0009までしか適用していない**（0010以降は未適用・H1） |
 
-Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）まで完了している。
-学生の登録・パスポート・オファー受信・返答、団体のオファー作成・送信・ファネルは
-サーバー側（RLS + SECURITY DEFINER RPC）で動作する。
+Phase 2の**実装はTask 019まで完了**している。学生の登録・パスポート・オファー受信・返答、
+団体のオファー作成・送信・ファネル、メール通知、運営の確認・停止・緊急停止、
+本人によるデータ削除、同意管理、health checkまでがサーバー側
+（RLS + SECURITY DEFINER RPC）で動作する。
+
+**残るのは人間の操作だけ**（§7 H1・H6〜H11）。実装側からは進められない。
 
 ## 2. v1.0の完成像と現状のgap
 
 凡例: ✅ 実装済み / ⚠️ 部分的 / ❌ 未実装
+**最終更新: 2026-08-27（Task 019まで完了時点）**
 
 ### 2.1 新入生
 
@@ -38,13 +42,14 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 | 大学メールOTPで登録・ログイン | ✅ | 008 |
 | 複数ロールの安全な切替 | ✅ | 008 |
 | パスポートの登録・更新 | ✅ | 009 |
-| パスポートの**削除** | ❌ | 014 |
+| パスポートの**削除** | ✅ `delete_student_passport`（D046） | 014 |
 | 個人情報を団体へ非公開のままオファー受信 | ✅ | 009 |
-| オファー到着のメール通知 | ✅（実送信はhosted待ち） | 010 |
+| オファー到着のメール通知 | ✅（**実送信はhosted待ち**・H9） | 010 |
 | 受信箱で確認し3段階で返答 | ✅ | 009 |
 | 「行ってみたい」後だけ公式窓口を開示 | ✅ | 009 |
-| 通知設定の管理 | ✅ | 010 |
-| アカウント・データ削除の自己管理 | ❌ | 014 |
+| 通知設定の管理 | ✅ オファーごと / 1日1回 / 通知しない | 010 |
+| アカウント・データ削除の自己管理 | ✅ `delete_my_account`（D047・D049）。**auth identityは運営が別途削除**（H10） | 014 |
+| 登録前に規約・ポリシーへ同意する | ✅ 8つのRPCをDBで同意ゲート（D050） | 015 |
 
 ### 2.2 団体担当者
 
@@ -53,10 +58,10 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 | 個人アカウント認証・組織と権限の分離 | ✅ | 008 |
 | 自分のデータを自分で削除できる | ✅ パスポート削除・アカウント削除・団体からの脱退（D046〜D048） | 014 |
 | 確認済み団体だけが配信できる | ✅ 運営RPCでの確認・停止・再開と、配信行トリガでの強制（D043・D045） | 013 |
-| 公式窓口・担当者・オファーの管理 | ⚠️ 窓口とオファーは可。**担当者の削除・role変更・脱退が未実装** | 014 |
-| 個人を特定できない**粗い**対象規模だけを確認できる | ✅ | 011 |
-| 匿名性を満たす対象へだけ配信できる | ✅ | 011 |
-| 拒否を推測できない、時間固定・丸め済みファネル | ✅ | 011 |
+| 公式窓口・担当者・オファーの管理 | ⚠️ 窓口とオファーは可。**担当者の削除・role変更・団体の削除が未実装**（§7.1 D1・D2） | 014 |
+| 個人を特定できない**粗い**対象規模だけを確認できる | ✅ 区分のみ（D036） | 011 |
+| 匿名性を満たす対象へだけ配信できる | ✅ 最小5人をDBで強制（D036） | 011 |
+| 拒否を推測できない、時間固定・丸め済みファネル | ✅ 10未満非開示・5単位丸め・日次snapshot（D037） | 011 |
 | 他団体のデータを閲覧・更新できない | ✅ | 008/009 |
 
 ### 2.3 運営者
@@ -65,22 +70,23 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 |---|---|---|
 | 団体の確認・停止・再開 | ✅ `admin_set_organization_status`（service_role専用） | 013 |
 | オファーの停止・kill switch | ✅ `admin_set_offer_stopped` / `admin_set_delivery_paused` | 013 |
-| 監査記録 | ⚠️ 運営操作は`private.admin_audit_log`へ記録（PII無し）。認証・配信の監査は017 | 013/017 |
-| 障害・メール送信失敗・quota異常の把握 | ⚠️ `email_outbox_health()` はある。quota・障害の手順は017 | 010/017 |
-| backup・復旧・rollback・incident runbook | ⚠️ `runbook_supabase_hosted.md` §8にrollbackのみ | 017 |
-| service role key・SMTP認証情報をクライアントへ出さない | ✅ 維持（010で再確認） | 010/017 |
+| 監査記録 | ✅ `private.admin_audit_log`（運営操作・PII無し）+ `private.deletion_audit_log`（削除の日次集計）。保持365日で剪定（D052） | 013/014/017 |
+| 障害・メール送信失敗・quota異常の把握 | ✅ `platform_health()` 14列（service_role専用・件数と時刻だけ）+ `email_outbox_health()`（D052） | 010/017 |
+| backup・復旧・rollback・incident runbook | ✅ `docs/runbook_operations.md`（環境変数・migration・rollback・backup/restore・secret rotation・公開停止5段階・定期作業・ログの方針）+ `docs/runbook_incident.md`（状況別の初手）。**ただしstagingでの実行確認は未実施**（H1） | 017 |
+| 古いデータの掃除 | ✅ 監査365日 / preview 48時間 / outbox 90日。いずれも**DB管理者のみ・手作業**（D052・D053） | 017/019 |
+| service role key・SMTP認証情報をクライアントへ出さない | ✅ 維持（010で再確認・018でビルド成果物を実測） | 010/017/018 |
 
 ### 2.4 品質
 
 | 完成像 | 状態 | 担当Task |
 |---|---|---|
 | スマホ主要導線 | ✅ | 006/008/009 |
-| アクセシビリティ（キーボード・focus・label・contrast） | ⚠️ 体系的な検証が未実施 | 016 |
-| loading / empty / error / retry | ⚠️ 主要画面にあるが全画面の網羅は未確認 | 016 |
-| 認証・RLS・RPC・匿名性・E2Eの自動テスト | ⚠️ 匿名性・並行処理・メール・quotaが未テスト | 011/010/016 |
-| staging実環境検証 | ⚠️ 008のみ完了。009以降は未実施 | Phase B |
-| release PRと公開後smoke test | ❌ | 018 |
-| P0/P1既知不具合ゼロ | 判定待ち | 018 |
+| アクセシビリティ（キーボード・focus・label・contrast） | ⚠️ 体系的に検証し、コントラスト2件とフォーカス移動を修正。**入力欄の枠が1.4.11未達・スクリーンリーダー実機未確認**（§7.1 C1・C2） | 016 |
+| loading / empty / error / retry | ✅ 主要画面を確認 | 016 |
+| 認証・RLS・RPC・匿名性・E2Eの自動テスト | ✅ pgTAP **653件**（36ファイル）/ 並行15件 / unit 365件 / E2E | 008〜019 |
+| staging実環境検証 | ⚠️ **008のみ完了。009以降は未実施**（H1・H9） | Phase B |
+| release PRと公開後smoke test | ⚠️ 手順は用意済み（production用A・staging用Bに分割）。**実行は公開後**（H6〜H8待ち） | 018 |
+| P0/P1既知不具合ゼロ | ⚠️ §7.1 の28件へ重大度を付与。**P0は0件・P1は7件**（公開判断で受容が要る） | 018 |
 
 ## 3. Task一覧と依存関係
 
@@ -89,7 +95,7 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 013 団体確認・運営kill switch ┘                  │
 014 アカウント・データライフサイクル ────────────┤
 015 プライバシー・同意・法的文書draft ───────────┤
-017 運用（logging/health/runbook/secret） ───────┘
+017 運用（logging/health/runbook/secret） ─> 019 outbox剪定・型同期 ┘
 ```
 
 | Task | 内容 | 状態 | PR | 依存 |
@@ -100,11 +106,12 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 | 014 | アカウント・データライフサイクル（削除・脱退・孤児データ） | **完了（developへmerge済み `7da6919`）** | [#15](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/15) | 013 |
 | 015 | プライバシー・同意・利用規約draft・同意バージョン | **完了（developへmerge済み `1c3bb28`）** | [#16](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/16) | — |
 | 016 | UX・アクセシビリティ・完全E2E | **完了（developへmerge済み `623f85a`）** | [#17](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/17) | 010〜015 |
-| 017 | 運用（structured logging・health・runbook・secret rotation） | **実装完了・レビュー待ち** | — | 010 |
-| 018 | リリース（release notes・smoke test・staging記録・main PR） | 未着手（仕様は `tasks/018-*.md`） | — | 全部 |
+| 017 | 運用（structured logging・health・runbook・secret rotation） | **完了（developへmerge済み `cebabdd`）** | [#20](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/20) | 010 |
+| 019 | outboxの剪定・ワーカー並行検証・生成型の同期 | **完了（developへmerge済み `05e2701`）** | [#21](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/21) | 017 |
+| 018 | リリース（release notes・smoke test・deploy設定・main PR） | **レビュー中** | [#22](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/22) | 全部 |
 
 番号の重複回避: 既存Task番号は000〜009・012。013以降を新規に使う（010・011は既存の意味を保持）。
-decision番号は既存D001〜D035。新規はD036以降。
+decision番号は **D055まで使用済み**（D054は本PR＝Task 018、D055はPR #24）。新規はD056以降。migrationの連番は **0019まで**（0012・0016は欠番）。
 
 ## 4. Task 011の確定仕様（ユーザー確定事項・2026-08-27）
 
@@ -180,20 +187,25 @@ decision番号は既存D001〜D035。新規はD036以降。
 
 ## 6. 完了条件（Definition of Done for v1.0）
 
-- [ ] Task 010・011・013〜018がすべて`develop`へmerge済み
-- [ ] P0/P1の既知不具合ゼロ
-- [ ] 未解決の認証・RLS・privacy blockerゼロ
-- [ ] 全CI green（quality / db-tests / e2e）
-- [ ] staging E2E green
-- [ ] migration・rollback確認済み
-- [ ] secret漏洩なし（リポジトリ・CI・PR・ログ）
-- [ ] 合成データ以外がcommitされていない
-- [ ] privacy / termsのdraftがあり、要確認箇所が明示されている
-- [ ] 公開後smoke testとrollback手順がある
-- [ ] release notesと既知制限がある
-- [ ] `develop` → `main` のrelease PRに独立レビューとセキュリティレビューを実施
-- [ ] main反映後のdeploy監視とsmoke test完了
-- [ ] `v1.0.0` のrelease / tag作成
+状態は2026-08-27時点。**未達の4件はすべて `docs/launch_plan.md` §7 の
+人間待ち項目（H1・H6〜H11）が原因**で、実装側からは進められない。
+
+| 条件 | 状態 | 根拠・残る作業 |
+|---|---|---|
+| Task 010・011・013〜018がすべて`develop`へmerge済み | **一部** | 008〜017・019がmerge済み（019は `05e2701`）。**018は本PR（#22）で未merge** |
+| P0/P1の既知不具合ゼロ | **一部** | §7.1 の28件へ重大度を付与した結果、**P0は0件、P1は7件**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection未設定 / C1 WCAG 1.4.11未達 / **E3 送信ワーカー未デプロイ** / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る**。2件（B6・E5）は対応済み |
+| 未解決の認証・RLS・privacy blockerゼロ | **達成** | 各タスクの独立レビュー・security-reviewerでBlocker 0 |
+| 全CI green | **達成** | quality / db-tests / e2e / audit |
+| staging E2E green | **未達** | H1・H9。Supabaseアカウントが要る |
+| migration・rollback確認済み | **一部** | ローカル**20 migration**の適用は毎回検証。hostedでの適用・切り戻しは未実施（H1） |
+| secret漏洩なし | **達成** | `VITE_*` 以外をビルドへ入れないことを実測。E2Eアーティファクトの入力値漏れも塞いだ（D051） |
+| 合成データ以外がcommitされていない | **達成** | テストデータは `demo-*@stu.kobe-u.ac.jp` の合成のみ |
+| privacy / termsのdraftがあり、要確認箇所が明示されている | **達成** | `docs/legal/`・【要確認】（D050）。**法令適合は運営者の最終確認事項** |
+| 公開後smoke testとrollback手順がある | **達成** | `tasks/018-release-v1.md` §公開後smoke test / `docs/runbook_operations.md` §4・§7 |
+| release notesと既知制限がある | **達成** | `docs/release_notes_v1.0.md` / §7.1 |
+| release PRに独立レビューとセキュリティレビューを実施 | **未達** | `develop → main` のrelease PRはまだ作っていない。Task 018のPR（base=develop）では**独立レビュー3周（Blocker 4→3→3件）・security-reviewer 2周（4→1件）**を実施し、すべて修正した |
+| main反映後のdeploy監視とsmoke test完了 | **未達** | H6〜H8が未了のためmergeしていない |
+| `v1.0.0` のrelease / tag作成 | **未達** | main反映後に作る |
 
 ## 7. 人間が行う必要のある操作（Blocker候補）
 
@@ -204,18 +216,24 @@ decision番号は既存D001〜D035。新規はD036以降。
 |---|---|---|---|
 | H1 | Supabase stagingへの新規migration適用 | Supabaseアクセストークン（個人所有）が必要 | 未実施 |
 | H2 | 大学メールでのOTP実機確認 | 本人所有メールの受信が必要 | 未実施 |
-| H3 | SMTP認証情報のDashboard設定 | secretをチャット・リポジトリへ置かない運用 | Task 008時に設定済み・010で再確認 |
+| H3 | SMTP認証情報のDashboard設定 | secretをチャット・リポジトリへ置かない運用 | **stagingのみ**設定済み（008・010）。**H6で新規プロジェクトを選んだ場合は未設定に戻る**（§7.2 段階1） |
 | H4 | privacy policy / 利用規約の最終承認 | 法的文書の最終判断 | 未実施 |
 | H5 | `main`へのrelease PR merge判断 | 公開範囲の変更 | 未実施 |
 | H6 | **公開用Supabaseプロジェクトの決定**（stagingを流用するか、productionを新規に作るか） | Supabaseアカウントの操作。Freeプランの範囲なら課金は発生しない | 未実施 |
-| H7 | **GitHub Actions variables へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` を設定** | どちらもブラウザへ出る値なのでsecretではなくvariableでよい。**チャットへ貼らない** | 未実施 |
-| H8 | **公開ドメインを Supabase Auth の Site URL / Redirect URLs へ追加** | Dashboardの操作 | 未実施 |
+| H7 | **GitHub Actions **secrets** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` を設定** | どちらもブラウザへ出る値だが、**貼り間違いの封じ込めのためsecretへ置く**（D054。`vars.*` はログでマスクされない）。**チャットへ貼らない**。貼り間違えたら**先にSupabaseで失効**させる | 未実施 |
+| H8 | **Supabase Auth の Site URL を公開URLへ変更**（**Redirect URLsは追加しない**・§7.2） | Dashboardの操作 | 未実施 |
 | H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | Supabaseアクセストークンが必要（`docs/runbook_supabase_hosted.md` §6.1） | 未実施 |
 | H10 | 本番Supabaseでの `auth.users` 削除挙動の確認 | Dashboardでの実操作が必要（`docs/operations.md` §9） | 未実施 |
+| **H11** | **公開前に Supabase Auth の Attack Protection（CAPTCHA・レート制限）を設定** | Dashboardの操作。**D030はこれをTask 011へ委ねたが、011のscopeに入っておらず実施されていない**（独立レビューで発覚）。publishable keyは公開バンドルに必ず入るため、公開後は誰でもAuth APIを直接呼べる | 未実施 |
 
 ### H6〜H8 が揃うまで `main` へmergeしない（重要）
 
-`.github/workflows/deploy-pages.yml` の build は `VITE_SUPABASE_*` を渡していない。
+**Task 018で実装側の手当ては済んでいる。** `deploy-pages.yml` の build は
+Actions **secrets** から `VITE_SUPABASE_*` を受け取り（D054）、直後の検証ステップが
+「値の形式」と「バンドルへ入っているか」を確認して、揃っていなければ
+deployを止める（`sb_secret_*` の貼り間違えもここで落ちる）。
+
+それでも **H6〜H8 が無ければ公開できない**。
 `src/lib/supabaseClient.ts` はどちらかが空だと `null` を返し、`AppRoot` は
 `SetupNotice`（「接続設定が必要です」）を表示する。
 
@@ -224,67 +242,213 @@ Phase 2では `src/demo/DemoApp.tsx` が `AppRoot` から到達不能なので�
 **設定なしでmergeすると「動いているデモ」が案内画面に置き換わる**。
 Task 018のsmoke testも全滅する。
 
-実装側で先にやること（Task 018）:
+実装側の手当て（Task 018・**実装済み**）:
 
-- `deploy-pages.yml` の build step へ `env:` を足す（値は `${{ vars.* }}` の参照だけ）
-- ビルド成果物に設定が入っているかを、**値を出さずに**確認するステップを足す
+- `deploy-pages.yml` の build step へ `env:` を足した（値は `${{ secrets.* }}` の参照だけ）
+- ビルド成果物に設定が入っているかを、**値を出さずに**確認するステップを足した
+- 鍵の種類を許可リスト（`sb_publishable_*`）で検査し、secret keyの混入を止めた
+
+残るのは **人間の操作だけ**（merge前に H6・H7・H8、公開前に H9・H11）。設定しないまま `main` へmergeすると、
+検証ステップが落ちてdeployされない（**いま公開されているページはそのまま残る**）。
 
 ## 7.1 既知リスク一覧（公開前に運営者が読む）
+
+**重大度**: P0 = 公開してはいけない / P1 = 公開判断で明示的に受容が要る /
+P2 = 受容したうえで運用で見る / — = 対応済み。
+独立レビューで「§7.1 にP0/P1が無い」を §6 の根拠にしていたが、
+**そもそも分類していなかった**ため、ここで明示する。
 
 各タスクの「残る課題」と `docs/operations.md` §8 を1か所へ集めたもの。
 **直せていないものを直したことにしない。** 公開の判断はこの一覧を読んでから行う。
 
 ### A. 法務・同意
 
-| # | 内容 | 影響 | いまの扱い |
-|---|---|---|---|
-| A1 | **法令適合は未確認**。利用規約・プライバシーポリシーはドラフト | 公開後に不備が判明する可能性 | `【要確認】`で該当箇所を明示。運営者の最終確認（H4） |
-| A2 | 事業者情報・連絡先・準拠法・委託先が未確定 | 問い合わせ先が機能しない | プレースホルダーとして明示。公開判断時に確定 |
-| A3 | 保存期間の上限（無操作・卒業後）が未定 | データが無期限に残る | 監査ログは年1回の剪定を用意（`runbook_operations.md` §8）。利用者データの上限は未定 |
-| A4 | 10–5ルールは英国ONSの公開手法を参考にしたもので、**法令準拠を主張しない**（D037） | 開示水準の妥当性が第三者検証を経ていない | decisionへ明記。運営者の最終確認 |
+| # | 重大度 | 内容 | 影響 | いまの扱い |
+|---|---|---|---|---|
+| A1 | **P1** | **法令適合は未確認**。利用規約・プライバシーポリシーはドラフト | 公開後に不備が判明する可能性 | `【要確認】`で該当箇所を明示。運営者の最終確認（H4） |
+| A2 | **P2** | 事業者情報・連絡先・準拠法・委託先が未確定 | 問い合わせ先が機能しない | プレースホルダーとして明示。公開判断時に確定 |
+| A3 | **P2** | 保存期間の上限（無操作・卒業後）が未定 | データが無期限に残る | 監査ログは年1回の剪定を用意（`docs/runbook_operations.md` §8）。利用者データの上限は未定 |
+| A4 | **P2** | 10–5ルールは英国ONSの公開手法を参考にしたもので、**法令準拠を主張しない**（D037） | 開示水準の妥当性が第三者検証を経ていない | decisionへ明記。運営者の最終確認 |
 
 ### B. プライバシー・セキュリティ
 
-| # | 内容 | 影響 | いまの扱い |
-|---|---|---|---|
-| B1 | **退会後もauth identity（大学メール）が残る**（D047） | 削除したはずのメールがDBに残る | 運営が `admin_delete_auth_identity` で消す運用。自動化されていない。画面で「ログイン情報の削除は運営が行う」と伝えている |
-| B2 | `admin_delete_auth_identity` の監査記録は**対象を持たない** | service_role keyが漏れた場合の事後追跡ができない | 「誰を消したか」を残さない設計の代償。Supabase側のログ（保持期間短）に依存 |
-| B3 | 本番Supabaseでの `auth.users` 削除の挙動が未検証 | 子テーブル・`auth.audit_log_entries` にメールが残る可能性 | H10 で確認する |
-| B4 | 運営操作は**SQL Editorから**行う（運営画面UIが無い） | 人間の操作ミスを機械的に防げない。`actor_label` の正しさは運用依存 | 手順を `docs/operations.md` に固定 |
-| B5 | 対象人数の `0` と `1–4` を区別する（D036の残余リスク） | 小集団の在・不在が観測できる | 受容済み。preview条件数の上限と24時間固定で回数を制限 |
-| B6 | E2Eの失敗アーティファクトに入力値が残り得た | OTP・招待URLの露出 | `PLAYWRIGHT_NO_COPY_PROMPT` で停止（D051・PR #19でdevelopへmerge済み）。`test-results/` はgitignore、CIに `upload-artifact` は無い。**`toMatchAriaSnapshot` の失敗は環境変数で止まらない**ため、OTP・招待URLが出ている画面では使わない |
+| # | 重大度 | 内容 | 影響 | いまの扱い |
+|---|---|---|---|---|
+| B1 | **P1** | **退会後もauth identity（大学メール）が残る**（D047） | 削除したはずのメールがDBに残る | 運営が `admin_delete_auth_identity` で消す運用。自動化されていない。画面で「ログイン情報の削除は運営が行う」と伝えている |
+| B2 | **P2** | `admin_delete_auth_identity` の監査記録は**対象を持たない** | service_role keyが漏れた場合の事後追跡ができない | 「誰を消したか」を残さない設計の代償。Supabase側のログ（保持期間短）に依存 |
+| B3 | **P1** | 本番Supabaseでの `auth.users` 削除の挙動が未検証 | 子テーブル・`auth.audit_log_entries` にメールが残る可能性 | H10 で確認する |
+| B4 | **P2** | 運営操作は**SQL Editorから**行う（運営画面UIが無い） | 人間の操作ミスを機械的に防げない。`actor_label` の正しさは運用依存 | 手順を `docs/operations.md` に固定 |
+| B5 | **P2** | 対象人数の `0` と `1–4` を区別する（D036の残余リスク） | 小集団の在・不在が観測できる | 受容済み。preview条件数の上限と24時間固定で回数を制限 |
+| B6 | **—** | E2Eの失敗アーティファクトに入力値が残り得た | OTP・招待URLの露出 | `PLAYWRIGHT_NO_COPY_PROMPT` で停止（D051・PR #19でdevelopへmerge済み）。`test-results/` はgitignore、CIに `upload-artifact` は無い。**`toMatchAriaSnapshot` の失敗は環境変数で止まらない**ため、OTP・招待URLが出ている画面では使わない |
+| B7 | **P1** | **Auth の CAPTCHA が無効**で、Supabase既定のメール送信レート制限だけが防壁。D030は緩和策をTask 011へ委ねたが、011のscopeに入っておらず未実施 | publishable keyは公開バンドルに必ず入るため、公開後は誰でもAuth APIを直接呼べる。任意アドレスへOTPを送らせられ、(a) 新歓期間中に実在の新入生がログインできない (b) 送信元Gmailが停止する（E6と複合） | **公開前にDashboardで設定する（H11）**。設定するまで公開しない |
 
 ### C. アクセシビリティ・UX
 
-| # | 内容 | 影響 | いまの扱い |
-|---|---|---|---|
-| C1 | **細線の枠が1.4.11（非テキスト3:1）を満たさない**。`.choice-chip`(0.16) / `.text-input`(0.18) / `.club-input`(0.24) / `.status-pending`(0.25) が白地で**1.39〜1.68**。`.button-primary` の coral 背景と周囲の境界も2.79 | 入力欄の境界が見えにくい利用者がいる | 3:1に届かせるにはalpha 0.50が必要で、アプリ全体の見え方が変わる。**公開前に運営者の判断が必要** |
-| C2 | スクリーンリーダー実機（VoiceOver / TalkBack）での確認が未実施 | 読み上げ順・読み上げ内容の問題を検出できていない | 自動検証は「フォーカスが移ること」までしか保証しない |
-| C3 | 390pxの目視確認が未実施 | 横スクロール以外のレイアウト崩れ | E2Eは横スクロールの有無だけを自動判定 |
-| C4 | セッションの**期限切れ**・**別端末でのログアウト**が未検証 | その経路で画面が壊れる可能性 | `sb-*` を消した場合のみ検証済み |
+| # | 重大度 | 内容 | 影響 | いまの扱い |
+|---|---|---|---|---|
+| C1 | **P1** | **細線の枠が1.4.11（非テキスト3:1）を満たさない**。`.choice-chip`(0.16) / `.text-input`(0.18) / `.club-input`(0.24) / `.status-pending`(0.25) が白地で**1.39〜1.68**。`.button-primary` の coral 背景と周囲の境界も2.79 | 入力欄の境界が見えにくい利用者がいる | 3:1に届かせるにはalpha 0.50が必要で、アプリ全体の見え方が変わる。**公開前に運営者の判断が必要** |
+| C2 | **P2** | スクリーンリーダー実機（VoiceOver / TalkBack）での確認が未実施 | 読み上げ順・読み上げ内容の問題を検出できていない | 自動検証は「フォーカスが移ること」までしか保証しない |
+| C3 | **P2** | 390pxの目視確認が未実施 | 横スクロール以外のレイアウト崩れ | E2Eは横スクロールの有無だけを自動判定 |
+| C4 | **P2** | セッションの**期限切れ**・**別端末でのログアウト**が未検証 | その経路で画面が壊れる可能性 | `sb-*` を消した場合のみ検証済み |
 
 ### D. 機能の穴
 
-| # | 内容 | 影響 | いまの扱い |
-|---|---|---|---|
-| D1 | 団体そのものの削除が未実装 | 不要な団体が残る | 最終ownerガードと配信snapshotの整合を別途設計する必要がある |
-| D2 | 担当者の削除・role変更（他人を外す操作）が未実装 | 担当者を交代できない | 運営がSQLで対応する |
-| D3 | **まとめメールは取り消せない**（D044） | 停止直後に「新しい案内があります」が届き得る | 本文に団体名・イベント名を含まないため誤解は生まない |
-| D4 | 停止を団体へ能動的に通知する仕組みが無い | 団体は自分の画面を見て初めて気づく | — |
-| D5 | 緊急停止は**配信済みの案内を止めない** | 配信済みのものは個別停止が必要 | `docs/operations.md` §3・§4 |
-| D6 | 単独ownerが退会すると、その団体の所属だけが残る（D049） | 団体が宙に浮く | 戻り値で件数を返し画面で伝える。運営が引き取る |
+| # | 重大度 | 内容 | 影響 | いまの扱い |
+|---|---|---|---|---|
+| D1 | **P2** | 団体そのものの削除が未実装 | 不要な団体が残る | 最終ownerガードと配信snapshotの整合を別途設計する必要がある |
+| D2 | **P2** | 担当者の削除・role変更（他人を外す操作）が未実装 | 担当者を交代できない | 運営がSQLで対応する |
+| D3 | **P2** | **まとめメールは取り消せない**（D044） | 停止直後に「新しい案内があります」が届き得る | 本文に団体名・イベント名を含まないため誤解は生まない |
+| D4 | **P2** | 停止を団体へ能動的に通知する仕組みが無い | 団体は自分の画面を見て初めて気づく | — |
+| D5 | **P2** | 緊急停止は**配信済みの案内を止めない** | 配信済みのものは個別停止が必要 | `docs/operations.md` §3・§4 |
+| D6 | **P2** | 単独ownerが退会すると、その団体の所属だけが残る（D049） | 団体が宙に浮く | 戻り値で件数を返し画面で伝える。運営が引き取る |
 
 ### E. 運用
 
-| # | 内容 | 影響 | いまの扱い |
-|---|---|---|---|
-| E1 | **Freeプロジェクトは約1週間の非アクティブでpauseされ得る** | 突然ログインできなくなる | 定期的に稼働を確認する |
-| E2 | **Authログの保持期間が短い** | 認証障害の事後調査ができない | 発生当日中に調査する |
-| E3 | 実メール送信がhosted未検証 | 本番で届かない可能性 | H9 で確認する |
-| E4 | 外部の監視サービスを使っていない | 障害に気づくのが遅れる | `platform_health()` を毎日見る運用（`runbook_operations.md` §8）。**有料サービスは承認なしに追加しない** |
-| E5 | ~~`email_outbox` の古い行を消す経路が無い~~ **対応済み（Task 019）** | — | `private.prune_email_outbox(retain_days)`（既定90日）を追加。**pending・sending は消さない**。定期作業へ登録した（`runbook_operations.md` §8） |
-| E6 | **staging のSMTPは個人のGmail（1日500宛先）** | 本番の規模で頭打ちになる。送信元ドメインも借り物 | 本番は独自ドメイン＋専用プロバイダが必要（`runbook_supabase_hosted.md` §7）。**H6と同時に判断する** |
-| E7 | denomailer 1.6.0 のSTARTTLS挙動が未確認 | 465以外のポートで平文送信になる可能性 | hosted stagingで実配信を確認するときに、ポートと暗号化を目視する（H9） |
+| # | 重大度 | 内容 | 影響 | いまの扱い |
+|---|---|---|---|---|
+| E1 | **P2** | **Freeプロジェクトは約1週間の非アクティブでpauseされ得る** | 突然ログインできなくなる | 定期的に稼働を確認する |
+| E2 | **P2** | **Authログの保持期間が短い** | 認証障害の事後調査ができない | 発生当日中に調査する |
+| E3 | **P1** | 実メール送信がhosted未検証。**送信ワーカー（Edge Function）が未デプロイ**（H9） | デプロイしないとメール通知が**1通も飛ばない**。release notesは通知を機能として挙げている | **H9を公開ゲートに含める**（§7）。hosted stagingで実配信を確認してから公開する |
+| E4 | **P2** | 外部の監視サービスを使っていない | 障害に気づくのが遅れる | `platform_health()` を毎日見る運用（`docs/runbook_operations.md` §8）。**有料サービスは承認なしに追加しない** |
+| E5 | **—** | ~~`email_outbox` の古い行を消す経路が無い~~ **対応済み（Task 019）** | — | `private.prune_email_outbox(retain_days)`（既定90日）を追加。**pending・sending は消さない**。定期作業へ登録した（`docs/runbook_operations.md` §8） |
+| E6 | **P1** | **staging のSMTPは個人のGmail（1日500宛先）** | 本番の規模で頭打ちになる。送信元ドメインも借り物 | 本番は独自ドメイン＋専用プロバイダが必要（`docs/runbook_supabase_hosted.md` §7）。**H6と同時に判断する** |
+| E7 | **P2** | denomailer 1.6.0 のSTARTTLS挙動が未確認 | 465以外のポートで平文送信になる可能性 | hosted stagingで実配信を確認するときに、ポートと暗号化を目視する（H9） |
+
+## 7.2 人間の操作チェックリスト（公開までに必要なものだけ）
+
+**実装側からは実行できない**操作だけを、実行順にまとめる（§7 の H1〜H11 を網羅する。H5 は段階3の release PR に含む）。
+Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メールが要るため。
+
+> **secretをチャットへ貼らないでください。** 値はDashboardとGitHubの設定画面へ
+> 直接入力します。この文書にも実値は書きません（`docs/runbook_operations.md` §2）。
+
+### 段階1: 接続先を決める（mergeの前）
+
+- [ ] **H6 公開用Supabaseプロジェクトを決める**
+  - なぜ: 接続先が決まらないと以降すべてが進まない
+  - 画面: https://supabase.com/dashboard → プロジェクト一覧
+  - 入力場所: 既存の `cue-shinkan-staging` を昇格するか、新規作成（Region: `ap-northeast-1`）
+  - 成功判定: Project Settings → **API** に **Project URL** が表示される
+    （`docs/runbook_supabase_hosted.md` §5 と同じ画面）
+  - 注意: **Freeプランの範囲で行う。有料プランへの変更は別途相談**
+  - **同時に決める（§7.1 E6・P1）**: 送信元をどうするか。
+    stagingのSMTPは**個人Gmail（1日500宛先）**の暫定構成で、本番は
+    独自ドメイン＋専用プロバイダが要る。ここで決めないと H3 の作業が決まらない
+
+- [ ] **H3 メール送信（SMTP）を設定する**
+  - なぜ: **新規プロジェクトを作った場合、これが無いと新入生にOTPが1通も届かない。**
+    2026-06-03以降に作成された新規Freeプロジェクトは、標準メールプロバイダのままだと
+    **本文・件名を変更できず**（6桁コード形式にできない）、しかも
+    **組織メンバーのアドレス宛にしか配信されない**
+    （`docs/runbook_supabase_hosted.md` §3-2・プラットフォーム制約）
+  - **stagingを昇格する場合は設定済み**（2026-08-25にカスタムSMTPへ移行済み）。
+    **新規作成した場合は必須**
+  - 画面: Supabase Dashboard → Project Settings → Authentication → SMTP Settings
+  - 入力場所: H6で決めた送信元のホスト・ポート・ユーザー・パスワード・From
+    （**値はDashboardへ直接入力。リポジトリ・チャット・CIへ置かない**）
+  - 続けて: Authentication → Email Templates の「Magic Link」と「Confirm signup」の
+    **両方**を、リンクではなく **6桁コード `{{ .Token }}` だけ**の本文へ差し替える
+    （`app/supabase/templates/otp_code.html` と同等。§3-2）
+  - 成功判定: **組織メンバー以外**の大学メールアドレス宛にOTPが届き、
+    本文が6桁コード形式になっている
+
+- [ ] **H7 GitHub Actions の secrets に接続設定を入れる**
+  - なぜ: 公開ビルドに接続先が埋め込まれないと「接続設定が必要です」の案内画面になる
+  - 画面: リポジトリ → Settings → Secrets and variables → Actions → **Secrets** タブ
+  - 入力場所: 「New repository secret」から2つ
+    - `VITE_SUPABASE_URL` … Supabase の Project URL（`https://<ref>.supabase.co`）
+    - `VITE_SUPABASE_PUBLISHABLE_KEY` … Project Settings → API Keys の **publishable key**（`sb_publishable_…`）
+  - 成功判定: Secrets 一覧に2つ並ぶ（値は表示されない。それが正しい）
+  - **Variables タブではありません**（D054。variables はログでマスクされない）
+  - **`sb_secret_…` を貼らないこと。** 貼った場合は設定し直す前に Dashboard で失効させる
+
+- [ ] **H8 Auth の Site URL を公開URLへ変更する**
+  - なぜ: いまは `http://localhost:5173/cue-shinkan-demo/` のまま（§3-3 の決定）。
+    **本アプリはOTPコード方式でリンクを使わない**ため
+    （`emailRedirectTo` を渡さず `verifyOtp` の6桁コード、`detectSessionInUrl: false`）、
+    Site URL がログインを直接壊すわけではない。それでも本番でlocalhostを指したままにしない。
+    テンプレートを既定へ戻した場合、既定文面の `{{ .SiteURL }}` がlocalhostを指す
+  - 画面: Supabase Dashboard → Authentication → URL Configuration
+  - 入力場所: **Site URL のみ** に `https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/`
+  - **Redirect URLs は追加しない**（`docs/runbook_supabase_hosted.md` §3-3。
+    OTPコード方式でリダイレクトを使わない）
+  - 成功判定: Authentication → URL Configuration の **Site URL が公開URLになっている**
+    （OTP往復はSite URLの有無で結果が変わらないため、H8の判定には使えない）
+
+- [ ] **H11 Auth の Attack Protection を有効にする**
+  - なぜ: publishable key は公開バンドルに必ず入る。既定では CAPTCHA が無効で、
+    Supabase 既定のレート制限だけが防壁（§7.1 B7・**P1**）。
+    任意アドレスへ OTP を送らせられ、送信元Gmail（§7.1 E6）が止まりうる
+  - 画面: Supabase Dashboard → Authentication → Attack Protection
+  - 入力場所: CAPTCHA を有効化（hCaptcha / Turnstile）＋ レート制限を既定より強める
+  - 成功判定: 設定後、ログイン画面から通常のOTP送信が**通る**こと（過剰に締めていない）
+
+### 段階2: hosted で通す（mergeの前が望ましい）
+
+- [ ] **H1 migration を適用する**
+  - なぜ: stagingは0008・0009までしか適用しておらず、0010以降が未適用
+  - 画面: 端末（Supabaseアクセストークンが要る）
+  - 入力場所: `cd app && npx supabase link --project-ref <ref> && npx supabase db push`
+  - 成功判定: `npx supabase migration list` でローカルとリモートの差分が無い。
+    適用後に `select * from public.platform_health();` が1行返る
+  - 事前に必ず: `docs/runbook_operations.md` §3 の手順（差分確認 → migrationを読む → backup → 適用 → `platform_health()` 確認）
+
+- [ ] **H2 大学メールで OTP を1往復させる**
+  - なぜ: Authの生存はDBのRPCでは確認できない（`docs/runbook_incident.md` §2.5）
+  - 画面: 公開URL（または `npm run dev`）のログイン画面
+  - 入力場所: 運営者本人の `@stu.kobe-u.ac.jp`
+  - 成功判定: メールが届き、6桁コードでログインできる。件名・本文にコード以外の情報が無い
+
+- [ ] **H9 送信ワーカー（Edge Function）をデプロイする**
+  - なぜ: デプロイしないとメール通知が**1通も飛ばない**（§7.1 E3・**P1**）
+  - 画面: 端末 + Supabase Dashboard
+  - 入力場所: `npx supabase functions deploy send-notifications` →
+    Dashboard → Edge Functions → Schedules で定期実行を設定
+    （SMTP関連の secret は `npx supabase secrets set` で。`docs/runbook_supabase_hosted.md` §6.1）
+  - 成功判定: 1回実行して `select * from public.email_outbox_health();` の
+    `failed_count` が増えない。実際にメールが届く
+
+- [ ] **H10 退会後の `auth.users` 削除挙動を確認する**
+  - なぜ: 退会しても大学メールが残る（§7.1 B1・**P1**）。その解消可否がここで決まる
+  - 画面: Supabase Dashboard → SQL Editor / Authentication → Users
+  - 入力場所: 合成アカウントで `admin_delete_auth_identity` を実行
+  - 成功判定: `auth.users` から消え、`auth.identities` / `sessions` / `refresh_tokens` が連鎖して消え、
+    `auth.audit_log_entries` の JSON payload にメールが残らない
+  - 残る場合: Admin API（`auth.admin.deleteUser`）へ寄せることを検討（`docs/operations.md` §9）
+
+### 段階3: 公開する
+
+- [ ] **deploy を1回空撃ちする（`dry_run`）**
+  - なぜ: 検証ステップは `push: main` と `workflow_dispatch` でしか走らず、
+    PRのCIでは一度も実行されない。初回実行が本番deployになるのを避ける
+  - 画面: Actions タブ → 「Deploy to GitHub Pages」→ Run workflow
+  - 入力場所: **`develop` を選び**、`dry_run` にチェック
+  - 成功判定: build と「Verify build has Supabase config」が成功し、deploy は skip される
+  - **`main` を選ばないこと**（まだこの定義を持たないため旧定義が走る）
+
+- [ ] **release PR を作って merge する**
+  - なぜ: 公開範囲の変更（H5）。判断は人間が行う
+  - 画面: GitHub → Pull requests → New pull request（base `main` ← compare `develop`）
+  - 入力場所: —
+  - 成功判定: CI green・独立レビュー/セキュリティレビュー済み・§7.1 の **P1 を読んで受容した**うえで merge
+
+- [ ] **公開後 smoke test（A）を実行する**
+  - なぜ: 公開URLで実際に動くかは、そこでしか確認できない
+  - 画面: 公開URL + Supabase SQL Editor
+  - 入力場所: `tasks/018-release-v1.md` §公開後smoke test の **A**（所要15〜20分）
+  - 成功判定: A0〜A6 のチェックが埋まる。**A5で団体を作る前に、そこの注意書きを読むこと**
+
+- [ ] **`v1.0.0` の tag / release を作る**
+  - なぜ: 公開したものを特定できるようにする
+  - 画面: GitHub → Releases → Draft a new release
+  - 入力場所: tag `v1.0.0`（target `main`）。本文は `docs/release_notes_v1.0.md`
+  - 成功判定: Releases に `v1.0.0` が出る
+
+### 判断だけが必要なもの（実装の待ちではない）
+
+- [ ] **H4 利用規約・プライバシーポリシーの最終確認**（§7.1 A1・**P1**）
+  - `docs/legal/` はドラフト。**法令適合は断定していません。**
+    `【要確認】` が運営者の決定または法的判断が必要な箇所です
 
 ## 8. 進捗ログ
 
@@ -313,10 +477,65 @@ Task 018のsmoke testも全滅する。
   CIの時限式pgTAPを別PR #18で修正。E2Eの失敗アーティファクトへ入力値が残る件を
   実機確認して別PR #19で修正。Task 017着手 |
 
+| 2026-08-27 | Task 017完了（PR #20 `cebabdd`）。独立レビュー3周・security-reviewer 2周で
+  Blocker 8件を検出し、すべて自分で再現して修正（quota超過の誤発報／health列の無検査＝
+  リテラル0の変異体が全件pass／権限テストのPUBLIC除外／backup手順がリポジトリへPIIを
+  書き出す／監査行数の恒真検査）。pgTAP 607→622件 |
+
+| 2026-08-27 | Task 019完了（PR #21）。既知リスクE5（`email_outbox`の剪定経路が無い）を閉じ、
+  ワーカーの並行取り出しを実プロセス並行で検証、生成型の差分を解消。
+  pgTAP 622→**641**件、並行10→15件。独立レビュー2本はBlocker 0件で、
+  検証の穴（retain_daysが未検査・並行テストの同期が空振りしうる・
+  search_pathの固定が無い）を塞いだ（`05e2701`） |
+
+| 2026-08-27 | Task 018（release準備・PR #22）。`deploy-pages.yml` へ接続設定の受け渡しと
+  検証ステップを追加。release notes・公開後smoke test・READMEの公開手順を用意。
+  **独立レビュー3周（Blocker 4→3→3件）・security-reviewer 2周（4→1件）**で修正（うち
+  **貼り間違えたsecret keyが公開Actionsログへ平文で出る**経路をD054で塞いだ）。
+  **`develop → main` の release PR は未作成**（H6〜H8・H11 が未了） |
+
 ## 9. 次回再開時の開始点
 
-本書§3の表で「未着手」の最小番号のTaskから再開する。
-再開時は必ず次を再確認する。
+**実装側の作業は Task 019 まで完了している。次に必要なのは §7 の人間の操作。**
+
+### いま止まっているもの
+
+| 番号 | 内容 | これが無いと |
+|---|---|---|
+| **H6** | 公開用Supabaseプロジェクトの作成（または staging を昇格する判断） | 接続先が決まらない |
+| **H7** | GitHub Actions **secrets** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`（D054） | 公開ビルドが接続設定を持てない（deployが検証ステップで止まる） |
+| **H8** | Supabase Auth の **Site URL** を公開URLへ（Redirect URLsは追加しない） | 本番でSite URLがlocalhostを指したまま残る |
+| H1 | hosted staging への migration 適用 | §6 の「migration・rollback確認済み」が埋まらない |
+| H2 | 大学メールでのOTP実機確認 | ログインの生存確認ができない |
+| H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | 実メールが1通も飛ばない |
+| **H11** | **Auth の Attack Protection 設定** | 公開後にOTP送信を濫用されうる（§7.1 B7・**P1**） |
+| H10 | 退会後の `auth.users` 削除の挙動確認 | 退会したのに大学メールが残る |
+
+H6〜H8（新規プロジェクトの場合はH3も）が揃うまで **`main` へmergeしない**。**H9（送信ワーカーのデプロイ）と H11（Attack Protection）は公開前に必ず済ませる**（§7.1 E3・B7）。
+
+### 揃ったあとの手順
+
+0. **`main` へmergeする前に、deployを1回空撃ちする（`dry_run`）。**
+   検証ステップは `push: main` と `workflow_dispatch` でしか走らないため、
+   **PRのCIでは一度も実行されない**。初回実行が本番deployになるのを避ける。
+
+   Actionsタブ → 「Deploy to GitHub Pages」→ Run workflow で、
+   **この定義を持つブランチ**（`develop` など）を選び、`dry_run` を有効にする。
+   build・検証・artifactの生成までが走り、**deploy jobだけがskipされる**。
+
+   **`main` を選んではいけない。** `workflow_dispatch` は選んだrefの
+   ワークフロー定義を実行するため、まだこの定義を持たない `main` を選ぶと
+   検証ステップの無い旧定義が走り、**「通った」という誤った確信だけが残る**
+   （独立レビューで実証された）
+1. `develop → main` の release PR を**新規に作る**
+   （`feat/018-release-v1` は base=`develop` の通常タスクPRで、release PRではない）
+2. 独立レビュー + security-reviewer → CI green を確認して `main` へmerge
+3. Actionsタブで「Deploy to GitHub Pages」の成功を確認
+4. `tasks/018-release-v1.md` §公開後smoke test を上から実行する
+5. 安定を確認してから `v1.0.0` の tag / release を作る
+6. 本書 §6 を完了へ更新する
+
+### 再開時に必ず再確認する
 
 1. `git fetch origin && git log --oneline -5 origin/develop`
 2. open PRとCIの状態

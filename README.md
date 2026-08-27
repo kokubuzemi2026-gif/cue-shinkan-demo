@@ -48,19 +48,36 @@ CUE は、新入生が事前に登録した「興味パスポート」をもと�
 
 ## ドキュメント
 
+### 設計・仕様
+
 - `docs/product_spec.md`: プロダクト要件
 - `docs/matching_and_safety.md`: マッチング・安全設計
-- `docs/competition_strategy.md`: 競争で勝つための見せ方
-- `docs/implementation_plan.md`: 8月22日までの技術構成と実装順序
-- `docs/decisions.md`: 決定事項と保留事項
-- `docs/agent_harness.md`: 自律開発ハーネス（実行モード・実行ループ・完了の定義・エスカレーション）
-- `CLAUDE.md`: Claude Code の作業規則
-- `AGENTS.md`: Codexなど開発エージェントの作業規則
+- `docs/decisions.md`: **決定事項の正本**（D001〜D055）
+- `docs/auth_and_authorization.md`: 認証・権限の正本（Phase 2）
+- `docs/server_data_model.md`: サーバーデータの正本
+- `docs/notifications.md`: メール通知の設計
+
+### 公開・運用
+
+- `docs/launch_plan.md`: **閉鎖β v1.0 の完了条件・人間が行う操作・既知リスク一覧**
+- `docs/release_notes_v1.0.md`: リリースノート（できること・守っていること・既知の制限）
+- `docs/operations.md`: 運営操作（団体の確認・停止・緊急停止・退会後の仕上げ）
+- `docs/runbook_operations.md`: 環境変数・migration・rollback・backup・secret・公開停止
+- `docs/runbook_incident.md`: 障害対応（状況別の初手）
+- `docs/runbook_supabase_hosted.md`: hosted環境の構築とPhase Bチェックリスト
+- `docs/legal/terms_draft.md` / `docs/legal/privacy_draft.md`: **ドラフト**
+  （法令適合は未確認。`【要確認】`が運営者の判断を要する箇所）
+
+### 開発の進め方
+
+- `docs/agent_harness.md`: 自律開発ハーネス（実行モード・実行ループ・完了の定義）
+- `CLAUDE.md` / `AGENTS.md`: 開発エージェントの作業規則
 - `tasks/_template.md`: 新規タスクの型
-- `tasks/001-bootstrap.md`〜`007-ci-pages-qa.md`: 順番に実行する小タスク
-- `prompts/autonomous_task.md`: 自律実行の指示例
-- `prompts/task_prompt_template.md`: Claudeへ渡す個別タスクの型
-- `prompts/002-execution-sequence.md`: Claude Codeへ貼る実行プロンプト集（Phase 1の記録）
+- `tasks/001`〜`007`: Phase 1（凍結済み）
+- `tasks/008`〜`019`: Phase 2（アカウント・権限・サーバーデータ・通知・運用・公開）
+- `docs/implementation_plan.md`: Phase 1の実装順序（凍結済みの歴史文書）
+- `docs/competition_strategy.md`: 競争で勝つための見せ方
+- `prompts/`: Claude Codeへ渡す指示の型（Phase 1の記録）
 
 ## AIエージェントによる開発
 
@@ -80,11 +97,12 @@ CUE は、新入生が事前に登録した「興味パスポート」をもと�
 
 ## 現在地
 
-Phase 1（2026年8月22日のメンバー持ち寄りデモ）は完了し、`main`ブランチと公開デモを凍結しています。現在はPhase 2（アカウント・権限・サーバーデータ化）を`develop`ブランチで開発中です。
+Phase 1（2026年8月22日のメンバー持ち寄りデモ）は完了しました。Phase 2（アカウント・権限・サーバーデータ化・通知・運用）は`develop`で**実装が完了**しています（Task 008〜019）。閉鎖β v1.0の公開は、**人間にしかできない準備が終わってから**行います。
 
-- 公開デモ（凍結中・mainのlocalStorage版）: https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/
-- Phase 2の技術: Supabase Auth（メールOTP）+ PostgreSQL + RLS
-- ブランチ運用: `main`は凍結。Task 008〜011は`develop`をbaseにしたPRで進め、`main`へはマージしない
+- 公開デモ（現在公開中・mainのlocalStorage版）: https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/
+- **`main`へのmergeを止めている理由**: 公開用Supabaseプロジェクト（H6）とActions **secrets**（H7・D054）が未設定です。この状態でmergeすると、`.github/workflows/deploy-pages.yml` の検証ステップがdeployを止めます（いま動いている公開デモは残ります）。Auth Site URL（H8）はDashboard側の設定で、CIでは検証されません。詳細は `docs/launch_plan.md` §7
+- Phase 2の技術: Supabase Auth（メールOTP）+ PostgreSQL + RLS + Edge Functions
+- ブランチ運用: `develop`をbaseにした1タスク1PR。`main`へのmergeは公開判断のときだけ
 - 認証・権限の正本: `docs/auth_and_authorization.md`、決定は`docs/decisions.md`（D026〜D034）
 - サーバーデータ（パスポート・オファー配信・受信箱・ファネル）の正本: `docs/server_data_model.md`（Task 009）
 - hosted環境（staging）の構築・確認手順: `docs/runbook_supabase_hosted.md`
@@ -139,12 +157,32 @@ npm run dev             # http://localhost:5173/cue-shinkan-demo/
 - 公開URL: https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/
 - 公開元はGitHub Actions（Settings → Pages → Build and deployment → Source: GitHub Actions）
 - `main`へのpushで自動公開。Actionsタブの「Deploy to GitHub Pages」からworkflow_dispatchで手動再公開できる
-- デモ状態はブラウザのlocalStorageへ保存される。ヘッダーの「デモ用架空データ」バッジから、いつでも初期状態へ戻せる
-- 表示されるのはすべて架空データで、実在する学生の情報を含まない
 
-公開URLで問題がある場合の確認手順:
+### 公開に必要なActions secrets
+
+Phase 2のアプリは、ビルド時に接続先が埋め込まれていないと「接続設定が必要です」の案内画面になります。**Settings → Secrets and variables → Actions → Secrets**（**Variables ではありません**）に次の2つを設定してください（`docs/launch_plan.md` §7 H7）。
+
+| secret | 中身 |
+|---|---|
+| `VITE_SUPABASE_URL` | 公開用SupabaseプロジェクトのProject URL（`https://<project ref>.supabase.co`） |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | 同プロジェクトの publishable key（`sb_publishable_...`） |
+
+**どちらもブラウザへ出る値です。** それでもsecretへ置くのは、値を隠すためではなく**貼り間違いを封じ込めるため**です（D054）。
+
+> runnerは各stepの冒頭に `env:` マップを**値ごと**出力します。`secrets.*` はマスクされますが **`vars.*` はマスクされません**。このリポジトリは公開なのでActionsログは誰でも読めます。SupabaseのAPI keys画面は `sb_publishable_...` と `sb_secret_...` を並べて表示するため、貼り間違えると **secret key が世界へ出ます**。secret key はRLSを迂回するので、出た時点で全学生のデータが誰からでも読み書きできます。
+
+**secret key・service-role key・DBパスワード・アクセストークンは絶対に置かないでください**（D027）。
+
+未設定のままmergeした場合、build後の「Verify build has Supabase config」がdeployを止めます。**すでに公開されているページはそのまま残ります**（壊れたものが公開されるより、古いものが残るほうがよいという判断です）。
+
+**この検証が落ちたときは、貼った鍵がすでにログへ出ている可能性があります。** 設定し直す前に、Supabase Dashboard でその鍵を失効（rotate）してください。
+
+公開前に一度、公開せずに確認できます。Actionsタブ → 「Deploy to GitHub Pages」→ Run workflow で、**この定義を持つブランチ**（`develop` など）を選び `dry_run` を有効にすると、build と検証だけが走り deploy はskipされます。
+
+### 公開URLで問題がある場合
 
 1. Actionsタブで「Deploy to GitHub Pages」の最新runが成功しているか確認する
-2. Settings → Pages のSourceが「GitHub Actions」になっているか確認する
-3. ブラウザを再読み込みする（必要ならキャッシュを削除する）
-4. 表示が崩れた状態が残る場合は「デモ用架空データ」バッジからデモをリセットする
+2. 「Verify build has Supabase config」で落ちている場合は、上記のsecretsを設定する（**鍵を貼り間違えていたら先に失効させる**）
+3. Settings → Pages のSourceが「GitHub Actions」になっているか確認する
+4. ブラウザを再読み込みする（必要ならキャッシュを削除する）
+5. 公開そのものを止めるときは `docs/runbook_operations.md` §7（公開停止の5段階）

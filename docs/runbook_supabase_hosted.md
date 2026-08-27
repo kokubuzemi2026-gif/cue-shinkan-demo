@@ -23,7 +23,7 @@
 2. Email Templates: **「Magic Link」と「Confirm signup」の両テンプレート**を、リンク（`{{ .ConfirmationURL }}`）でなく**6桁コード`{{ .Token }}`だけを表示する本文**へ差し替える（signInWithOtpは既存ユーザーにMagic Link、新規ユーザーにConfirm signupテンプレートを使うため両方必要。ローカルの`app/supabase/templates/otp_code.html`と同等の文面にする）。
    **重要（2026-08-24確認）**: **2026-06-03以降に作成された新規Freeプロジェクトは、標準メールプロバイダのままだと本文・件名とも変更できない**（プラットフォーム制約。公式changelog #46599。Dashboard/Management API共通で、テンプレ項目のPATCHのみ400になることを対照実験で確認済み）。該当プロジェクトでは、カスタムSMTPを設定するとロックが解除される。標準SMTPは**組織メンバーのアドレス宛にしか配信されない**点にも注意。
    → stagingでは2026-08-25に、**staging専用Gmailアカウント**（2段階認証+アプリパスワード。資格情報はDashboardのSMTP設定へ直接入力し、リポジトリ・チャット・CIへは置かない）を`smtp.gmail.com`:`587`のカスタムSMTPとして設定し、テンプレートを6桁形式へ変更済み。**宛先制限・テンプレートロックとも解除済み**。Gmail SMTPは個人アカウント上限500宛先/日のstaging暫定構成であり、本番向けは独自ドメイン+専用プロバイダ（Resend等）をTask 010で導入する。
-3. **Site URL: ローカル確認用URL `http://localhost:5173/cue-shinkan-demo/` を設定する。凍結中のGitHub Pages公開デモURLへは向けない。**本番URL・新実運用URLへの変更はTask 011の公開判断時に行う。Redirect URLsは追加しない（OTPコード方式でリダイレクト不使用）。
+3. **Site URL: ローカル確認用URL `http://localhost:5173/cue-shinkan-demo/` を設定する。凍結中のGitHub Pages公開デモURLへは向けない。**本番URLへの変更は公開判断時に行う（`docs/launch_plan.md` §7 H8）。Redirect URLsは追加しない（OTPコード方式でリダイレクト不使用）。
 4. Attack protection（CAPTCHA・レート強化）は既定のまま（最終化はTask 011）。
 
 ## 4. migrationの手動適用（開発者・ローカル端末から）
