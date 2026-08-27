@@ -16,8 +16,13 @@ const EMAIL_S = `demo-entry-s-${RUN}@stu.kobe-u.ac.jp`
 const EMAIL_O = `demo-entry-o-${RUN}@stu.kobe-u.ac.jp`
 const EMAIL_BOTH = `demo-entry-b-${RUN}@stu.kobe-u.ac.jp`
 const EMAIL_INVITEE = `demo-entry-i-${RUN}@stu.kobe-u.ac.jp`
+// E7専用のowner。E4/E6のEMAIL_Oを使い回すと、E6の送信の約1秒後に同じアドレスへ
+// 再送することになり、ローカルスタックの max_frequency = "1s"（config.toml）に
+// 当たって rateLimited になり得る（CIで実際に落ちた）。初回送信のアドレスを使う
+const EMAIL_O2 = `demo-entry-o2-${RUN}@stu.kobe-u.ac.jp`
 const ORG_NAME = `入口E2E会-${RUN}`
 const ORG_NAME_2 = `入口E2E会2-${RUN}`
+const ORG_NAME_3 = `入口E2E会3-${RUN}`
 
 test.describe.configure({ mode: 'serial' })
 
@@ -233,9 +238,15 @@ test('E7: 招待リンク流入では入口画面を挟まず、認証→同意�
   page,
   request,
 }) => {
-  // 準備: E4の団体で招待リンクを発行（owner = EMAIL_O）
-  await signInVia(page, request, 'organization', EMAIL_O)
-  await expect(page.getByRole('heading', { name: ORG_NAME })).toBeVisible({ timeout: 15_000 })
+  // 準備: E7専用のownerが団体を作り、招待リンクを発行する
+  await signInVia(page, request, 'organization', EMAIL_O2)
+  await expect(page.getByRole('heading', { name: '団体担当者としてはじめる' })).toBeVisible({
+    timeout: 15_000,
+  })
+  await page.getByRole('button', { name: '新しい団体を作る' }).click()
+  await page.getByLabel('団体名（必須・100文字まで）').fill(ORG_NAME_3)
+  await page.getByRole('button', { name: '団体を作成する' }).click()
+  await expect(page.getByRole('heading', { name: ORG_NAME_3 })).toBeVisible({ timeout: 15_000 })
   await page.getByRole('button', { name: '招待リンクを作成' }).click()
   const urlBox = page.getByLabel('招待リンクURL')
   await expect(urlBox).toBeVisible({ timeout: 15_000 })
