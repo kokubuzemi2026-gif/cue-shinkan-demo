@@ -27,6 +27,7 @@ import {
 } from '../serverdata/passportApi'
 import { getDefaultStorage } from '../storage/appStorage'
 import { planDemoMigration, runDemoMigration } from './demoMigration'
+import { NotificationSettings } from './NotificationSettings'
 import { ServerOfferDetail } from './ServerOfferDetail'
 
 type StudentAreaProps = {
@@ -45,7 +46,20 @@ type InboxState =
   | { status: 'error' }
   | { status: 'ready'; items: InboxItem[] }
 
-type StudentTab = 'home' | 'inbox'
+type StudentTab = 'home' | 'inbox' | 'settings'
+
+// 通知メールは受信箱・通知設定へのリンクを載せる（docs/notifications.md §6）。
+// 起動時に一度だけhashを読んでタブを決め、直ちにURLから取り除く
+// （招待トークンと同じ扱い。以後のアプリ内操作をhashが上書きしない）
+function initialTabFromHash(): StudentTab {
+  if (typeof window === 'undefined') return 'home'
+  const hash = window.location.hash
+  const tab: StudentTab = hash === '#notifications' ? 'settings' : hash === '#inbox' ? 'inbox' : 'home'
+  if (tab !== 'home') {
+    window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  }
+  return tab
+}
 type HomeView = 'intro' | 'wizard' | 'complete' | 'summary'
 
 // 未登録から始めるときの空draft。デモデータ（demoStudent）は持ち込まない
@@ -84,7 +98,7 @@ const GENERIC_LOAD_ERROR = '読み込みに失敗しました。通信環境を�
 // - 取得済みコンテキストは再取得中も保持し、失敗時はエラー表示+再試行を出す
 // - 旧デモ（cue-demo:*）の興味パスポートは初回に一度だけ検証付きで持ち込み、キーを削除する
 export function StudentArea({ client, onFocusModeChange }: StudentAreaProps) {
-  const [tab, setTab] = useState<StudentTab>('home')
+  const [tab, setTab] = useState<StudentTab>(initialTabFromHash)
   const [passport, setPassport] = useState<PassportState>({ status: 'loading' })
   const [inbox, setInbox] = useState<InboxState>({ status: 'loading' })
   const [homeView, setHomeView] = useState<HomeView>('summary')
@@ -315,6 +329,14 @@ export function StudentArea({ client, onFocusModeChange }: StudentAreaProps) {
           >
             受信箱
           </button>
+          <button
+            type="button"
+            className="context-switcher-button"
+            aria-pressed={tab === 'settings'}
+            onClick={() => switchTab('settings')}
+          >
+            通知設定
+          </button>
         </nav>
       )}
 
@@ -336,6 +358,8 @@ export function StudentArea({ client, onFocusModeChange }: StudentAreaProps) {
           onOpenInbox={() => switchTab('inbox')}
         />
       )}
+
+      {tab === 'settings' && <NotificationSettings client={client} />}
 
       {tab === 'inbox' &&
         (selected !== undefined ? (

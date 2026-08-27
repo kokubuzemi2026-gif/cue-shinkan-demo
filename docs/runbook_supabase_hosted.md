@@ -62,12 +62,53 @@ npx supabase db push                                      # app/supabase/migrati
 9. [ ] Data APIのExposed schemasに`private`が無いことを確認
 10. [ ] 完了: PRへ「Phase B完了」を記録（ここで初めてTask 008最終完了）
 
+## 6.1 Task 010（メール通知）の人間タスク
+
+送信ワーカー（Edge Function）のデプロイとsecret設定は、Supabaseアクセストークンが
+必要なため人間が行う。**secretはDashboardまたはCLIへ直接入力し、リポジトリ・CI・
+PR・チャットへ置かない。**
+
+1. Function secretを設定する（値はチャットへ貼らない）
+
+   ```bash
+   cd app
+   npx supabase link --project-ref <stagingのproject ref>
+   npx supabase secrets set CUE_SMTP_HOST=... CUE_SMTP_PORT=587 \
+     CUE_SMTP_USER=... CUE_SMTP_PASSWORD=... CUE_SMTP_FROM=... \
+     CUE_APP_URL=http://localhost:5173/cue-shinkan-demo/
+   ```
+
+   `SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` はSupabaseが自動注入するため設定不要。
+
+2. デプロイする
+
+   ```bash
+   npx supabase functions deploy send-notifications
+   ```
+
+3. スケジュールを設定する（Dashboard → Edge Functions → Schedules）。
+   5〜10分間隔を目安にする。まとめ（Asia/Tokyo 18時）を落とさない間隔にすること。
+
+4. 確認する
+
+   - 本人所有の大学メールで学生登録し、通知設定を「オファーごと」にする
+   - 別アカウントの団体から配信し、**実際にメールが届く**ことを確認する
+   - 件名・本文に団体名・イベント名・希望条件・返答状態が**含まれない**ことを目視で確認する
+   - 本文の「通知の受け取り方の変更・停止」リンクから設定画面へ着地することを確認する
+   - 「通知しない」にして再配信し、メールが届かないことを確認する
+   - `email_outbox_health()` をservice_roleで呼び、`failed_count` が0であることを確認する
+   - 確認後、検証用のauthユーザーとデータを削除する
+
 ## 7. 料金・運用上の注意（残余リスク）
 
 - **Free projectは約1週間非アクティブでpauseされ得る**。Phase B実施前にプロジェクトが稼働中か確認し、停止時はダッシュボードからRestoreする。
 - **Authログの保持期間は短い**（Freeは短期）。認証まわりの障害調査は発生当日中に行う。
 - **Before User Created Hookを使わないため、ドメイン外のauth identityが`auth.users`へ残り得る**。定期的にダッシュボードのUsersを確認し、ドメイン外identityを削除する運用とする。恒久対策（CAPTCHA・Authレート制限・必要なら有償プラン/Hook再検討）は**Task 011へ引き継ぐ**。
-- 組込みSMTPは低レートの開発用途向けで、**組織メンバーのアドレス宛にしか配信されず**、**新規Freeプロジェクト（2026-06-03以降作成）ではテンプレート変更も不可**（§3）。多人数での試用が始まる前（Task 010）にカスタムSMTP（Resend等）へ移行する。
+- 組込みSMTPは低レートの開発用途向けで、**組織メンバーのアドレス宛にしか配信されず**、**新規Freeプロジェクト（2026-06-03以降作成）ではテンプレート変更も不可**（§3）。stagingでは2026-08-25にカスタムSMTP（staging専用Gmail）へ移行済み。
+- **Task 010の通知メールもこのSMTPを共有する。** Gmailの個人アカウント上限（500宛先/日）は
+  閉鎖βの規模では足りるが、本番では独自ドメイン+専用プロバイダへの移行が必要。
+  上限に当たると `email_outbox` の `last_error_code` が `rate_limited` で積み上がるため、
+  `email_outbox_health()` の `failed_count` を運用で監視する（Task 017）。
 
 ## 8. ロールバック
 

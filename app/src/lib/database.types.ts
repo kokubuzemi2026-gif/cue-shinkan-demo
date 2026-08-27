@@ -117,6 +117,35 @@ export type Database = {
         }
         Relationships: []
       }
+      student_notification_settings: {
+        Row: {
+          created_at: string
+          mode: Database["public"]["Enums"]["notification_mode"]
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          mode?: Database["public"]["Enums"]["notification_mode"]
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          mode?: Database["public"]["Enums"]["notification_mode"]
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_notification_settings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "student_accounts"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       student_passports: {
         Row: {
           available_days: Database["public"]["Enums"]["day_slot"][]
@@ -185,6 +214,20 @@ export type Database = {
           organization_name: string
         }[]
       }
+      claim_email_batch: {
+        Args: { batch_size: number }
+        Returns: {
+          attempt: number
+          kind: Database["public"]["Enums"]["email_kind"]
+          offer_count: number
+          outbox_id: string
+          recipient_email: string
+        }[]
+      }
+      complete_email: {
+        Args: { error_code?: string; outbox_id: string; succeeded: boolean }
+        Returns: undefined
+      }
       create_invitation: {
         Args: {
           invited_role?: Database["public"]["Enums"]["org_role"]
@@ -199,6 +242,17 @@ export type Database = {
       create_organization: {
         Args: { org_description?: string; org_name: string }
         Returns: string
+      }
+      email_outbox_health: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          cancelled_count: number
+          failed_count: number
+          oldest_pending_at: string
+          oldest_sending_at: string
+          pending_count: number
+          sending_count: number
+        }[]
       }
       is_university_user: { Args: never; Returns: boolean }
       list_invitations: {
@@ -324,6 +378,10 @@ export type Database = {
         Returns: undefined
       }
       revoke_invitation: { Args: { invitation_id: string }; Returns: undefined }
+      save_notification_settings: {
+        Args: { new_mode: Database["public"]["Enums"]["notification_mode"] }
+        Returns: undefined
+      }
       save_student_passport: {
         Args: {
           available_days: Database["public"]["Enums"]["day_slot"][]
@@ -374,6 +432,8 @@ export type Database = {
     Enums: {
       activity_style: "relaxed" | "moderate" | "serious"
       day_slot: "weekday_day" | "weekday_night" | "weekend"
+      email_kind: "offer_arrival" | "daily_digest"
+      email_status: "pending" | "sending" | "sent" | "failed" | "cancelled"
       experience_level: "none" | "some" | "experienced"
       frequency: "monthly_1_2" | "weekly_1" | "weekly_2_plus"
       interest_category:
@@ -385,6 +445,7 @@ export type Database = {
         | "film"
         | "volunteer"
         | "international"
+      notification_mode: "each" | "daily" | "off"
       org_role: "owner" | "admin" | "member"
       org_status: "pending" | "verified" | "suspended"
       purpose: "friends" | "challenge" | "exercise" | "creation"
