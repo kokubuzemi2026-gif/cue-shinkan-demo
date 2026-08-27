@@ -302,7 +302,8 @@ test('2: 団体の完全導線でも、フォーカスと390pxが破綻しない
     const submit = page.getByRole('button', { name: '団体を作成する', exact: true })
     await tabTo(page, submit, '団体を作成するボタン')
     await page.keyboard.press('Enter')
-    await expect(page.getByRole('heading', { name: ORG_NAME })).toBeVisible({ timeout: 20_000 })
+    // 作成直後（審査待ち）はオファー画面が無いので、団体名の見出しへ移る
+    await expectFocusOnHeading(page, ORG_NAME)
   })
 
   await test.step('2-3: 審査待ちの状態が、色だけでなく文字でも示される', async () => {
@@ -322,9 +323,10 @@ test('2: 団体の完全導線でも、フォーカスと390pxが破綻しない
       `select public.admin_set_organization_status('${orgId}', 'verified', 'e2e-016', '検証');`,
     )
     await page.reload()
-    await expect(page.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible({
-      timeout: 20_000,
-    })
+    // 読み込みが終わってダッシュボードが出た時点でフォーカスが移る。
+    // viewだけを依存にしていると、読み込み中の別表示を挟むぶんフォーカスが
+    // bodyへ落ちたままになる（Task 016で修正）
+    await expectFocusOnHeading(page, '団体ダッシュボード')
     await expectNoHorizontalScroll(page, '団体ダッシュボード(390px)')
   })
 

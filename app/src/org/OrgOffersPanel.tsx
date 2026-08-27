@@ -126,11 +126,16 @@ export function OrgOffersPanel({
     }
   }, [client, organizationId, refreshToken, reloadCount])
 
-  // 画面切替のたびにスクロールを先頭へ戻し、見出しへフォーカスを移す
+  // 画面切替のたびにスクロールを先頭へ戻し、見出しへフォーカスを移す。
+  // Task 016: viewだけを依存に置くと、confirm・dashboardのように
+  // **読み込み中は見出しを持たない別の表示**を挟む画面で、
+  // 読み込みが終わって本来の画面が出た瞬間にフォーカスが移らない
+  // （effectが走った時点ではrefがnullで、以後は再実行されないため
+  //   フォーカスはbodyへ落ちたまま）。読み込み状態も依存に含める
   useEffect(() => {
     window.scrollTo(0, 0)
     headingRef.current?.focus({ preventScroll: true })
-  }, [view])
+  }, [view, confirmState.status, campaignState.status])
 
   // 集中モードの通知。ダッシュボード・アンマウントの全経路で必ず解除する
   useEffect(() => {
