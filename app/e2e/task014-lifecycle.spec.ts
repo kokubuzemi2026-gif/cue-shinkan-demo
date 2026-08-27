@@ -22,17 +22,21 @@ const ORG_NAME = `ライフサイクルE2E会-${RUN}`
 
 test.describe.configure({ mode: 'serial' })
 
+// SQLは -c ではなく**標準入力**で渡す。
+// -c "..." だとシェルが二重引用符の中で $$ をPIDへ、$1 を空へ展開してしまい、
+// plpgsqlのDOブロックが壊れる（`do 10036 declare ...`）。
+// stdinなら引用符・ドル記号・バッククォートを気にしなくてよい
 function execSql(sql: string): string {
-  const escaped = sql.replaceAll('"', '\\"')
   try {
-    return execSync(`psql "${DB_URL}" -q -tA -c "${escaped}"`, {
+    return execSync(`psql "${DB_URL}" -v ON_ERROR_STOP=1 -q -tA`, {
       encoding: 'utf-8',
-      stdio: ['ignore', 'pipe', 'pipe'],
+      input: sql,
+      stdio: ['pipe', 'pipe', 'pipe'],
     }).trim()
   } catch {
     return execSync(
-      `docker exec supabase_db_cue-shinkan-demo psql -U postgres -q -tA -c "${escaped}"`,
-      { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] },
+      `docker exec -i supabase_db_cue-shinkan-demo psql -U postgres -v ON_ERROR_STOP=1 -q -tA`,
+      { encoding: 'utf-8', input: sql, stdio: ['pipe', 'pipe', 'pipe'] },
     ).trim()
   }
 }
