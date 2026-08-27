@@ -10,10 +10,18 @@ import { defineConfig } from '@playwright/test'
 // `page.ariaSnapshot()` を撮って `test-results/<test>/error-context.md` へ書き出す。
 // これは trace / video / screenshot の設定とは無関係で、aria snapshotには
 // `input` / `textarea` の**値がそのまま入る**（実際に走らせて確認した:
-// 既定では `- textbox "code" [active]: "123456"` が残り、下記の環境変数を立てると
-// ファイルは作られるがページ内容は一切入らない）。
+// 既定では `- textbox "code" [active] [ref=e2]: "123456"` が残り、下記の環境変数を
+// 立てるとファイルは作られるがページ内容は一切入らない）。
 // OTPコードと一度だけ表示される招待URLが該当するため、明示的に止める。
-process.env.PLAYWRIGHT_NO_COPY_PROMPT ??= '1'
+//
+// 止まらない経路が2つある。どちらもopt-inなので、使うときに気をつける。
+//   1. `toMatchAriaSnapshot` の失敗 — aria yamlが `# Error details` へ埋め込まれ、
+//      CIログにも出る。**OTP・招待URLが出ている画面では使わない**
+//   2. CLIの `--trace on` — 下の `use.trace: 'off'` を上書きし、trace.zipへ入力値が入る
+// `??=` ではなく `||=`。`PLAYWRIGHT_NO_COPY_PROMPT=""` を渡されたとき、
+// `??=` は空文字を上書きしないのに Playwright 側の `if (env)` は偽になり、
+// **保護だけが黙って外れる**（実際に入力値がファイルへ落ちることを確認した）
+process.env.PLAYWRIGHT_NO_COPY_PROMPT ||= '1'
 
 export default defineConfig({
   testDir: './e2e',

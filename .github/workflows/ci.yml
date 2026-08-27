@@ -119,7 +119,10 @@ jobs:
             echo "VITE_SUPABASE_PUBLISHABLE_KEY=$PUB_KEY"
           } >> "$GITHUB_ENV"
       - name: Run Playwright E2E
-        # playwright.config.ts でも立てているが、設定漏れに備えてCI側でも指定する
+        # playwright.config.ts でも立てているが、設定漏れに備えてCI側でも指定する。
+        # ここで明示するとCIではconfig側の代入が発火しないため、
+        # configの1行が消えてもCIは気づけない。その回帰は
+        # src/lib/playwrightConfigGuard.test.ts が検出する
         env:
           PLAYWRIGHT_NO_COPY_PROMPT: '1'
         run: npm run e2e
