@@ -74,4 +74,9 @@ npx supabase db push                                      # app/supabase/migrati
 - コード: PRのrevert（`main`は無傷・Pagesは不変）。
 - ローカルDB: `npm run db:reset`で常に再現。
 - staging DB: 実データ投入前は**プロジェクトの削除・再作成が最も確実**。部分的に戻す場合はmigrationの逆順drop（policy→function→trigger→table→type→schema）を手動適用し、`supabase migration repair`で履歴を整合させる。
+- Task 011のmigrationだけを戻す場合は注意が必要: `preview_offer_audience` / `send_offer` / `list_org_campaigns` を
+  **drop→create で置き換えている**ため、単純なdropでは関数が消えるだけで前の版に戻らない。
+  切り戻しには`20260825054005_0009_offer_rpcs.sql`の該当3関数の定義を再適用したうえで、
+  0011で追加した3テーブル（`student_delivery_quota` / `offer_preview_cache` / `offer_funnel_snapshots`）と
+  ヘルパー関数をdropする。3テーブルはいずれも再生成可能な派生データで、正本（配信・受信者・既読・返答）は失われない。
 - Auth設定: テンプレート・OTP設定を既定へ戻し、テストで作成したauthユーザーを削除する。

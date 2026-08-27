@@ -98,8 +98,39 @@ Phase 1の`src/demo/DemoApp.tsx`（隔離済みデモ）と公開デモ（main�
 - E2E: `app/e2e/task009-server-data.spec.ts`（390×844。登録→パスポート→送信→受信→返答→ファネル→再ログイン→別context→デモ移行→REST/RPC越権プローブ→console error/失敗リクエスト/localStorageキー検査）
 - hosted staging: `docs/runbook_supabase_hosted.md`の手順でmigration適用と実機確認を行い、記録は`tasks/009-server-data-migration.md`へ残す
 
-## 9. Task 010以降へ引き継ぐ事項
+## 9. Task 011で追加した匿名性・並行処理（D036〜D039）
+
+Task 011は既存のテーブルを変更せず、次の3テーブルと関数の置き換えを追加した。
+migrationは`app/supabase/migrations/20260827040000〜20260827040004_0011_*.sql`。
+
+| オブジェクト | スキーマ | 内容 |
+|---|---|---|
+| `student_delivery_quota` | private | 学生1人1行の週間受信枠。`send_offer`がuser_id昇順で`FOR UPDATE`し、団体をまたぐ並行配信を直列化する。判定の正本は`offer_recipients`のローリング集計で、`window_count`は観測用の非正規化値 |
+| `offer_preview_cache` | private | preview結果の24時間固定と条件数制限。保存するのは対象条件のSHA-256 fingerprintと区分だけ |
+| `offer_funnel_snapshots` | private | ファネルの日次snapshot（生の件数）。開示は10-5ルール適用後の値のみ |
+
+置き換えたRPC（戻り値の列が変わるためdrop→create）:
+
+| RPC | 変更 |
+|---|---|
+| `preview_offer_audience` | 生の人数3値 → `audience_band`（6区分）+ 団体自身の枠情報 + preview条件の消費状況。`volatile`（キャッシュ行を書く） |
+| `send_offer` | 戻りが`delivery_id` + `audience_band`（previewで確定した区分）のみ。配信可能5人未満は拒否。週枠を専用テーブルの行ロックで確保。**同一対象条件の24時間以内のpreviewを必須**とし、無ければ`preview_required`（D038） |
+| `list_org_campaigns` | ファネルが`funnel_available` + 抑制済み4値 + `snapshot_date`。`volatile`（当日snapshotを確定する） |
+
+- 週の定義はD021のローリング7日を維持する。`timestamptz`同士＝UTCの絶対時刻で比較し、ローカルtimezoneに依存しない。
+  ただし枠を確保したあとの再判定では**上限を`now()`で閉じない**（並行トランザクションが自分より後の`delivered_at`でcommitし得るため）。
+- ファネルの`snapshot_date`だけはAsia/Tokyoの暦日を使う（利用者が日本在住のため「同じ日」の意味を合わせる）。
+- 対象学生の枠ロックはuser_id昇順の逐次取得で、団体をまたぐ並行送信でもデッドロックしない。
+  ロック回数は対象学生数に比例するため、母集団が非常に大きい場合は送信のレイテンシが伸びる（閉鎖βの規模では問題にならない。将来の課題として記録する）。
+- 送信は「対象を確認してから送る」導線（product_spec.md §7 団体 4→5）の後段であり、
+  24時間以内の同一対象条件のpreviewを必須にする。これは導線の明文化であると同時に、
+  送信経路が差分攻撃の観測窓にならないようにするための制約でもある（D038）。
+- 送信が返す区分は、送信時点で数え直した人数ではなく**previewで確定した区分**。
+  同一条件の結果を24時間固定する規則を送信の応答でも守る。
+
+## 10. Task 010以降へ引き継ぐ事項
 
 - オファー到着時のメール通知（D026⑥）はTask 010。`offer_recipients`への挿入が通知のトリガー点になる。
-- 通報の受付・処理フロー、招待・送信のレート制限、ドメイン外identity掃除の恒久化はTask 011（学生UIの通報ボタンは受付窓口が未開設である旨を明示している）。
-- 招待承諾以外のメンバー管理（削除・role変更）は未実装のまま（008から変更なし）。
+- 通報の受付・処理フロー、団体の確認・停止・kill switch、招待のレート制限、ドメイン外identity掃除の恒久化はTask 013
+  （学生UIの通報ボタンは受付窓口が未開設である旨を明示している）。
+- 招待承諾以外のメンバー管理（削除・role変更）と、アカウント・データ削除はTask 014。

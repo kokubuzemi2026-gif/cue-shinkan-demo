@@ -1,35 +1,41 @@
 import type { OfferDraft } from '../features/club/offerComposer'
-import type { FunnelCounts } from '../features/club/funnel'
+import type { AudienceBand } from '../features/club/audienceBand'
+import { parseAudienceBand } from '../features/club/audienceBand'
+import type { DisclosedFunnel } from '../features/club/funnelDisclosure'
 import type { ClubOffer } from '../domain/types'
 import type { Database } from '../lib/database.types'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
 
 // 団体側オファーのサーバー入出力。
-// 送信・プレビューはSECURITY DEFINER RPCで、返るのは匿名件数のみ（D007/D029）。
-// 受信者一覧・学生IDはクライアントへ一切届かない
+// 送信・プレビューはSECURITY DEFINER RPCで、返るのは匿名の区分のみ（D007/D029/D036）。
+// 受信者一覧・学生ID・生の対象人数はクライアントへ一切届かない。
+// この層に人数を復元する変換を置かない（区分・抑制済みの値をそのまま運ぶ）
 
 export type AudiencePreview = {
-  matchedCount: number
-  limitedCount: number
-  deliverableCount: number
+  // 正確な人数ではなく6区分。生の人数はクライアント状態に存在しない（D036）
+  audienceBand: AudienceBand
   duplicateEvent: boolean
+  // 団体自身の枠情報（学生の情報ではないため正確な値）
   sentThisWeek: number
   weeklyLimit: number
+  previewConditionsUsed: number
+  previewConditionsLimit: number
+  // 同一条件は24時間固定。いつ算出された区分かを団体へ示す（D038）
+  bandComputedAt: string
 }
 
 export type SendOfferResult = {
   deliveryId: string
-  matchedCount: number
-  limitedCount: number
-  deliverableCount: number
+  audienceBand: AudienceBand
 }
 
-// ダッシュボード1行分。オファーsnapshot・匿名ファネル・配信時刻（週枠表示用）のみ
+// ダッシュボード1行分。オファーsnapshot・抑制済みファネル・配信時刻（週枠表示用）のみ
 export type ServerCampaign = {
   deliveryId: string
   deliveredAt: string
   offer: ClubOffer
-  funnel: FunnelCounts
+  funnel: DisclosedFunnel
+  snapshotDate: string
 }
 
 type OfferRpcArgs = Database['public']['Functions']['send_offer']['Args']
@@ -103,13 +109,23 @@ export function campaignRowToView(organizationId: string, row: CampaignRow): Ser
       capacity: row.capacity,
       deadline: row.deadline,
     },
+    // 抑制されたセルはサーバーがNULLを返す。0へ潰さずnullのまま運ぶ（D037）
     funnel: {
-      delivered: row.delivered_count,
-      viewed: row.viewed_count,
-      engaged: row.engaged_count,
-      planned: row.planned_count,
+      available: row.funnel_available,
+      rounded: true,
+      delivered: nullableCount(row.delivered_count),
+      viewed: nullableCount(row.viewed_count),
+      engaged: nullableCount(row.engaged_count),
+      planned: nullableCount(row.planned_count),
     },
+    snapshotDate: row.snapshot_date,
   }
+}
+
+// 生成型はreturns tableの列をnon-nullとして出力するが、抑制されたセルは実際にはNULLで届く。
+// 0と区別できないと「抑制」を「0人」と誤表示するため、ここでnullへ正規化する
+function nullableCount(value: number | null | undefined): number | null {
+  return typeof value === 'number' ? value : null
 }
 
 export async function previewOfferAudience(
@@ -125,12 +141,13 @@ export async function previewOfferAudience(
   const row = data?.[0]
   if (row === undefined) throw new Error('empty_rpc_result')
   return {
-    matchedCount: row.matched_count,
-    limitedCount: row.limited_count,
-    deliverableCount: row.deliverable_count,
+    audienceBand: parseAudienceBand(row.audience_band),
     duplicateEvent: row.duplicate_event,
     sentThisWeek: row.sent_this_week,
     weeklyLimit: row.weekly_limit,
+    previewConditionsUsed: row.preview_conditions_used,
+    previewConditionsLimit: row.preview_conditions_limit,
+    bandComputedAt: row.band_computed_at,
   }
 }
 
@@ -145,9 +162,7 @@ export async function sendOffer(
   if (row === undefined) throw new Error('empty_rpc_result')
   return {
     deliveryId: row.delivery_id,
-    matchedCount: row.matched_count,
-    limitedCount: row.limited_count,
-    deliverableCount: row.deliverable_count,
+    audienceBand: parseAudienceBand(row.audience_band),
   }
 }
 

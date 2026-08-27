@@ -12,19 +12,34 @@ insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) v
   ('00000000-0000-0000-0000-000000000a02', 'demo-send-pending@stu.kobe-u.ac.jp', now(), now(), now()),
   ('00000000-0000-0000-0000-000000000a03', 'demo-send-outsider@stu.kobe-u.ac.jp', now(), now(), now()),
   ('00000000-0000-0000-0000-000000000a04', 'demo-send-member@stu.kobe-u.ac.jp', now(), now(), now()),
-  ('00000000-0000-0000-0000-000000000a05', 'demo-send-student@stu.kobe-u.ac.jp', now(), now(), now());
+  ('00000000-0000-0000-0000-000000000a05', 'demo-send-student@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('00000000-0000-0000-0000-000000000a06', 'demo-send-student2@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('00000000-0000-0000-0000-000000000a07', 'demo-send-student3@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('00000000-0000-0000-0000-000000000a08', 'demo-send-student4@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('00000000-0000-0000-0000-000000000a09', 'demo-send-student5@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('00000000-0000-0000-0000-000000000a10', 'demo-send-student6@stu.kobe-u.ac.jp', now(), now(), now());
 
--- 学生（週上限3・アウトドア受信）
-insert into public.student_accounts (user_id) values ('00000000-0000-0000-0000-000000000a05');
+-- 学生6人（週上限3・アウトドア受信）。
+-- Task 011で配信可能人数の下限が5人になったため、送信が成立する条件を満たす人数を置く（D036）
+insert into public.student_accounts (user_id)
+select u.id from (values
+  ('00000000-0000-0000-0000-000000000a05'::uuid), ('00000000-0000-0000-0000-000000000a06'::uuid),
+  ('00000000-0000-0000-0000-000000000a07'::uuid), ('00000000-0000-0000-0000-000000000a08'::uuid),
+  ('00000000-0000-0000-0000-000000000a09'::uuid), ('00000000-0000-0000-0000-000000000a10'::uuid)
+) as u(id);
 insert into public.student_passports (
   user_id, interests, purposes, style, frequency, available_days, experience,
   max_fee_per_event_yen, reception_paused, reception_categories, reception_weekly_limit
-) values (
-  '00000000-0000-0000-0000-000000000a05',
+)
+select u.id,
   array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
   'moderate', 'monthly_1_2', array['weekend']::public.day_slot[], 'none',
   2000, false, array['outdoor']::public.interest_category[], 3
-);
+from (values
+  ('00000000-0000-0000-0000-000000000a05'::uuid), ('00000000-0000-0000-0000-000000000a06'::uuid),
+  ('00000000-0000-0000-0000-000000000a07'::uuid), ('00000000-0000-0000-0000-000000000a08'::uuid),
+  ('00000000-0000-0000-0000-000000000a09'::uuid), ('00000000-0000-0000-0000-000000000a10'::uuid)
+) as u(id);
 
 -- a01の団体（verified化）・a02の団体（pendingのまま）
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000a01","role":"authenticated"}', true);
@@ -41,15 +56,23 @@ insert into public.organization_memberships (organization_id, user_id, role, mem
 select id, '00000000-0000-0000-0000-000000000a04', 'member', '担当者-SENDM1' from org1;
 
 -- 送信引数を組み立てる補助（イベント名・日時・場所だけ差し替える）
+-- Task 011: 送信は24時間以内の同一条件previewを必須とするため、送信前にpreviewを通す
 create function pg_temp.try_send(org uuid, ev text, dt text, pl text)
-returns table (delivery_id uuid, matched_count integer, limited_count integer, deliverable_count integer)
-language sql
+returns table (delivery_id uuid, audience_band text)
+language plpgsql
 as $$
-  select * from public.send_offer(
+begin
+  perform public.preview_offer_audience(
     org, ev, '説明文', '届けたい理由', dt, pl,
     array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
     array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
-    10, '2026-09-10')
+    10, '2026-09-10');
+  return query select * from public.send_offer(
+    org, ev, '説明文', '届けたい理由', dt, pl,
+    array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+    array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
+    10, '2026-09-10');
+end
 $$;
 
 -- ---- 権限外の送信 ----
@@ -102,20 +125,20 @@ reset role;
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000a01","role":"authenticated"}', true);
 set local role authenticated;
 select is(
-  (select (s.matched_count, s.limited_count, s.deliverable_count)::text
+  (select s.audience_band
      from public.preview_offer_audience(
        (select id from org1), '六甲山ハイク', '説明文', '理由', '9月13日（土）', '六甲ケーブル下',
        array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
        array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
        10, '2026-09-10') s),
-  '(1,0,1)',
-  'T4: プレビューは匿名件数のみ（1人マッチ・制限0・配信可1）'
+  '5-9',
+  'T4: プレビューは区分のみを返す（6人マッチ → 5-9・D036）'
 );
 select is(
-  (select (s.matched_count, s.limited_count, s.deliverable_count)::text
+  (select s.audience_band
      from pg_temp.try_send((select id from org1), '六甲山ハイク', '9月13日（土）', '六甲ケーブル下') s),
-  '(1,0,1)',
-  'T4: 1通目の送信が成立する'
+  '5-9',
+  'T4: 1通目の送信が成立する（戻りは区分のみ）'
 );
 select throws_ok(
   $$select * from pg_temp.try_send((select id from org1), '六甲山　ハイク', '9月13日 （土）', '六甲ケーブル下 ')$$,
@@ -164,7 +187,7 @@ set local role authenticated;
 select throws_ok(
   $$select * from pg_temp.try_send((select id from org3), '別団体のハイク', '9月27日（日）', '再度公園')$$,
   'P0001', 'no_recipients',
-  'T4: 週上限（学生3件）到達で配信0人の送信は保存されない'
+  'T4: 週上限（学生3件・6人全員）到達で配信0人の送信は保存されない'
 );
 reset role;
 select is(

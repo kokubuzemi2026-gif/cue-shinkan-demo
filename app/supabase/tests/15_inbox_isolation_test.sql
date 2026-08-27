@@ -10,12 +10,23 @@ select plan(17);
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('00000000-0000-0000-0000-000000000b01', 'demo-inbox-owner@stu.kobe-u.ac.jp', now(), now(), now()),
   ('00000000-0000-0000-0000-000000000b02', 'demo-inbox-a@stu.kobe-u.ac.jp', now(), now(), now()),
-  ('00000000-0000-0000-0000-000000000b03', 'demo-inbox-b@stu.kobe-u.ac.jp', now(), now(), now());
+  ('00000000-0000-0000-0000-000000000b03', 'demo-inbox-b@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('00000000-0000-0000-0000-000000000b04', 'demo-inbox-c@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('00000000-0000-0000-0000-000000000b05', 'demo-inbox-d@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('00000000-0000-0000-0000-000000000b06', 'demo-inbox-e@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('00000000-0000-0000-0000-000000000b07', 'demo-inbox-f@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('00000000-0000-0000-0000-000000000b08', 'demo-inbox-g@stu.kobe-u.ac.jp', now(), now(), now());
 
--- 学生2人: b02はアウトドア受信・b03は音楽のみ受信（オファー対象外）
+-- 学生: b02とb04〜b08はアウトドア受信（計6人＝Task 011の最小5人を満たす・D036）、
+-- b03は音楽のみ受信（オファー対象外）
 insert into public.student_accounts (user_id) values
   ('00000000-0000-0000-0000-000000000b02'),
-  ('00000000-0000-0000-0000-000000000b03');
+  ('00000000-0000-0000-0000-000000000b03'),
+  ('00000000-0000-0000-0000-000000000b04'),
+  ('00000000-0000-0000-0000-000000000b05'),
+  ('00000000-0000-0000-0000-000000000b06'),
+  ('00000000-0000-0000-0000-000000000b07'),
+  ('00000000-0000-0000-0000-000000000b08');
 insert into public.student_passports (
   user_id, interests, purposes, style, frequency, available_days, experience,
   max_fee_per_event_yen, reception_paused, reception_categories, reception_weekly_limit
@@ -28,6 +39,19 @@ insert into public.student_passports (
    array['music']::public.interest_category[], array['creation']::public.purpose[],
    'relaxed', 'weekly_1', array['weekday_night']::public.day_slot[], 'some',
    1000, false, array['music']::public.interest_category[], 3);
+insert into public.student_passports (
+  user_id, interests, purposes, style, frequency, available_days, experience,
+  max_fee_per_event_yen, reception_paused, reception_categories, reception_weekly_limit
+)
+select u.id,
+  array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
+  'moderate', 'monthly_1_2', array['weekend']::public.day_slot[], 'none',
+  2000, false, array['outdoor']::public.interest_category[], 3
+from (values
+  ('00000000-0000-0000-0000-000000000b04'::uuid), ('00000000-0000-0000-0000-000000000b05'::uuid),
+  ('00000000-0000-0000-0000-000000000b06'::uuid), ('00000000-0000-0000-0000-000000000b07'::uuid),
+  ('00000000-0000-0000-0000-000000000b08'::uuid)
+) as u(id);
 
 -- b01の団体（verified・公式窓口つき）から送信
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000b01","role":"authenticated"}', true);
@@ -39,6 +63,12 @@ update public.organizations
  where id = (select id from borg);
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000b01","role":"authenticated"}', true);
 set local role authenticated;
+-- Task 011: 送信前に同一条件のpreviewを通す（24時間以内のpreviewが必須）
+select public.preview_offer_audience(
+    (select id from borg), 'はじめての六甲山ハイク', '説明文', '理由', '9月13日（土）9:00', '六甲ケーブル下',
+    array['weekend']::public.day_slot[], 'monthly_1_2', 1500, true, 'moderate',
+    array['outdoor']::public.interest_category[], array['friends','challenge']::public.purpose[],
+    12, '2026-09-11');
 create temp table bdelivery as
   select s.delivery_id as id from public.send_offer(
     (select id from borg), 'はじめての六甲山ハイク', '説明文', '理由', '9月13日（土）9:00', '六甲ケーブル下',

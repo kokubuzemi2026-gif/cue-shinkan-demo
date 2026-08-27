@@ -259,10 +259,12 @@ export type Database = {
           event_name: string
           fee_per_event_yen: number
           frequency: Database["public"]["Enums"]["frequency"]
+          funnel_available: boolean
           intensity: Database["public"]["Enums"]["activity_style"]
           place: string
           planned_count: number
           reason_note: string
+          snapshot_date: string
           target_categories: Database["public"]["Enums"]["interest_category"][]
           target_purposes: Database["public"]["Enums"]["purpose"][]
           viewed_count: number
@@ -305,10 +307,11 @@ export type Database = {
           target_purposes: Database["public"]["Enums"]["purpose"][]
         }
         Returns: {
-          deliverable_count: number
+          audience_band: string
+          band_computed_at: string
           duplicate_event: boolean
-          limited_count: number
-          matched_count: number
+          preview_conditions_limit: number
+          preview_conditions_used: number
           sent_this_week: number
           weekly_limit: number
         }[]
@@ -355,10 +358,8 @@ export type Database = {
           target_purposes: Database["public"]["Enums"]["purpose"][]
         }
         Returns: {
-          deliverable_count: number
+          audience_band: string
           delivery_id: string
-          limited_count: number
-          matched_count: number
         }[]
       }
       update_organization_contact: {

@@ -14,7 +14,8 @@
     "db:reset": "supabase db reset",
     "db:test": "supabase test db",
     "db:types": "supabase gen types typescript --local > src/lib/database.types.ts",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "db:test:concurrency": "bash scripts/concurrency_test.sh"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

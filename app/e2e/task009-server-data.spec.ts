@@ -27,19 +27,43 @@ const EVENT_NAME = `E2Eハイク-${RUN}`
 test.describe.configure({ mode: 'serial' })
 
 // ---- 運営相当のSQL実行（psql→supabase dbコンテナの順で試す） ----
+// psqlの `-q` はコマンドタグ（"UPDATE 1"）の出力を抑止する。
+// 付けないと `update ... returning id` の戻り値に改行とタグが混ざる
 function execSql(sql: string): string {
   const escaped = sql.replaceAll('"', '\\"')
   try {
-    return execSync(`psql "${DB_URL}" -tA -c "${escaped}"`, {
+    return execSync(`psql "${DB_URL}" -q -tA -c "${escaped}"`, {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim()
   } catch {
     return execSync(
-      `docker exec supabase_db_cue-shinkan-demo psql -U postgres -tA -c "${escaped}"`,
+      `docker exec supabase_db_cue-shinkan-demo psql -U postgres -q -tA -c "${escaped}"`,
       { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'pipe'] },
     ).trim()
   }
+}
+
+// ---- 合成学生プールの投入（実在しない架空アドレスのみ） ----
+// Task 011で配信の最小人数が5人・ファネルの開示条件が配信10人以上になったため、
+// 主役の学生Aに加えて、同条件でマッチする合成学生をSQLで用意する。
+// 認証を通さずauth.users行を作るのは運営相当のSQL操作で、クライアント経路には存在しない。
+function seedStudentPool(tag: string, count: number, category: string) {
+  execSql(
+    `with created as (` +
+      `insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) ` +
+      `select gen_random_uuid(), 'demo-pool-${tag}-' || n || '@stu.kobe-u.ac.jp', now(), now(), now() ` +
+      `from generate_series(1, ${count}) as n returning id` +
+    `), acct as (` +
+      `insert into public.student_accounts (user_id) select id from created returning user_id` +
+    `) insert into public.student_passports (` +
+      `user_id, interests, purposes, style, frequency, available_days, experience, ` +
+      `max_fee_per_event_yen, reception_paused, reception_categories, reception_weekly_limit) ` +
+      `select user_id, array['${category}']::public.interest_category[], ` +
+      `array['friends','challenge']::public.purpose[], 'moderate', 'monthly_1_2', ` +
+      `array['weekend']::public.day_slot[], 'none', 2000, false, ` +
+      `array['${category}']::public.interest_category[], 5 from acct`,
+  )
 }
 
 // ---- ブラウザへ公開してよい2値（RLS越権プローブ用）。CIは環境変数、ローカルは.env.local ----
@@ -216,6 +240,8 @@ test('Task 009: パスポート・オファー・受信箱・ファネルのサ�
         `update public.organizations set status='verified' where name='${ORG_NAME}' returning id`,
       )
       expect(orgId.length > 0).toBe(true)
+      // 学生A + 合成13人 = 14人。Task 011の最小5人とファネル開示条件（10人以上）を満たす
+      seedStudentPool(RUN, 13, 'outdoor')
       await pageB.reload()
       await expect(pageB.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible({
         timeout: 15_000,
@@ -236,7 +262,7 @@ test('Task 009: パスポート・オファー・受信箱・ファネルのサ�
       ).toBeVisible()
     })
 
-    await test.step('7: オファー作成→プレビュー（匿名1人）→送信', async () => {
+    await test.step('7: オファー作成→プレビュー（区分表示）→送信', async () => {
       await pageB.getByRole('button', { name: '新しいオファーを作成' }).click()
       await pageB.getByLabel('イベント名').fill(EVENT_NAME)
       await pageB.getByLabel('イベント紹介').fill('はじめてでも登れる六甲山ハイクです。道具の貸出があります。')
@@ -253,20 +279,22 @@ test('Task 009: パスポート・オファー・受信箱・ファネルのサ�
       await expect(pageB.getByRole('heading', { name: '送信内容の確認' })).toBeVisible({
         timeout: 15_000,
       })
-      // マッチ人数はサーバー計算の実数（学生Aの1人）。学生の個人情報は表示されない
-      await expect(pageB.locator('.audience-count-number')).toHaveText('1人')
+      // Task 011以降、対象規模は正確な人数ではなく区分で表示される（D036）。
+      // 学生Aを含む14人がマッチするため区分は 10〜24人
+      await expect(pageB.locator('.audience-count-number')).toHaveText('10〜24人')
       await expect(pageB.getByText('個人が特定できる情報は表示されません。')).toBeVisible()
       await expectNoHorizontalScroll(pageB, '送信確認(390px)')
       await pageB.getByRole('button', { name: 'この内容で送信' }).click()
-      await expect(pageB.getByRole('heading', { name: '1人へ配信しました' })).toBeVisible({
-        timeout: 15_000,
-      })
+      await expect(
+        pageB.getByRole('heading', { name: '10〜24人の新入生へ配信しました' }),
+      ).toBeVisible({ timeout: 15_000 })
       await pageB.getByRole('button', { name: 'ダッシュボードへもどる' }).click()
       await expect(pageB.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible()
       await expect(pageB.getByText('1/3')).toBeVisible()
       await expect(pageB.locator('.campaign-card')).toHaveCount(1)
+      // 10-5ルール（D037）: 配信14→15へ丸め、閲覧・関心・参加意向は10人未満のため抑制
       const funnelBefore = await pageB.locator('.funnel-value').allInnerTexts()
-      expect(funnelBefore).toEqual(['1', '0', '0', '0'])
+      expect(funnelBefore).toEqual(['15', '—', '—', '—'])
     })
 
     let deliveryUrlChecked = false
@@ -306,9 +334,32 @@ test('Task 009: パスポート・オファー・受信箱・ファネルのサ�
       await expect(pageB.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible({
         timeout: 15_000,
       })
+      // 同じ日のsnapshotは動かない（D037）。学生Aが返答してもファネルは変わらない
+      const sameDay = await pageB.locator('.funnel-value').allInnerTexts()
+      expect(sameDay).toEqual(['15', '—', '—', '—'])
+
+      // 翌日相当: 合成学生11人の返答を運営相当のSQLで入れ、当日snapshotを消して再集計する
+      execSql(
+        `insert into private.offer_responses (delivery_id, user_id, choice) ` +
+          `select r.delivery_id, r.user_id, 'interested'::public.response_choice ` +
+          `from private.offer_recipients r ` +
+          `join private.offer_deliveries d on d.id = r.delivery_id ` +
+          `where d.organization_id = '${orgId}' ` +
+          `and not exists (select 1 from private.offer_responses x ` +
+          `where x.delivery_id = r.delivery_id and x.user_id = r.user_id) limit 11 ` +
+          `on conflict (delivery_id, user_id) do nothing`,
+      )
+      execSql(
+        `delete from private.offer_funnel_snapshots s using private.offer_deliveries d ` +
+          `where d.id = s.delivery_id and d.organization_id = '${orgId}'`,
+      )
+      await pageB.reload()
+      await expect(pageB.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible({
+        timeout: 15_000,
+      })
       const funnel = await pageB.locator('.funnel-value').allInnerTexts()
-      // 配信1・閲覧1・関心1・参加意向1（D022）
-      expect(funnel).toEqual(['1', '1', '1', '1'])
+      // 配信14→15 / 閲覧12→10 / 関心12→10 / 参加意向12→10（5人単位の丸め・D037）
+      expect(funnel).toEqual(['15', '10', '10', '10'])
       // 学生の個人情報・一覧は現れない
       const dashboardText = await pageB.locator('.app-main').innerText()
       expect(dashboardText.includes('@stu.kobe-u.ac.jp')).toBe(false)

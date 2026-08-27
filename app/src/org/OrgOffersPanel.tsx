@@ -8,6 +8,8 @@ import { isWithinWeeklyWindow } from '../domain/delivery'
 import { ClubDashboard } from '../features/club/ClubDashboard'
 import { OfferComposer } from '../features/club/OfferComposer'
 import { SendConfirm } from '../features/club/SendConfirm'
+import type { AudienceBand } from '../features/club/audienceBand'
+import { AUDIENCE_BAND_NOTE, audienceBandLabel } from '../features/club/audienceBand'
 import { validateOfferDraft, type OfferDraft } from '../features/club/offerComposer'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
 import { serverErrorMessage } from '../serverdata/apiText'
@@ -87,7 +89,7 @@ export function OrgOffersPanel({
   const [composeErrors, setComposeErrors] = useState<string[]>([])
   const [confirmState, setConfirmState] = useState<ConfirmState>({ status: 'loading' })
   const [commitNotice, setCommitNotice] = useState<string | null>(null)
-  const [doneCount, setDoneCount] = useState(0)
+  const [doneBand, setDoneBand] = useState<AudienceBand>('0')
   const [reloadCount, setReloadCount] = useState(0)
   const sendingRef = useRef(false)
   const headingRef = useRef<HTMLHeadingElement>(null)
@@ -170,7 +172,7 @@ export function OrgOffersPanel({
     void (async () => {
       try {
         const result = await sendOffer(client, organizationId, draft)
-        setDoneCount(result.deliverableCount)
+        setDoneBand(result.audienceBand)
         setView('done')
         setReloadCount((count) => count + 1)
       } catch (error) {
@@ -224,11 +226,10 @@ export function OrgOffersPanel({
     return (
       <SendConfirm
         offer={draftToClubOffer(organizationId, draft)}
-        summary={{
-          matchedCount: confirmState.preview.matchedCount,
-          limitedCount: confirmState.preview.limitedCount,
-          deliverableCount: confirmState.preview.deliverableCount,
-        }}
+        band={confirmState.preview.audienceBand}
+        previewConditionsUsed={confirmState.preview.previewConditionsUsed}
+        previewConditionsLimit={confirmState.preview.previewConditionsLimit}
+        bandComputedAt={confirmState.preview.bandComputedAt}
         sentThisWeek={confirmState.preview.sentThisWeek}
         weeklyLimit={confirmState.preview.weeklyLimit}
         duplicate={confirmState.preview.duplicateEvent}
@@ -247,11 +248,12 @@ export function OrgOffersPanel({
           ✓
         </span>
         <h1 className="page-title" tabIndex={-1} ref={headingRef}>
-          {doneCount}人へ配信しました
+          {audienceBandLabel(doneBand)}の新入生へ配信しました
         </h1>
         <p className="done-body">
           条件に合い、今週の受信上限に達していない新入生にだけ届いています。学生が返答すると、ダッシュボードの数字が更新されます。
         </p>
+        <p className="done-body">{AUDIENCE_BAND_NOTE}</p>
         <button
           type="button"
           className="button button-primary done-cta"
@@ -307,6 +309,7 @@ export function OrgOffersPanel({
       campaigns={campaignState.campaigns.map((campaign) => ({
         offer: campaign.offer,
         funnel: campaign.funnel,
+        snapshotDate: campaign.snapshotDate,
       }))}
       sentThisWeek={sentThisWeek}
       weeklyLimit={CLUB_WEEKLY_CAMPAIGN_LIMIT}

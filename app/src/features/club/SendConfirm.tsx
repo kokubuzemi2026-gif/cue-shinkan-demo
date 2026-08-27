@@ -7,13 +7,19 @@ import {
   PURPOSE_LABELS,
 } from '../../domain/types'
 import type { AudienceSummary } from './delivery'
+import type { AudienceBand } from './audienceBand'
+import {
+  AUDIENCE_BAND_NOTE,
+  audienceBandBlockReason,
+  audienceBandLabel,
+  canDeliverBand,
+} from './audienceBand'
 import { formatDeadlineLabel, formatEventFeeText } from './offerComposer'
 
-type SendConfirmProps = {
-  // オファー内容（団体自身のキャンペーン）と匿名の人数3値だけを受け取る。
+type SendConfirmBaseProps = {
+  // オファー内容（団体自身のキャンペーン）だけを受け取る。
   // 受信者snapshot・studentId・学生の設定はprops型に存在しない（D007/D024）
   offer: ClubOffer
-  summary: AudienceSummary
   sentThisWeek: number
   weeklyLimit: number
   duplicate: boolean
@@ -23,10 +29,45 @@ type SendConfirmProps = {
   headingRef: RefObject<HTMLHeadingElement | null>
 }
 
-// 送信確認（集中モード）。主役は「N人の新入生とマッチしています」の実計算値
+// 対象規模の渡し方は2通り。どちらか一方だけを指定する
+// - summary: Phase 1デモ（localStorageの架空データ）の実数
+// - band: 認証済みのサーバー経路。正確な人数は返らず区分だけが届く（D036）
+type SendConfirmProps = SendConfirmBaseProps &
+  (
+    | {
+        summary: AudienceSummary
+        band?: never
+        previewConditionsUsed?: never
+        previewConditionsLimit?: never
+        bandComputedAt?: never
+      }
+    | {
+        band: AudienceBand
+        summary?: never
+        // 24時間あたりの条件数の消費状況。予告なく上限に当たらないよう団体へ見せる
+        previewConditionsUsed: number
+        previewConditionsLimit: number
+        // 区分がいつ確定した値か（同一条件は24時間固定・D038）
+        bandComputedAt: string
+      }
+  )
+
+// 区分が確定した時刻を「H:MM」で表す。日付や秒は確認画面には要らない
+function formatBandComputedAt(iso: string | undefined): string {
+  if (iso === undefined) return ''
+  const parsed = new Date(iso)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return `${parsed.getHours()}:${String(parsed.getMinutes()).padStart(2, '0')}`
+}
+
+// 送信確認（集中モード）。主役は対象規模（デモは実数・サーバーは区分）
 export function SendConfirm({
   offer,
   summary,
+  band,
+  previewConditionsUsed,
+  previewConditionsLimit,
+  bandComputedAt,
   sentThisWeek,
   weeklyLimit,
   duplicate,
@@ -36,17 +77,22 @@ export function SendConfirm({
   headingRef,
 }: SendConfirmProps) {
   const quotaFull = sentThisWeek >= weeklyLimit
-  // 送信できない理由（優先順: 再送禁止 → 週枠 → 配信0人）
-  const blockingMessage = duplicate
-    ? '同じイベントはすでに配信済みのため、再送できません'
-    : quotaFull
-      ? `今週の作成上限（${weeklyLimit}件）に達しているため送信できません`
-      : summary.deliverableCount === 0
+  // 対象規模の理由（実数経路と区分経路で判定元が異なる）
+  const audienceBlock =
+    band === undefined
+      ? summary.deliverableCount === 0
         ? summary.matchedCount === 0
           ? '現在の条件に合う新入生がいないため送信できません'
           : '対象の新入生は全員が今週の受信上限に達しているため送信できません'
         : null
-  const canSend = blockingMessage === null
+      : audienceBandBlockReason(band)
+  // 送信できない理由（優先順: 再送禁止 → 週枠 → 対象規模）
+  const blockingMessage = duplicate
+    ? '同じイベントはすでに配信済みのため、再送できません'
+    : quotaFull
+      ? `今週の作成上限（${weeklyLimit}件）に達しているため送信できません`
+      : audienceBlock
+  const canSend = blockingMessage === null && (band === undefined || canDeliverBand(band))
 
   return (
     <div className="club-flow">
@@ -55,20 +101,41 @@ export function SendConfirm({
       </h1>
 
       <section className="audience-hero" aria-label="マッチ人数">
-        <p className="audience-count">
-          <strong className="audience-count-number">{summary.matchedCount}人</strong>
-          の新入生とマッチしています
-        </p>
-        {summary.limitedCount > 0 && (
-          // 「10」と「人」の泣き別れを防ぐため、人数と単位はnowrapで束ね、
-          // 折り返しは矢印の位置でだけ起きるようにする
-          <p className="audience-breakdown">
-            <span className="audience-nowrap">
-              うち受信上限に達している学生 {summary.limitedCount}人
-            </span>{' '}
-            →{' '}
-            <span className="audience-nowrap">今回の配信 {summary.deliverableCount}人</span>
-          </p>
+        {band === undefined ? (
+          <>
+            <p className="audience-count">
+              <strong className="audience-count-number">{summary.matchedCount}人</strong>
+              の新入生とマッチしています
+            </p>
+            {summary.limitedCount > 0 && (
+              // 「10」と「人」の泣き別れを防ぐため、人数と単位はnowrapで束ね、
+              // 折り返しは矢印の位置でだけ起きるようにする
+              <p className="audience-breakdown">
+                <span className="audience-nowrap">
+                  うち受信上限に達している学生 {summary.limitedCount}人
+                </span>{' '}
+                →{' '}
+                <span className="audience-nowrap">今回の配信 {summary.deliverableCount}人</span>
+              </p>
+            )}
+          </>
+        ) : (
+          <>
+            <p className="audience-count">
+              <strong className="audience-count-number audience-count-band">
+                {audienceBandLabel(band)}
+              </strong>
+              <span className="audience-band-suffix">の新入生へ届きます</span>
+            </p>
+            <p className="audience-breakdown">{AUDIENCE_BAND_NOTE}</p>
+            <p className="audience-quota">
+              {formatBandComputedAt(bandComputedAt)}時点の区分です（同じ条件は24時間このまま）
+            </p>
+            <p className="audience-quota">
+              対象条件の確認 {previewConditionsUsed}/{previewConditionsLimit}
+              （24時間あたり・同じ条件の再確認は数えません）
+            </p>
+          </>
         )}
         {canSend && (
           <p className="audience-quota">

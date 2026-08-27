@@ -2,6 +2,15 @@ import type { RefObject } from 'react'
 
 import type { Club } from '../../domain/types'
 import type { CampaignView } from './funnel'
+import {
+  FUNNEL_NOTE,
+  FUNNEL_UNAVAILABLE_TEXT,
+  funnelCellAriaLabel,
+  funnelCellText,
+  formatSnapshotDate,
+  isDisclosedFunnel,
+  toDisclosedFunnel,
+} from './funnelDisclosure'
 
 type ClubDashboardProps = {
   club: Club
@@ -86,24 +95,46 @@ export function ClubDashboard({
           <p className="club-empty-note">配信済みのキャンペーンはまだありません。</p>
         ) : (
           <ul className="campaign-list">
-            {campaigns.map((campaign) => (
-              <li key={campaign.offer.id} className="campaign-card">
-                <div className="campaign-head">
-                  <span className="campaign-name">{campaign.offer.eventName}</span>
-                  <span className="campaign-status-chip">配信済み</span>
-                </div>
-                <p className="campaign-date">{campaign.offer.dateText}</p>
-                <dl className="campaign-funnel">
-                  {FUNNEL_LABELS.map((metric) => (
-                    <div key={metric.key} className="funnel-item">
-                      <dt className="funnel-label">{metric.label}</dt>
-                      <dd className="funnel-value">{campaign.funnel[metric.key]}</dd>
-                    </div>
-                  ))}
-                </dl>
-              </li>
-            ))}
+            {campaigns.map((campaign) => {
+              const funnel = toDisclosedFunnel(campaign.funnel)
+              return (
+                <li key={campaign.offer.id} className="campaign-card">
+                  <div className="campaign-head">
+                    <span className="campaign-name">{campaign.offer.eventName}</span>
+                    <span className="campaign-status-chip">配信済み</span>
+                  </div>
+                  <p className="campaign-date">{campaign.offer.dateText}</p>
+                  <dl className="campaign-funnel">
+                    {FUNNEL_LABELS.map((metric) => (
+                      <div key={metric.key} className="funnel-item">
+                        <dt className="funnel-label">{metric.label}</dt>
+                        {/* 抑制されたセルは「—」。0人と読み違えないよう読み上げ文も別に持つ */}
+                        <dd
+                          className="funnel-value"
+                          aria-label={funnelCellAriaLabel(funnel, metric.key)}
+                        >
+                          {funnelCellText(funnel, metric.key)}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                  {!funnel.available && (
+                    <p className="campaign-funnel-note">{FUNNEL_UNAVAILABLE_TEXT}</p>
+                  )}
+                  {campaign.snapshotDate !== undefined && (
+                    <p className="campaign-funnel-note">
+                      {formatSnapshotDate(campaign.snapshotDate)}時点の集計
+                    </p>
+                  )}
+                </li>
+              )
+            })}
           </ul>
+        )}
+        {/* 抑制・丸めの注記は、サーバー由来の開示済みファネルにだけ出す。
+            Phase 1デモは実数のため、出すと事実と異なる説明になる */}
+        {campaigns.some((campaign) => isDisclosedFunnel(campaign.funnel)) && (
+          <p className="club-metric-note">{FUNNEL_NOTE}</p>
         )}
         <p className="club-metric-note">
           参加意向は「行ってみたい」の回答数です。参加の確約ではありません。
