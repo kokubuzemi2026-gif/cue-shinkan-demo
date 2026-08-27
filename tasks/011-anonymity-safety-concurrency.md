@@ -24,8 +24,14 @@
 - `app/supabase/migrations/20260827*_0011_*.sql`（新規）
 - `app/supabase/tests/17_*.sql` 〜 `22_*.sql`（新規）
 - `app/src/serverdata/offerApi.ts`（区分preview・ファネル抑制への対応）
-- `app/src/features/club/funnel.ts` / `funnel.test.ts`（抑制・丸めの表示モデル）
-- `app/src/features/club/audienceBand.ts`（新規。区分の表示文言）
+- `app/src/features/club/funnel.ts`（`CampaignView.funnel`の型を拡張）
+- `app/src/features/club/funnelDisclosure.ts` / `funnelDisclosure.test.ts`（新規。抑制・丸めの表示モデル）
+- `app/src/features/club/audienceBand.ts` / `audienceBand.test.ts`（新規。区分の表示文言）
+- `app/src/features/club/SendConfirm.tsx` / `ClubDashboard.tsx`（区分・抑制の表示）
+- `app/src/serverdata/apiText.ts`（新しいエラーコードの定型文）
+- `app/src/serverdata/serverData.test.ts`（変換テストの更新）
+- `app/supabase/tests/14〜16`（契約変更に伴う既存テストの更新）
+- `app/e2e/task009-server-data.spec.ts`（k=5・10-5ルールに合わせた更新）
 - `app/src/org/OrgOffersPanel.tsx` / `app/src/styles/club.css`（区分・抑制の表示）
 - `app/src/lib/database.types.ts`（生成型の更新）
 - `app/e2e/task011-anonymity.spec.ts`（新規）
