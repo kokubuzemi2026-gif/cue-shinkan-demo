@@ -19,7 +19,7 @@
 - `docs/runbook_operations.md`（新規）、`docs/runbook_incident.md`（新規）
 - `docs/runbook_supabase_hosted.md`（追記）
 - `app/supabase/migrations/2026*_0017_*.sql`（health check・運用ビュー）
-- `app/supabase/tests/33_*.sql`
+- `app/supabase/tests/34_*.sql`（33はTask 015が使用済み）
 - `.github/workflows/`（dependency/security checkの追加。無料の範囲で）
 - `docs/launch_plan.md`、`tasks/017-operations-and-observability.md`
 
@@ -50,7 +50,7 @@
 
 | 受入条件 | 検証手段 | 場所 |
 |---|---|---|
-| 監査ログのPII非混入 | pgTAP | `supabase/tests/33_audit_pii_test.sql` |
+| 監査ログのPII非混入 | pgTAP | `supabase/tests/34_ops_health_test.sql` |
 | health check | pgTAP | 同上 |
 | runbookの手順 | 手動（stagingで実行して結果を記録） | 本ファイル |
 
