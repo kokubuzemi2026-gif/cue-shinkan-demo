@@ -186,4 +186,32 @@ reviewerが「壊しても落ちない」箇所を3つ指摘したため、`26_n
 | `claim_email_batch`の`recipient_email`がクライアント向け生成型に載る | `gen types`の自然な結果で、`service_role`専用のため実行時に到達不能。`dist/`にも出ないことを確認済み。privateスキーマへ移す案はTask 017で検討 |
 | ワーカー並行（`for update skip locked`）の実証テストが無い | pgTAPは単一セッション。Task 011の`concurrency_test.sh`と同じ形の追加はTask 017へ |
 
+### 後日みつかった不具合（2026-08-27・Task 016のCIで検出）
+
+`26_notification_control_test.sql` の17件目 `T16: 期限が来た行が取り出される` が
+**2026-08-27 09:00 UTC を境に必ず落ちる時限式**になっていた。
+
+- 直前のまとめ検査が、固定日付 `2026-08-27 10:00 JST` / `19:00 JST` の配信を作る
+- トリガが積む `daily_digest` の送信時刻は、その日の18時JST＝**09:00 UTC**
+- 実時間がその時刻を過ぎると、その行が due になり、
+  `claim_email_batch(50)` が意図した1件と一緒に拾って**2件**返す
+
+ローカルで実際に再現し、`next_attempt_at` と `now()` を並べて原因を特定した。
+
+```
+ kind          | dedupe_key | status  | due   | next_utc
+ daily_digest  | 2026-08-27 | pending | true  | 2026-08-27 09:00
+ offer_arrival | k5         | pending | true  | 2026-08-27 09:13
+ NOW: 2026-08-27 09:14
+```
+
+修正: 「期限が来た行がちょうど1件」を測る直前に、対象外の pending 行を
+`now() + interval '1 day'` へ先送りする。実時間に依存せず、
+`claim_email_batch` が `next_attempt_at` を無視すれば依然として落ちる
+（アサーションを緩めていない）。
+
+同種の依存が他に無いことも確認した。`24_notification_outbox_test.sql` の
+`claim(10) = 4` は `send_offer` 経由で `next_digest_time(now())` を使うため
+まとめの送信時刻が常に未来になり、時限式にならない。
+
 ### 残るリスク・未実施事項
