@@ -1,6 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { RoleOnboarding } from './account/RoleOnboarding'
+import { ConsentScreen } from './legal/ConsentScreen'
+import { serverErrorMessage } from './serverdata/apiText'
+import { fetchConsent, recordConsent, type ConsentStatus } from './serverdata/consentApi'
 import { useMyAccount } from './account/useMyAccount'
 import { SignInScreen } from './auth/SignInScreen'
 import { useAuthSession } from './auth/useAuthSession'
@@ -70,6 +73,38 @@ function SignedInApp({
 }) {
   const { state, reload } = useMyAccount(client, userId)
   const [creatingFirstOrg, setCreatingFirstOrg] = useState(false)
+  // Task 015: 同意（D050）。**登録より前**に通す必要があるため、権限の有無で
+  // 分岐するより先（AppRoot側）に置く。シェル側へ置くと、最初の権限を作った
+  // 後にしか出ず「登録前に同意」にならない
+  const [consent, setConsent] = useState<ConsentStatus | 'loading' | 'error'>('loading')
+  const [consentBusy, setConsentBusy] = useState(false)
+  const [consentError, setConsentError] = useState<string | null>(null)
+  const loadConsent = () => {
+    setConsent('loading')
+    void (async () => {
+      try {
+        setConsent(await fetchConsent(client))
+      } catch {
+        setConsent('error')
+      }
+    })()
+  }
+  useEffect(loadConsent, [client])
+  const handleAgree = (version: number) => {
+    if (consentBusy) return
+    setConsentBusy(true)
+    setConsentError(null)
+    void (async () => {
+      try {
+        await recordConsent(client, version)
+        setConsent(await fetchConsent(client))
+      } catch (error) {
+        setConsentError(serverErrorMessage(error))
+      } finally {
+        setConsentBusy(false)
+      }
+    })()
+  }
 
   if (state.status === 'loading') {
     return <LoadingScreen label="アカウント情報を読み込んでいます…" />
@@ -117,6 +152,44 @@ function SignedInApp({
             ログアウトして別のメールで登録する
           </button>
         </section>
+      </main>
+    )
+  }
+
+  // 同意が必要なら、登録・招待承諾より先に同意画面を出す。
+  // 読み込み中・失敗を「同意済み」と誤解させない
+  if (consent === 'loading') {
+    return <LoadingScreen label="確認しています…" />
+  }
+  if (consent === 'error') {
+    return (
+      <main className="auth-main">
+        <h1 className="page-title">はじめる前に</h1>
+        <section className="auth-card" aria-label="再試行の案内">
+          <p className="auth-text">
+            確認情報を読み込めませんでした。通信環境を確認して再試行してください。
+          </p>
+          <div className="auth-subactions">
+            <button type="button" className="button button-primary" onClick={loadConsent}>
+              再試行
+            </button>
+            <button type="button" className="button button-ghost" onClick={() => void signOut()}>
+              ログアウト
+            </button>
+          </div>
+        </section>
+      </main>
+    )
+  }
+  if (consent.needsConsent) {
+    return (
+      <main className="auth-main">
+        <ConsentScreen
+          version={consent.currentVersion}
+          submitting={consentBusy}
+          error={consentError}
+          onAgree={handleAgree}
+        />
       </main>
     )
   }
