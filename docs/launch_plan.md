@@ -252,7 +252,7 @@ Task 018のsmoke testも全滅する。
 | B3 | 本番Supabaseでの `auth.users` 削除の挙動が未検証 | 子テーブル・`auth.audit_log_entries` にメールが残る可能性 | H10 で確認する |
 | B4 | 運営操作は**SQL Editorから**行う（運営画面UIが無い） | 人間の操作ミスを機械的に防げない。`actor_label` の正しさは運用依存 | 手順を `docs/operations.md` に固定 |
 | B5 | 対象人数の `0` と `1–4` を区別する（D036の残余リスク） | 小集団の在・不在が観測できる | 受容済み。preview条件数の上限と24時間固定で回数を制限 |
-| B6 | E2Eの失敗アーティファクトに入力値が残り得た | OTP・招待URLの露出 | `PLAYWRIGHT_NO_COPY_PROMPT` で停止（D051）。`test-results/` はgitignore、CIに `upload-artifact` は無い |
+| B6 | E2Eの失敗アーティファクトに入力値が残り得た | OTP・招待URLの露出 | `PLAYWRIGHT_NO_COPY_PROMPT` で停止（D051・PR #19でdevelopへmerge済み）。`test-results/` はgitignore、CIに `upload-artifact` は無い。**`toMatchAriaSnapshot` の失敗は環境変数で止まらない**ため、OTP・招待URLが出ている画面では使わない |
 
 ### C. アクセシビリティ・UX
 
