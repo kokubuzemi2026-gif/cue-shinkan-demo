@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Task 011: 学生の週間受信枠が、団体をまたぐ「実際に並行する」send_offerでも破れないことを検証する。
+# Task 014: 最後のownerが並行する脱退で失われないことも、同じ方法で検証する。
 #
 # pgTAPは1ファイル=1セッション=1トランザクションのため、本物の競合を再現できない。
 # dblinkはSupabaseのローカルスタックでは postgres が superuser ではなく
@@ -25,6 +26,9 @@ ORG_A='並行検証団体A'
 ORG_B='並行検証団体B'
 ORG_C='並行検証団体C'
 ORG_D='並行検証団体D'
+ORG_LEAVE='並行脱退検証団体'
+LEAVE_1='00000000-0000-0000-0000-0000000cc801'
+LEAVE_2='00000000-0000-0000-0000-0000000cc802'
 FAILURES=0
 
 note() { printf '%s\n' "$1"; }
@@ -39,8 +43,9 @@ check() { # check <説明> <期待> <実際>
 
 cleanup() {
   "${PSQL[@]}" >/dev/null <<SQL || true
-delete from public.organizations where name in ('$ORG_A', '$ORG_B', '$ORG_C', '$ORG_D');
+delete from public.organizations where name in ('$ORG_A', '$ORG_B', '$ORG_C', '$ORG_D', '$ORG_LEAVE');
 delete from auth.users where email like 'demo-conc-%@stu.kobe-u.ac.jp';
+delete from auth.users where email like 'demo-leave-%@stu.kobe-u.ac.jp';
 SQL
 }
 trap cleanup EXIT
@@ -192,8 +197,61 @@ STRESS_MAX="$("${PSQL[@]}" -c "select coalesce(max(c), 0)::int from (select coun
 check '同時多発でも学生1人あたりの週間受信は上限1件を超えない' '1' "$STRESS_MAX"
 rm -rf "$STRESS_OUT"
 
+# ---- Task 014: 最後のownerが並行する脱退で失われないこと ----
+# ownerが2人の団体で2人が同時に leave_organization を呼ぶと、ロックを取らない
+# 存在判定では互いに相手を「まだいる」と見て両方が通過し、ownerが0人になる。
+# 復旧経路が無い（owner membershipは create_organization でしか作れず、
+# 招待は owner を招待できない）ため、必ず1人は残らなければならない
+note 'Task 014 並行脱退テスト: 準備'
+"${PSQL[@]}" >/dev/null <<SQL
+insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
+  ('$LEAVE_1', 'demo-leave-1@stu.kobe-u.ac.jp', now(), now(), now()),
+  ('$LEAVE_2', 'demo-leave-2@stu.kobe-u.ac.jp', now(), now(), now());
+select set_config('request.jwt.claims',
+  '{"sub":"$LEAVE_1","role":"authenticated"}', false);
+set role authenticated;
+select public.create_organization('$ORG_LEAVE');
+reset role;
+insert into public.organization_memberships (organization_id, user_id, role, member_label)
+select id, '$LEAVE_2', 'owner', '担当2' from public.organizations where name = '$ORG_LEAVE';
+SQL
+
+leave_sql() { # leave_sql <user id>
+  cat <<SQL
+select set_config('request.jwt.claims', '{"sub":"$1","role":"authenticated"}', true);
+set local role authenticated;
+select public.leave_organization((select id from public.organizations where name = '$ORG_LEAVE'));
+reset role;
+SQL
+}
+
+note 'Task 014 並行脱退テスト: 2人のownerを同時に脱退させる'
+LEAVE_OUT="$(mktemp -d)"
+{
+  printf 'begin;\n'
+  leave_sql "$LEAVE_1"
+  printf 'select pg_sleep(2);\ncommit;\n'
+} | "${PSQL[@]}" >"$LEAVE_OUT/a" 2>&1 &
+LEAVE_A=$!
+sleep 1
+{
+  printf 'begin;\n'
+  leave_sql "$LEAVE_2"
+  printf 'commit;\n'
+} | "${PSQL[@]}" >"$LEAVE_OUT/b" 2>&1 &
+LEAVE_B=$!
+wait "$LEAVE_A" || true
+wait "$LEAVE_B" || true
+
+LEAVE_OWNERS="$("${PSQL[@]}" -c "select count(*)::int from public.organization_memberships m join public.organizations o on o.id = m.organization_id where o.name = '$ORG_LEAVE' and m.role = 'owner'")"
+check '同時に脱退しても代表者は1人残る（管理者不在の団体を作らない）' '1' "$LEAVE_OWNERS"
+# psqlはERROR行とCONTEXT行の両方にlast_ownerを出すため、ファイル単位で数える
+LEAVE_REJECTED="$(grep -l 'ERROR:  last_owner' "$LEAVE_OUT"/* 2>/dev/null | wc -l | tr -d ' ')"
+check '2人目の脱退は last_owner で拒否される' '1' "$LEAVE_REJECTED"
+rm -rf "$LEAVE_OUT"
+
 if [ "$FAILURES" -gt 0 ]; then
-  note "Task 011 並行配信テスト: FAIL（$FAILURES 件）"
+  note "並行テスト: FAIL（$FAILURES 件）"
   exit 1
 fi
-note 'Task 011 並行配信テスト: PASS（8件）'
+note '並行テスト: PASS（10件）'

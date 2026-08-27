@@ -27,6 +27,7 @@ import {
 } from '../serverdata/passportApi'
 import { getDefaultStorage } from '../storage/appStorage'
 import { planDemoMigration, runDemoMigration } from './demoMigration'
+import { AccountDataPanel } from './AccountDataPanel'
 import { NotificationSettings } from './NotificationSettings'
 import { ServerOfferDetail } from './ServerOfferDetail'
 
@@ -34,6 +35,8 @@ type StudentAreaProps = {
   client: CueSupabaseClient
   // wizard中は親シェルがコンテキスト切替・権限追加を隠す（集中モード）
   onFocusModeChange: (active: boolean) => void
+  // 削除で権限が変わったら、シェルへ再読込を促す（利用できる権限の表示が変わる）
+  onAccountChanged: () => void
 }
 
 type PassportState =
@@ -46,7 +49,7 @@ type InboxState =
   | { status: 'error' }
   | { status: 'ready'; items: InboxItem[] }
 
-type StudentTab = 'home' | 'inbox' | 'settings'
+type StudentTab = 'home' | 'inbox' | 'settings' | 'account'
 
 // 通知メールは受信箱・通知設定へのリンクを載せる（docs/notifications.md §6）。
 // 起動時に一度だけhashを読んでタブを決め、直ちにURLから取り除く
@@ -97,7 +100,11 @@ const GENERIC_LOAD_ERROR = '読み込みに失敗しました。通信環境を�
 // 認証済みの新入生ホーム+受信箱。データの正本はすべてSupabase（Task 009）。
 // - 取得済みコンテキストは再取得中も保持し、失敗時はエラー表示+再試行を出す
 // - 旧デモ（cue-demo:*）の興味パスポートは初回に一度だけ検証付きで持ち込み、キーを削除する
-export function StudentArea({ client, onFocusModeChange }: StudentAreaProps) {
+export function StudentArea({
+  client,
+  onFocusModeChange,
+  onAccountChanged,
+}: StudentAreaProps) {
   const [tab, setTab] = useState<StudentTab>(initialTabFromHash)
   const [passport, setPassport] = useState<PassportState>({ status: 'loading' })
   const [inbox, setInbox] = useState<InboxState>({ status: 'loading' })
@@ -337,6 +344,14 @@ export function StudentArea({ client, onFocusModeChange }: StudentAreaProps) {
           >
             通知設定
           </button>
+          <button
+            type="button"
+            className="context-switcher-button"
+            aria-pressed={tab === 'account'}
+            onClick={() => switchTab('account')}
+          >
+            アカウント
+          </button>
         </nav>
       )}
 
@@ -360,6 +375,26 @@ export function StudentArea({ client, onFocusModeChange }: StudentAreaProps) {
       )}
 
       {tab === 'settings' && <NotificationSettings client={client} />}
+
+      {tab === 'account' && (
+        <AccountDataPanel
+          client={client}
+          passportPresence={
+            passport.status === 'loading'
+              ? 'loading'
+              : passport.status === 'error'
+                ? 'error'
+                : passport.preference !== null
+                  ? 'present'
+                  : 'none'
+          }
+          onPassportDeleted={() => {
+            setPassportReloadCount((count) => count + 1)
+            setInboxReloadCount((count) => count + 1)
+          }}
+          onAccountDeleted={onAccountChanged}
+        />
+      )}
 
       {tab === 'inbox' &&
         (selected !== undefined ? (

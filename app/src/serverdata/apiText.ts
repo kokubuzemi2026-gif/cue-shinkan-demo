@@ -37,6 +37,15 @@ export function serverErrorMessage(error: unknown): string {
       return '興味パスポートの内容を保存できませんでした。入力を確認してください。'
     case 'not_recipient':
       return 'この案内への操作は行えません。'
+    // Task 014: 削除・脱退（D046〜D048）
+    case 'last_owner':
+      return 'あなたが唯一の代表者になっている団体があります。先に別の担当者を代表者にしてから、もう一度お試しください。'
+    case 'not_member':
+      return 'この団体に所属していません。'
+    case 'passport_not_found':
+      return '興味パスポートはすでに削除されています。'
+    case 'nothing_to_delete':
+      return '削除できるデータがありません。すでに削除されています。'
     case 'invalid_org_contact':
       return '公式窓口は表示名50文字・連絡先100文字以内で入力してください。'
     default:
@@ -69,6 +78,10 @@ export function serverErrorCode(error: unknown): string {
     'invalid_response',
     'not_recipient',
     'invalid_org_contact',
+    'last_owner',
+    'not_member',
+    'passport_not_found',
+    'nothing_to_delete',
   ]
   return known.includes(message) ? message : 'unknown'
 }

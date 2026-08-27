@@ -109,7 +109,11 @@ export function AuthenticatedShell({
           </section>
         )}
         {active?.kind === 'student' && (
-          <StudentArea client={client} onFocusModeChange={setFocusMode} />
+          <StudentArea
+            client={client}
+            onFocusModeChange={setFocusMode}
+            onAccountChanged={reloadAccount}
+          />
         )}
         {active?.kind === 'org' &&
           (activeMembership !== null ? (

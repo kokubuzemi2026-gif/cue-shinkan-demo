@@ -1,7 +1,11 @@
-import { useCallback, useState } from 'react'
+import { useCallback, useReducer, useState } from 'react'
 
 import { canManageOrg, ORG_STATUS_LABELS, type MembershipInfo } from '../account/contextModel'
+import { deletionReducer, INITIAL_DELETION_STATE } from '../features/account/deletion'
+import { DeletionCard } from '../features/account/DeletionCard'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
+import { serverErrorMessage } from '../serverdata/apiText'
+import { leaveOrganization } from '../serverdata/lifecycleApi'
 import { OrgContactForm } from '../org/OrgContactForm'
 import { OrgMembersScreen } from '../org/OrgMembersScreen'
 import { OrgOffersPanel } from '../org/OrgOffersPanel'
@@ -35,6 +39,20 @@ export function OrgHome({
   const [contactVersion, setContactVersion] = useState(0)
   // オファー作成・確認・完了中はプロフィール・担当者一覧を隠し、入力へ集中させる
   const [offersFocus, setOffersFocus] = useState(false)
+  // 脱退（Task 014・D048）。最後のownerは脱退できず、理由はサーバーが返す
+  const [leaveState, leaveDispatch] = useReducer(deletionReducer, INITIAL_DELETION_STATE)
+  const runLeave = () => {
+    leaveDispatch({ type: 'start' })
+    void (async () => {
+      try {
+        await leaveOrganization(client, membership.organizationId)
+        leaveDispatch({ type: 'succeeded' })
+        onAccountChanged()
+      } catch (error) {
+        leaveDispatch({ type: 'failed', message: serverErrorMessage(error) })
+      }
+    })()
+  }
   const handleOffersFocus = useCallback(
     (active: boolean) => {
       setOffersFocus(active)
@@ -97,6 +115,16 @@ export function OrgHome({
           client={client}
           organizationId={membership.organizationId}
           myRole={membership.role}
+        />
+      )}
+
+      {!offersFocus && (
+        <DeletionCard
+          kind="membership"
+          state={leaveState}
+          onRequest={() => leaveDispatch({ type: 'request' })}
+          onCancel={() => leaveDispatch({ type: 'cancel' })}
+          onConfirm={runLeave}
         />
       )}
     </>

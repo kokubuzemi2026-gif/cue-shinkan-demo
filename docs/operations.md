@@ -178,5 +178,52 @@ select * from public.admin_list_audit(100);
   保持しない設計のためで、本文に団体名・イベント名を含まないため誤解は生みませんが、
   停止直後に「受信箱に新しい案内があります」が届くことはあります。
 - **監査記録の保持期間・削除方針が未定**です。Task 017で決めます。
+- **退会後もauth identity（大学メール）が残ります**（§9）。運営が定期的に消す運用に
+  依存しており、自動化されていません。本人には「ログイン情報の削除は運営が行う」と
+  画面で伝えています。削除されるまでの間、本人は新入生として登録し直せます（正規の
+  初回登録経路そのもの）。
+- **`admin_delete_auth_identity`の監査記録は対象を持ちません**（§9）。誰のidentityを
+  消したかは記録に残らず、service_role keyが漏れた場合の削除の事後追跡はできません。
+- **本番Supabaseでの`auth.users`削除の挙動は未検証です**。`postgres`ロールが実際に
+  DELETE権限を持つか、`auth.identities`・`auth.sessions`・`auth.refresh_tokens`が
+  連鎖して消えるか、`auth.audit_log_entries`のJSON payloadへメールアドレスが残り
+  続けないかを、hosted stagingで確認してから運用を開始してください（確認手順は
+  Phase Bのチェックリストへ追加）。残る場合はAdmin API（`auth.admin.deleteUser`）へ
+  寄せることを検討します。
 - **緊急停止は配信済みの案内を止めません**（新規配信とpreviewだけを止めます）。
   配信済みのものを止めるには§3または§4を使います。
+
+## 9. 退会したアカウントの仕上げ（auth identityの削除）
+
+利用者が自分でアカウントを削除すると、CUEが保存していたデータ（`public`・`private`
+スキーマ）はすべて消えます。**ただし大学メールを持つauth identityは残ります。**
+本人のRPCからは`auth`スキーマへ到達できないためで、運営が仕上げます（D047）。
+
+```sql
+-- 対象を探す（CUEのデータが無いauth identity）
+select u.id, u.created_at
+  from auth.users u
+ where not exists (select 1 from public.student_accounts sa where sa.user_id = u.id)
+   and not exists (select 1 from public.organization_memberships m where m.user_id = u.id)
+ order by u.created_at;
+
+-- 削除する（service_role）
+select public.admin_delete_auth_identity('<user id>'::uuid, 'ops-<運営担当の識別子>');
+```
+
+- CUEのデータが1件でも残っていると`account_data_remains`で拒否されます。
+  順序を守らせるためで、先に本人の削除が完了している必要があります。
+- 存在しないIDは`identity_not_found`になります（黙って成功して監査行だけが増えることはありません）。
+- **本人が唯一の代表者の団体を持っている場合、`delete_my_account`はその所属だけを残します**
+  （学生側のデータは消えます）。団体を閉じる・代表者を交代する判断は運営が行い、
+  所属を外してからこのRPCで仕上げます。当面はSQL Editorで
+  `delete from public.organization_memberships where user_id = '<user id>';` を実行します
+  （管理者不在になる場合、その団体は誰も操作できなくなるため、団体の扱いを先に決めてください）。
+- 上の抽出は、**まだ利用方法を選んでいない登録直後の利用者も含みます。**
+  作成から日が経っている（例: 30日以上）ものだけを対象にしてください。
+- ドメイン外identityの掃除（`runbook_supabase_hosted.md` §7）も同じRPCで行えます。
+- 実行は`private.admin_audit_log`へ`auth_identity_deleted`として記録されます。
+  **対象のIDは記録しません**。削除した利用者の識別子を残せば「削除した」と言えないためで、
+  service_role keyが漏れた場合の事後追跡はSupabase側のログ（保持期間は短い）に依存します。
+  この割り切りは残余リスクとして§8に記載しています。
+
