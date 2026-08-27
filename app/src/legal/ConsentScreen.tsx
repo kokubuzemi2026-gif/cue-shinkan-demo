@@ -1,5 +1,7 @@
 import { useState } from 'react'
 
+import { useScreenFocus } from '../a11y/useScreenFocus'
+
 import { CONSENT_DOCS_NOTE, CONSENT_INTRO, CONSENT_SUMMARY } from './consentContent'
 
 type ConsentScreenProps = {
@@ -14,10 +16,13 @@ type ConsentScreenProps = {
 // 同意しない限り、DB側でパスポート登録・団体作成が拒否される
 export function ConsentScreen({ version, submitting, error, onAgree }: ConsentScreenProps) {
   const [checked, setChecked] = useState(false)
+  const headingRef = useScreenFocus<HTMLHeadingElement>(version)
 
   return (
     <section className="consent-screen" aria-label="利用規約とプライバシーの確認">
-      <h1 className="page-title">はじめる前に</h1>
+      <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+        はじめる前に
+      </h1>
       <p className="auth-text">{CONSENT_INTRO}</p>
 
       <ul className="consent-points">

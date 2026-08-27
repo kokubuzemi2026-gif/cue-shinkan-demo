@@ -363,3 +363,15 @@ button {
     transform: none;
   }
 }
+
+/* Task 016: 画面切替でフォーカスを受け取る見出し。
+   ルーターを持たないためJSでフォーカスを移しており、キーボード利用者が
+   「いまどこに居るか」を見失わないよう、控えめな枠を出す。
+   :focus-visible なのでマウス操作では出ない */
+.page-title[tabindex='-1']:focus-visible,
+.wizard-heading[tabindex='-1']:focus-visible,
+.danger-heading[tabindex='-1']:focus-visible {
+  outline: 2px solid var(--color-ink);
+  outline-offset: 4px;
+  border-radius: 4px;
+}

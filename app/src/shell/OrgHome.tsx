@@ -1,5 +1,6 @@
 import { useCallback, useReducer, useState } from 'react'
 
+import { useScreenFocus } from '../a11y/useScreenFocus'
 import { canManageOrg, ORG_STATUS_LABELS, type MembershipInfo } from '../account/contextModel'
 import { deletionReducer, INITIAL_DELETION_STATE } from '../features/account/deletion'
 import { DeletionCard } from '../features/account/DeletionCard'
@@ -37,6 +38,10 @@ export function OrgHome({
   const verified = membership.organizationStatus === 'verified'
   // 公式窓口の保存後にダッシュボード表示（公式窓口snapshot）を再読込するためのトークン
   const [contactVersion, setContactVersion] = useState(0)
+  // コンテキスト切替で団体が変わったときだけ見出しへ移す。
+  // オファー作成の集中モードから戻るときはOrgOffersPanel側が自分の見出しへ移すため、
+  // ここで奪わない（親のeffectは子より後に走るので、奪うと上書きになる）
+  const headingRef = useScreenFocus<HTMLHeadingElement>(membership.organizationId)
   // オファー作成・確認・完了中はプロフィール・担当者一覧を隠し、入力へ集中させる
   const [offersFocus, setOffersFocus] = useState(false)
   // 脱退（Task 014・D048）。最後のownerは脱退できず、理由はサーバーが返す
@@ -63,7 +68,11 @@ export function OrgHome({
 
   return (
     <>
-      {!offersFocus && <h1 className="page-title">{membership.organizationName}</h1>}
+      {!offersFocus && (
+        <h1 className="page-title" tabIndex={-1} ref={headingRef}>
+          {membership.organizationName}
+        </h1>
+      )}
       {!offersFocus && (
         <section className="auth-card" aria-label="団体の状態">
           <span className={`status-chip status-${membership.organizationStatus}`}>
