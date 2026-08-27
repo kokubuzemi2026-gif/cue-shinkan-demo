@@ -124,11 +124,19 @@ async function fetchOtpCode(request: APIRequestContext, address: string): Promis
 // Task 015: 同意画面が出たら同意して進む（初回・版更新時）。
 // 既に同意済みなら何もしない
 async function passConsentIfPresent(page: Page) {
-  const heading = page.getByRole('heading', { name: 'はじめる前に' })
-  if (await heading.isVisible({ timeout: 8000 }).catch(() => false)) {
-    await page.getByRole('checkbox', { name: /同意します/u }).check()
+  const consentCheck = page.getByRole('checkbox', { name: /同意します/u })
+  const onboarding = page.getByRole('heading', { name: '利用方法を選ぶ' })
+  const signedIn = page.getByRole('button', { name: 'ログアウト' })
+  // locator.isVisible() は待たない（即時判定）。ログイン直後はまだ遷移中で
+  // 必ずfalseになるため、まず「同意画面 / 権限選択 / シェル」のどれかが
+  // 出るまで待ってから判定する
+  await expect(consentCheck.or(onboarding).or(signedIn).first()).toBeVisible({
+    timeout: 20_000,
+  })
+  if (await consentCheck.isVisible()) {
+    await consentCheck.check()
     await page.getByRole('button', { name: '同意して進む', exact: true }).click()
-    await expect(heading).toBeHidden({ timeout: 15000 })
+    await expect(consentCheck).toBeHidden({ timeout: 15_000 })
   }
 }
 
