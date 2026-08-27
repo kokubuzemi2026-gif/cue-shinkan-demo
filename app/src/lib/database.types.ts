@@ -246,8 +246,10 @@ export type Database = {
       email_outbox_health: {
         Args: Record<PropertyKey, never>
         Returns: {
+          cancelled_count: number
           failed_count: number
           oldest_pending_at: string
+          oldest_sending_at: string
           pending_count: number
           sending_count: number
         }[]
@@ -431,7 +433,7 @@ export type Database = {
       activity_style: "relaxed" | "moderate" | "serious"
       day_slot: "weekday_day" | "weekday_night" | "weekend"
       email_kind: "offer_arrival" | "daily_digest"
-      email_status: "pending" | "sending" | "sent" | "failed"
+      email_status: "pending" | "sending" | "sent" | "failed" | "cancelled"
       experience_level: "none" | "some" | "experienced"
       frequency: "monthly_1_2" | "weekly_1" | "weekly_2_plus"
       interest_category:

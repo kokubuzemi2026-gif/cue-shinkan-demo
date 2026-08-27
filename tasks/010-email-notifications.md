@@ -20,10 +20,11 @@
 
 - `app/supabase/migrations/2026*_0010_*.sql`（新規）
 - `app/supabase/functions/send-notifications/`（新規。Edge Function）
-- `app/supabase/tests/23_*.sql`〜`25_*.sql`（新規）
+- `app/supabase/tests/24_*.sql`〜`26_*.sql`（新規。`23_` はTask 011で使用済み）
 - `app/src/serverdata/notificationApi.ts`（新規）
 - `app/src/student/NotificationSettings.tsx`（新規）
-- `app/src/student/StudentArea.tsx`（通知設定への導線）
+- `app/src/student/StudentArea.tsx`（通知設定への導線と、メールのリンク着地）
+- `app/src/styles/passport.css`（通知設定の3択の見た目）
 - `app/src/lib/database.types.ts`
 - `app/e2e/task010-notifications.spec.ts`（新規）
 - `docs/decisions.md` / `docs/notifications.md`（新規・正本）/ `docs/runbook_supabase_hosted.md` / `docs/launch_plan.md`
@@ -82,12 +83,14 @@
 
 | 受入条件 | 検証手段 | 場所 |
 |---|---|---|
-| outboxのidempotency・状態遷移・backoff | pgTAP | `supabase/tests/23_email_outbox_test.sql` |
-| 通知設定の3種と`off`の抑止 | pgTAP | `supabase/tests/24_notification_settings_test.sql` |
+| outboxのidempotency・状態遷移・backoff | pgTAP | `supabase/tests/24_notification_outbox_test.sql` |
 | outboxの権限・PIIサーフェス | pgTAP | `supabase/tests/25_notification_privacy_test.sql` |
-| メール本文の最小性 | unit test | `src/serverdata/notificationApi.test.ts` ほか |
-| Mailpitでの実送信 | E2E | `e2e/task010-notifications.spec.ts` |
-| 送信失敗が配信を壊さない | pgTAP + E2E | 同上 |
+| 利用者コントロール（停止・変更が未送信分に効く）・滞留の回収・まとめの日境界 | pgTAP | `supabase/tests/26_notification_control_test.sql` |
+| メール本文の最小性・例外の分類・ログ | unit test | `supabase/functions/send-notifications/emailTemplate.test.ts` |
+| 通知設定の表示モデル | unit test | `src/serverdata/notificationApi.test.ts` |
+| 設定の3択・永続化・設定に応じた積まれ方 | E2E | `e2e/task010-notifications.spec.ts` |
+| 送信失敗が配信を壊さない | pgTAP | `24_` / `26_` |
+| 実メール送信 | hosted staging（人間タスク） | `docs/runbook_supabase_hosted.md` §6.1 |
 
 ## Rollback（切り戻し）
 
@@ -125,9 +128,62 @@
 - **実メール送信が未検証**。`index.ts` はhosted stagingでの実機確認が必要
   （`docs/runbook_supabase_hosted.md` §6.1）。純粋関数部分（本文・例外分類・ログ）は
   Vitestで検証済み。
+- **denomailer 1.6.0 のSTARTTLS挙動が未確認**（Denoも `deno.land` への到達も無い）。
+  ポート465以外では昇格を前提にしているため、hosted検証時に実際に暗号化されることを確認する。
+- ワーカーが並んだときの `for update skip locked` の実証は未実施（pgTAPは単一セッション）。
 - Edge Functionの外部依存（`denomailer`）はバージョン固定したが、実行での確認は未実施。
 - staging SMTPはGmailの個人アカウント（500宛先/日）。閉鎖βの規模では足りるが、
   本番は独自ドメイン+専用プロバイダが必要。
 - 古いoutbox行の削除経路が無い（Task 017へ引き継ぐ）。
 - 送信ワーカーのスケジュール設定は人間タスク。
-- 独立レビュー（reviewer / security-reviewer）: 実施予定。
+### 独立レビューと対応
+
+reviewer と security-reviewer を独立に実施した。**両者が独立に「通知を止めても
+積まれ済みは送られる」を検出**し、reviewerはさらに滞留とまとめの日境界を検出した。
+
+#### Blocker（実証済み・修正済み）
+
+| # | 内容 | 対応 |
+|---|---|---|
+| B1 | **「通知しない」にしても、積まれ済みのメールが送られる。** `claim_email_batch` が設定を再確認せず、`save_notification_settings` も未送信分を消さない。`daily` では**最大約18時間**（00:05配信→18:00まとめ）offが無視される | **送信時を権威ある関門にした**。取り出しの前に現在の設定を再確認し、合わない行を`cancelled`にする。設定変更時にも未送信分をその場で取り消す（二段構え） |
+| B2 | **ワーカーが落ちた行が二度と拾われない。** `sending`のまま永久に残り、再試行も`failed`化もされない。宛先がNULLの行は「掴んだのに返らない」経路でも同じことが起きる | 15分のリースで拾い直す。上限を使い切った滞留行は`failed`（`worker_lost`）。宛先が取れない行は`failed`（`no_recipient_address`）で止める。`email_outbox_health()`へ`oldest_sending_at`を追加 |
+| B3 | **まとめが同じ18時に2通届く。** `dedupe_key`が配信日、`next_attempt_at`が次の18時で単位がずれており、日境界をまたぐ2つのキーが同時にdueになる。しかも両方が「今日」と書く | `dedupe_key`を**まとめを送る日**にして、鍵とスケジュールを1対1にした |
+| B4 | **18時以降に届いたオファーがどのまとめにも載らない。** 当日キーが`sent`済みだと`on conflict do nothing`に吸収され、翌日は翌日キーしか数えない | B3と同じ修正で解消。件数を数える窓（`private.digest_window`）も同じ基準にそろえた |
+| B5(sec) | `tls: false` がハードコードで、SMTPの資格情報と全学生の宛先が平文接続に載り得る | 465は暗黙TLS、それ以外はSTARTTLSでの昇格を要求。平文へ落とす設定は用意しない |
+
+#### Non-blocker（対応したもの）
+
+| 内容 | 対応 |
+|---|---|
+| backoffが正本（1/5/25/125/625分）と実装（5/25/125/625/3125分）で1段ずれ | 実装を正本へ合わせた（1回目の失敗＝1分後） |
+| `complete_email`が`sent`の行を`pending`へ戻せる。`succeeded=NULL`も失敗扱い | `status='sending'`のみ進める。`succeeded is true`で明示判定。エラーは`outbox_not_claimed` |
+| メール本文のリンク（`#inbox`/`#notifications`）が着地しない（hashルーティングが無い） | 起動時に一度だけhashを読んでタブを決め、直ちにURLから取り除く（招待トークンと同じ扱い） |
+| `index.ts`で`CUE_SMTP_FROM`/`CUE_APP_URL`だけtry/catchの外。setupのcatchが生メッセージを出力 | try内へ移し、`missing_env:`/`invalid_env:`以外は固定文言へ落とす |
+| `complete_email`のRPCエラーを見ていない | エラーを検査してログへ残す（宛先・本文は出さない） |
+| 通知設定の`headingRef`が未使用。矢印キー移動が無い。保存中にフォーカスが飛ぶ。保存エラーが`status`で読み上げられない | 見出しへフォーカス移動、roving tabindex + 矢印キー、`aria-disabled`でフォーカス維持、`role="alert"` |
+| トリガの`security definer`が不要（将来fail-openになる） | 外した |
+| E2E step 5が目的の分岐を検査できない（dedupeで件数が変わらないだけでも通る） | `pending`が0・`cancelled`が1であることを検査する形へ |
+| タスクのTest plan表のファイル名が実体と不一致。`passport.css`がIn scopeに無い | 両方修正 |
+| `emailTemplate.test.ts`のテスト名と内容が矛盾 | 名前を実際の検査内容へ |
+
+#### テストの実効性（変異テスト）
+
+reviewerが「壊しても落ちない」箇所を3つ指摘したため、`26_notification_control_test.sql`
+を新設し、**変異で必ず落ちること**を確認した。
+
+| 変異 | 落ちたアサーション |
+|---|---|
+| 送信時の設定再確認を外す（B1） | 2件 |
+| `sending`の拾い直しを外す（B2） | 2件 |
+| `dedupe_key`を配信日へ戻す（B3/B4） | 2件 |
+| `complete_email`のbackoffを固定値にする | 1件 |
+| claimで試行回数を増やさない | 1件 |
+
+#### 対応せず
+
+| 内容 | 理由 |
+|---|---|
+| `claim_email_batch`の`recipient_email`がクライアント向け生成型に載る | `gen types`の自然な結果で、`service_role`専用のため実行時に到達不能。`dist/`にも出ないことを確認済み。privateスキーマへ移す案はTask 017で検討 |
+| ワーカー並行（`for update skip locked`）の実証テストが無い | pgTAPは単一セッション。Task 011の`concurrency_test.sh`と同じ形の追加はTask 017へ |
+
+### 残るリスク・未実施事項

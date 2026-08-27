@@ -27,6 +27,19 @@ begin
   insert into public.student_notification_settings as s (user_id, mode)
   values ((select auth.uid()), new_mode)
   on conflict (user_id) do update set mode = excluded.mode;
+
+  -- 「いつでも停止できる」ためには、これから送られる分も止まらなければならない。
+  -- 設定変更の時点で、新しい受け取り方に合わない未送信分を取り消す。
+  -- （送信時にも claim_email_batch が現在の設定を再確認する。二段構え）
+  update private.email_outbox o
+     set status = 'cancelled', updated_at = now()
+   where o.user_id = (select auth.uid())
+     and o.status = 'pending'
+     and (
+       new_mode = 'off'
+       or (new_mode = 'each' and o.kind = 'daily_digest')
+       or (new_mode = 'daily' and o.kind = 'offer_arrival')
+     );
 end;
 $$;
 revoke execute on function public.save_notification_settings(public.notification_mode) from public;
@@ -52,10 +65,50 @@ set search_path = ''
 as $$
 declare
   v_now timestamptz := now();
+  -- ワーカーが落ちたまま放置された行を回収するまでの猶予
+  v_lease interval := interval '15 minutes';
 begin
   if batch_size is null or batch_size not between 1 and 200 then
     raise exception 'invalid_batch_size';
   end if;
+
+  -- 1. 現在の設定に合わない未送信分を取り消す。
+  --    設定はenqueue時に一度読むだけでは足りない（積まれてから送信までに
+  --    最大で約18時間あり、その間に本人が停止しても送られてしまう）。
+  --    **送信時が権威ある関門**で、enqueue時の判定は先出しの最適化にすぎない
+  update private.email_outbox o
+     set status = 'cancelled', updated_at = v_now
+    from public.student_accounts sa
+    left join public.student_notification_settings s on s.user_id = sa.user_id
+   where o.user_id = sa.user_id
+     and o.status in ('pending', 'sending')
+     and (
+       coalesce(s.mode, 'each'::public.notification_mode) = 'off'
+       or (coalesce(s.mode, 'each'::public.notification_mode) = 'each'
+           and o.kind = 'daily_digest')
+       or (coalesce(s.mode, 'each'::public.notification_mode) = 'daily'
+           and o.kind = 'offer_arrival')
+     );
+
+  -- 2. 宛先が取れない行は送りようが無いので止める。
+  --    除外するだけだと永久にpendingで残り、運用が気づけない
+  update private.email_outbox o
+     set status = 'failed',
+         last_error_code = 'no_recipient_address',
+         updated_at = v_now
+   where o.status = 'pending'
+     and not exists (
+       select 1 from auth.users u where u.id = o.user_id and u.email is not null
+     );
+
+  -- 3. ワーカーが落ちたまま試行上限を使い切った行を止める（無限に滞留させない）
+  update private.email_outbox o
+     set status = 'failed',
+         last_error_code = coalesce(o.last_error_code, 'worker_lost'),
+         updated_at = v_now
+   where o.status = 'sending'
+     and o.updated_at < v_now - v_lease
+     and o.attempts >= private.email_max_attempts();
 
   return query
   with claimed as (
@@ -66,8 +119,17 @@ begin
      where o.id in (
        select c.id
        from private.email_outbox c
-       where c.status = 'pending'
-         and c.next_attempt_at <= v_now
+       join auth.users u on u.id = c.user_id
+       where (
+               (c.status = 'pending' and c.next_attempt_at <= v_now)
+               -- 4. ワーカーが落ちて sending のまま残った行を拾い直す。
+               --    これが無いと、その学生には二度と通知が届かない
+               or (c.status = 'sending'
+                   and c.updated_at < v_now - v_lease
+                   and c.attempts < private.email_max_attempts())
+             )
+         -- 宛先が無い行をここで除く。外側で除くと、掴んだのに返らず永久に滞留する
+         and u.email is not null
        order by c.next_attempt_at
        for update skip locked
        limit batch_size
@@ -81,19 +143,19 @@ begin
          u.email::text,
          case
            when cl.kind = 'daily_digest' then (
-             -- まとめ: その日に届いた件数だけを返す（どの団体かは返さない）
+             -- まとめ: その日に届いた件数だけを返す（どの団体かは返さない）。
+             -- 窓はdedupe_key（まとめの送信日）と同じ基準にそろえる
              select count(*)::integer
              from private.offer_recipients r
              join private.offer_deliveries d on d.id = r.delivery_id
              where r.user_id = cl.user_id
-               and to_char(d.delivered_at at time zone 'Asia/Tokyo', 'YYYY-MM-DD') = cl.dedupe_key
+               and private.digest_window(cl.dedupe_key::date) @> d.delivered_at
            )
            else 1
          end,
          cl.attempts::integer
     from claimed cl
-    join auth.users u on u.id = cl.user_id
-   where u.email is not null;
+    join auth.users u on u.id = cl.user_id;
 end;
 $$;
 comment on function public.claim_email_batch(integer) is
@@ -122,15 +184,17 @@ declare
   v_attempts smallint;
   v_code text := left(coalesce(complete_email.error_code, ''), 40);
 begin
+  -- sending の行だけを進める。sent / cancelled / failed を再送状態へ戻さない
   select o.attempts into v_attempts
     from private.email_outbox o
    where o.id = complete_email.outbox_id
+     and o.status = 'sending'
      for update;
   if v_attempts is null then
-    raise exception 'outbox_not_found';
+    raise exception 'outbox_not_claimed';
   end if;
 
-  if complete_email.succeeded then
+  if complete_email.succeeded is true then
     update private.email_outbox o
        set status = 'sent', sent_at = v_now, last_error_code = null, updated_at = v_now
      where o.id = complete_email.outbox_id;
@@ -164,7 +228,9 @@ returns table (
   pending_count integer,
   sending_count integer,
   failed_count integer,
-  oldest_pending_at timestamptz
+  cancelled_count integer,
+  oldest_pending_at timestamptz,
+  oldest_sending_at timestamptz
 )
 language sql
 stable
@@ -174,7 +240,10 @@ as $$
   select count(*) filter (where status = 'pending')::integer,
          count(*) filter (where status = 'sending')::integer,
          count(*) filter (where status = 'failed')::integer,
-         min(next_attempt_at) filter (where status = 'pending')
+         count(*) filter (where status = 'cancelled')::integer,
+         min(next_attempt_at) filter (where status = 'pending'),
+         -- sendingが古いまま残っていれば、ワーカーが落ちたか詰まっている合図
+         min(updated_at) filter (where status = 'sending')
   from private.email_outbox
 $$;
 revoke execute on function public.email_outbox_health() from public;

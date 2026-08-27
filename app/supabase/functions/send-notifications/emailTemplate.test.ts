@@ -11,7 +11,7 @@ import {
 const APP = 'https://example.invalid/cue-shinkan-demo/'
 
 describe('emailTemplate', () => {
-  it('オファーごとの通知は件数を書かず、届いた事実だけを伝える', () => {
+  it('オファーごとの通知は件名に件数を出さず、本文で1件届いたことだけを伝える', () => {
     const mail = buildEmail({ kind: 'offer_arrival', offerCount: 1, appUrl: APP })
     expect(mail.subject).toBe('CUE: 新しい新歓の案内が届いています')
     expect(mail.text).toContain('1件届きました')

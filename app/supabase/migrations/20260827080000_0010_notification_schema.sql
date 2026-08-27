@@ -44,13 +44,17 @@ create trigger trg_set_updated_at
 
 -- ---- 送信outbox（D041） ----
 create type public.email_kind as enum ('offer_arrival', 'daily_digest');
-create type public.email_status as enum ('pending', 'sending', 'sent', 'failed');
+-- cancelled = 本人が通知を止めた／受け取り方を変えたため送らないことにした行。
+-- failed（送信を試みて駄目だった）とは区別する
+create type public.email_status as enum ('pending', 'sending', 'sent', 'failed', 'cancelled');
 
 create table private.email_outbox (
   id uuid primary key default gen_random_uuid(),
   kind public.email_kind not null,
   user_id uuid not null references public.student_accounts (user_id) on delete cascade,
-  -- 二重送信防止の鍵。offer_arrivalは配信ID、daily_digestはAsia/Tokyoの暦日
+  -- 二重送信防止の鍵。offer_arrivalは配信ID、daily_digestは**まとめを送る日**（Asia/Tokyo）。
+  -- 配信日にすると、18時の送信後に届いたオファーが送信済みの行へ吸収されて
+  -- 二度と通知されない（まとめの送信日なら、18時以降の分は翌日の行になる）
   dedupe_key text not null
     constraint email_outbox_dedupe_key_length check (char_length(dedupe_key) between 1 and 100),
   status public.email_status not null default 'pending',
@@ -86,8 +90,9 @@ language sql
 immutable
 set search_path = ''
 as $$
-  -- 1回目=1分 / 2回目=5分 / 3回目=25分 / 4回目=125分 / 5回目=625分（約10時間）
-  select (power(5, least(greatest(attempt_count, 1), 5))::integer || ' minutes')::interval
+  -- 1回目=1分 / 2回目=5分 / 3回目=25分 / 4回目=125分 / 5回目=625分（約10時間）。
+  -- 引数は「これまでの試行回数」。1回目の失敗（attempt_count=1）で1分後に再試行する
+  select (power(5, least(greatest(attempt_count, 1), 5) - 1)::integer || ' minutes')::interval
 $$;
 revoke execute on function private.email_retry_delay(integer) from public;
 revoke execute on function private.email_retry_delay(integer) from anon;
@@ -118,6 +123,24 @@ as $$
 $$;
 comment on function private.next_digest_time(timestamptz) is
   '1日1回のまとめの送信時刻（Asia/Tokyo 18:00）。18時を過ぎた分は翌日にまとめる';
+
+-- まとめの対象窓: 送信日Dのまとめは「前日18:00 < delivered_at <= 当日18:00」を数える。
+-- dedupe_keyと同じ基準にして、数える範囲と積む単位をずらさない
+create function private.digest_window(digest_date date)
+returns tstzrange
+language sql
+immutable
+set search_path = ''
+as $$
+  select tstzrange(
+    ((digest_date - 1) + time '18:00') at time zone 'Asia/Tokyo',
+    (digest_date + time '18:00') at time zone 'Asia/Tokyo',
+    '(]'
+  )
+$$;
+revoke execute on function private.digest_window(date) from public;
+revoke execute on function private.digest_window(date) from anon;
+revoke execute on function private.digest_window(date) from authenticated;
 revoke execute on function private.next_digest_time(timestamptz) from public;
 revoke execute on function private.next_digest_time(timestamptz) from anon;
 revoke execute on function private.next_digest_time(timestamptz) from authenticated;
@@ -132,7 +155,8 @@ create function private.enqueue_offer_notifications()
 returns trigger
 language plpgsql
 volatile
-security definer
+-- security definer は付けない。呼び出し元（send_offer）が既にSECURITY DEFINERで、
+-- 付けると将来offer_recipientsへ他ロールのINSERT権限が付いたときにfail-openになる
 set search_path = ''
 as $$
 begin
@@ -149,7 +173,7 @@ begin
   -- 以後の配信は同じ(user_id, 日付)へ吸収され、二重には積まれない
   insert into private.email_outbox (kind, user_id, dedupe_key, next_attempt_at)
   select 'daily_digest', r.user_id,
-         to_char(d.delivered_at at time zone 'Asia/Tokyo', 'YYYY-MM-DD'),
+         to_char(private.next_digest_time(d.delivered_at) at time zone 'Asia/Tokyo', 'YYYY-MM-DD'),
          private.next_digest_time(d.delivered_at)
   from inserted r
   join private.offer_deliveries d on d.id = r.delivery_id

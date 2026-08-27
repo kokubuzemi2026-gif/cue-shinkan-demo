@@ -42,7 +42,10 @@
   `auth.users` 以外へコピーしない）。
 - **本文を保存しない。** テンプレートIDに相当する `kind` と、まとめの件数だけから組み立てる。
 - `unique (kind, user_id, dedupe_key)` で二重に積まれない。
-  `dedupe_key` は `offer_arrival` が配信ID、`daily_digest` がAsia/Tokyoの暦日。
+  `dedupe_key` は `offer_arrival` が配信ID、`daily_digest` が**まとめを送る日**（Asia/Tokyo）。
+  配信日にすると、18時の送信後に届いたオファーが送信済みの行へ吸収されて二度と通知されず、
+  かつ日境界をまたぐ2つのキーが同じ18時に同時にdueになって同じ宛先へ2通届く
+  （独立レビューで実証されたため、まとめの送信日を鍵にした）。
 - 失敗理由は**40文字までの分類コード**のみ（`smtp_auth` / `smtp_timeout` など）。
   SMTPの生メッセージは保存しない。
 
@@ -68,6 +71,30 @@
 
 5回を超えたら `failed` で止める。無限に再試行しない。
 
+### 送信時が権威ある関門
+
+通知設定は**enqueue時と送信時の両方**で確認する。
+
+- `save_notification_settings` は、変更時にその学生の未送信分のうち新しい受け取り方に
+  合わないものを `cancelled` にする
+- `claim_email_batch` は、取り出しの前に現在の設定を再確認し、合わない行を `cancelled` にする
+
+enqueue時の判定だけでは足りない。積まれてから送信までに最大で約18時間あり
+（00:05に配信 → 当日18:00のまとめ）、その間に本人が停止しても送られてしまう。
+「学生がいつでも受信条件を変更・停止できる」（`CLAUDE.md` UI要件）を満たすには、
+**送信の直前に現在の設定を見る**必要がある。
+
+### 滞留の回収
+
+ワーカーが `claim_email_batch` のあとに落ちると、行は `sending` のまま残る。
+これを回収しないと、その学生には二度と通知が届かない。
+
+- `sending` のまま15分を過ぎた行は拾い直す（`attempts` は加算済みなので上限判定は効く）
+- 試行上限を使い切ったまま滞留している行は `failed`（`worker_lost`）で止める
+- 宛先が取れない行（`auth.users.email` がNULL）は `failed`（`no_recipient_address`）で止める。
+  除外するだけだと永久に `pending` で残り、運用が気づけない
+- `email_outbox_health()` は `oldest_sending_at` も返す。ここが古いままなら詰まっている合図
+
 ## 4. 送信ワーカー（D042）
 
 `app/supabase/functions/send-notifications/`（Supabase Edge Function）。
@@ -76,7 +103,7 @@
 |---|---|---|
 | `claim_email_batch(batch_size)` | **service_role専用** | 期限が来た`pending`を`sending`へ進めて取り出す。`FOR UPDATE SKIP LOCKED`でワーカーが並んでも二重に掴まない。**宛先メールを返す唯一の経路** |
 | `complete_email(id, succeeded, error_code)` | **service_role専用** | 成功→`sent` / 失敗→backoffして`pending` / 上限超過→`failed` |
-| `email_outbox_health()` | **service_role専用** | 件数と最古のpending時刻だけを返す |
+| `email_outbox_health()` | **service_role専用** | 状態別の件数と、最古のpending・sending時刻だけを返す |
 
 `authenticated`・`anon` にはこの3本を一切grantしない。
 
@@ -94,6 +121,9 @@
 |---|---|
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Supabaseが自動注入 |
 | `CUE_SMTP_HOST` / `PORT` / `USER` / `PASSWORD` / `FROM` | **SupabaseのFunction secretへ直接入力** |
+
+SMTP接続は暗号化を必須にする（465なら暗黙TLS、それ以外はSTARTTLSでの昇格を要求）。
+資格情報と全学生の宛先が載る経路なので、平文へ落とす設定は用意しない。
 | `CUE_APP_URL` | 同上 |
 
 **リポジトリ・CI・PR・チャット・ログへ置かない。**

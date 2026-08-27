@@ -272,9 +272,21 @@ test('Task 010: 通知設定の3択と、設定に応じたoutboxの積まれ方
       await pageA.getByRole('radio', { name: /通知しない/u }).click()
       await expect(pageA.getByText('保存しました。')).toBeVisible({ timeout: 15_000 })
 
-      const before = execSql(
-        `select count(*)::int from private.email_outbox where user_id = '${studentId}'`,
-      )
+      // offにした時点で、未送信分がその場で取り消される（送信予定が残らない）
+      expect(
+        execSql(
+          `select count(*)::int from private.email_outbox ` +
+            `where user_id = '${studentId}' and status = 'pending'`,
+        ),
+        'offにすると未送信の通知が残らない',
+      ).toBe('0')
+      expect(
+        execSql(
+          `select count(*)::int from private.email_outbox ` +
+            `where user_id = '${studentId}' and status = 'cancelled'`,
+        ),
+        '止めた分はcancelledとして記録される',
+      ).toBe('1')
 
       // 2通目もUIから送る。RPCをpsqlで直接呼ぶと auth.uid() が無く not_authorized になるため
       await pageB.getByRole('button', { name: '新しいオファーを作成' }).click()
@@ -299,9 +311,14 @@ test('Task 010: 通知設定の3択と、設定に応じたoutboxの積まれ方
       await pageB.getByRole('button', { name: 'ダッシュボードへもどる' }).click()
       await expect(pageB.getByRole('heading', { name: '団体ダッシュボード' })).toBeVisible()
 
+      // 2通目でも新たに積まれない（kind別に数えて、dedupeで増えないだけの状態と区別する）
       expect(
-        execSql(`select count(*)::int from private.email_outbox where user_id = '${studentId}'`),
-      ).toBe(before)
+        execSql(
+          `select count(*)::int from private.email_outbox ` +
+            `where user_id = '${studentId}' and status in ('pending','sending','sent')`,
+        ),
+        'off中は新しい通知が積まれない',
+      ).toBe('0')
       // 通知を止めてもオファー自体は届く（受信箱で確認できる）
       expect(
         execSql(

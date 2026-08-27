@@ -28,6 +28,7 @@ export function NotificationSettings({ client }: NotificationSettingsProps) {
   const [savedNotice, setSavedNotice] = useState(false)
   const [reloadCount, setReloadCount] = useState(0)
   const headingRef = useRef<HTMLHeadingElement | null>(null)
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([])
 
   useEffect(() => {
     let active = true
@@ -44,6 +45,17 @@ export function NotificationSettings({ client }: NotificationSettingsProps) {
       active = false
     }
   }, [client, reloadCount])
+
+  // radiogroupは矢印キーで選択を移せることが期待される。
+  // roving tabindexと組み合わせ、キーボードだけで3択を選べるようにする
+  const moveFocus = (fromIndex: number, delta: number) => {
+    const count = NOTIFICATION_MODE_OPTIONS.length
+    const next = (fromIndex + delta + count) % count
+    const option = NOTIFICATION_MODE_OPTIONS[next]
+    if (option === undefined) return
+    optionRefs.current[next]?.focus()
+    choose(option.mode)
+  }
 
   const choose = (mode: NotificationMode) => {
     if (state.status !== 'ready' || saving || state.mode === mode) return
@@ -65,6 +77,10 @@ export function NotificationSettings({ client }: NotificationSettingsProps) {
       }
     })()
   }
+
+  useEffect(() => {
+    if (state.status === 'ready') headingRef.current?.focus()
+  }, [state.status])
 
   if (state.status === 'loading') {
     return (
@@ -105,7 +121,7 @@ export function NotificationSettings({ client }: NotificationSettingsProps) {
 
       {/* radiogroupにして、キーボードだけで選べるようにする */}
       <div className="notification-options" role="radiogroup" aria-label="通知の受け取り方">
-        {NOTIFICATION_MODE_OPTIONS.map((option) => {
+        {NOTIFICATION_MODE_OPTIONS.map((option, index) => {
           const selected = state.mode === option.mode
           return (
             <button
@@ -113,8 +129,23 @@ export function NotificationSettings({ client }: NotificationSettingsProps) {
               type="button"
               role="radio"
               aria-checked={selected}
+              // 選択中だけをタブ順に載せる（roving tabindex）
+              tabIndex={selected ? 0 : -1}
+              ref={(element) => {
+                optionRefs.current[index] = element
+              }}
               className={`notification-option${selected ? ' is-selected' : ''}`}
-              disabled={saving}
+              // 保存中もフォーカスを失わせない。二重送信はchoose側で防いでいる
+              aria-disabled={saving}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
+                  event.preventDefault()
+                  moveFocus(index, 1)
+                } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
+                  event.preventDefault()
+                  moveFocus(index, -1)
+                }
+              }}
               onClick={() => choose(option.mode)}
             >
               <span className="notification-option-label">
@@ -132,7 +163,11 @@ export function NotificationSettings({ client }: NotificationSettingsProps) {
 
       <div className="wizard-error-region" role="status">
         {saving && <p className="club-field-helper">保存しています…</p>}
-        {!saving && saveError !== null && <p className="wizard-error">{saveError}</p>}
+        {!saving && saveError !== null && (
+          <p className="wizard-error" role="alert">
+            {saveError}
+          </p>
+        )}
         {!saving && saveError === null && savedNotice && (
           <p className="club-field-helper">保存しました。</p>
         )}

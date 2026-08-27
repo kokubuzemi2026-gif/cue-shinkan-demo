@@ -40,32 +40,44 @@ Deno.serve(async () => {
 
   let supabase
   let smtp
+  let from: string
+  let appUrl: string
   try {
     supabase = createClient(
       requiredEnv('SUPABASE_URL'),
       requiredEnv('SUPABASE_SERVICE_ROLE_KEY'),
       { auth: { persistSession: false } },
     )
+    // SMTPの資格情報と全学生の宛先がこの接続に載るため、暗号化を必須にする。
+    // 465は最初からTLS、587はSTARTTLSで昇格する。既定は587（STARTTLS）。
+    // 平文（tls無し）に落とす設定は用意しない
+    const port = Number(requiredEnv('CUE_SMTP_PORT'))
+    if (!Number.isInteger(port) || port <= 0) {
+      throw new Error('invalid_env:CUE_SMTP_PORT')
+    }
     smtp = new SMTPClient({
       connection: {
         hostname: requiredEnv('CUE_SMTP_HOST'),
-        port: Number(requiredEnv('CUE_SMTP_PORT')),
-        tls: false,
+        port,
+        // 465は暗黙TLS、それ以外はSTARTTLSでの昇格を要求する
+        tls: port === 465,
         auth: {
           username: requiredEnv('CUE_SMTP_USER'),
           password: requiredEnv('CUE_SMTP_PASSWORD'),
         },
       },
     })
+    from = requiredEnv('CUE_SMTP_FROM')
+    appUrl = requiredEnv('CUE_APP_URL')
   } catch (error) {
-    // 設定不足は即座に分かるようにする（secretの値は出さない）
-    const code = error instanceof Error ? error.message : 'setup_failed'
+    // 設定不足・不正だけを名前で示す。それ以外は固定文言に落として、
+    // ライブラリの例外メッセージ（URLや資格情報を含み得る）をログへ出さない
+    const raw = error instanceof Error ? error.message : ''
+    const code =
+      raw.startsWith('missing_env:') || raw.startsWith('invalid_env:') ? raw : 'setup_failed'
     console.error(`send-notifications setup failed: ${code}`)
     return Response.json({ error: 'setup_failed' }, { status: 500 })
   }
-
-  const from = requiredEnv('CUE_SMTP_FROM')
-  const appUrl = requiredEnv('CUE_APP_URL')
 
   const { data, error } = await supabase.rpc('claim_email_batch', { batch_size: BATCH_SIZE })
   if (error) {
@@ -82,18 +94,29 @@ Deno.serve(async () => {
         subject: mail.subject,
         content: mail.text,
       })
-      await supabase.rpc('complete_email', { outbox_id: row.outbox_id, succeeded: true })
+      const { error: completeError } = await supabase.rpc('complete_email', {
+        outbox_id: row.outbox_id,
+        succeeded: true,
+      })
+      if (completeError) {
+        // 書き戻しに失敗するとsendingのまま残る。DB側のリース回収が拾い直すが、
+        // 気づけるようにログへ残す（宛先・本文は出さない）
+        console.error(`send-notifications complete failed outbox=${row.outbox_id}`)
+      }
       sent += 1
       console.log(
         logSafe({ outboxId: row.outbox_id, kind: row.kind, attempt: row.attempt, result: 'sent' }),
       )
     } catch (sendError) {
       const errorCode = classifyError(sendError)
-      await supabase.rpc('complete_email', {
+      const { error: completeError } = await supabase.rpc('complete_email', {
         outbox_id: row.outbox_id,
         succeeded: false,
         error_code: errorCode,
       })
+      if (completeError) {
+        console.error(`send-notifications complete failed outbox=${row.outbox_id}`)
+      }
       failed += 1
       console.error(
         logSafe({
