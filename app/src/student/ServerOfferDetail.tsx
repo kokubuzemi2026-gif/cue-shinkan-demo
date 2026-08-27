@@ -34,7 +34,7 @@ export function ServerOfferDetail({
   onBack,
   onRespond,
 }: ServerOfferDetailProps) {
-  const { offer, club, result, response } = item
+  const { offer, club, result, response, stopped } = item
   const headingRef = useRef<HTMLHeadingElement>(null)
   const [reportOpen, setReportOpen] = useState(false)
 
@@ -51,6 +51,14 @@ export function ServerOfferDetail({
       <button type="button" className="button button-secondary detail-back" onClick={onBack}>
         受信箱へもどる
       </button>
+
+      {/* D044: 運営が停止した案内。受信箱から消さず、何が起きたかを先に伝える */}
+      {stopped && (
+        <p className="offer-closed-notice" role="status">
+          <span className="offer-closed-chip">募集終了</span>
+          この案内は募集を終了しました。新しい返答はできません。
+        </p>
+      )}
 
       <section className="detail-club" aria-label="団体情報">
         <p className="offer-club-row">
@@ -130,20 +138,27 @@ export function ServerOfferDetail({
 
       <section className="detail-section" aria-label="返答する">
         <h2 className="detail-heading">返答する</h2>
-        <div className="response-buttons">
-          {RESPONSE_CHOICES.map((candidate) => (
-            <button
-              key={candidate}
-              type="button"
-              className={RESPONSE_BUTTON_CLASS[candidate]}
-              aria-pressed={choice === candidate}
-              disabled={responding}
-              onClick={() => onRespond(candidate)}
-            >
-              {RESPONSE_LABELS[candidate]}
-            </button>
-          ))}
-        </div>
+        {stopped ? (
+          <p className="response-closed-note">
+            募集が終了したため、この案内には返答できません。
+            {choice !== null && `これまでの返答（${RESPONSE_LABELS[choice]}）はそのまま残ります。`}
+          </p>
+        ) : (
+          <div className="response-buttons">
+            {RESPONSE_CHOICES.map((candidate) => (
+              <button
+                key={candidate}
+                type="button"
+                className={RESPONSE_BUTTON_CLASS[candidate]}
+                aria-pressed={choice === candidate}
+                disabled={responding}
+                onClick={() => onRespond(candidate)}
+              >
+                {RESPONSE_LABELS[candidate]}
+              </button>
+            ))}
+          </div>
+        )}
         <p className="response-privacy-note">
           どの返答でも、あなたの名前や連絡先が団体に伝わることはありません。今回は見送っても、団体に個人単位で通知されることはありません。
         </p>
@@ -173,7 +188,11 @@ export function ServerOfferDetail({
               </div>
               <div className="panel-block">
                 <h3 className="panel-subheading">団体公式窓口</h3>
-                {hasContact ? (
+                {stopped ? (
+                  <p className="panel-contact-note">
+                    募集が終了したため、公式窓口は表示していません。
+                  </p>
+                ) : hasContact ? (
                   <>
                     <p className="panel-contact-label">{club.contact.label}</p>
                     <p className="panel-contact-handle">{club.contact.handle}</p>

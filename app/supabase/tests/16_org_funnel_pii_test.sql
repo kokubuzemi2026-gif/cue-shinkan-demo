@@ -135,7 +135,7 @@ select is(
   (select p.proargnames::text from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
    where n.nspname = 'public' and p.proname = 'list_org_campaigns'),
-  '{org_id,delivery_id,delivered_at,event_name,description,reason_note,date_text,place,event_days,frequency,fee_per_event_yen,beginner_friendly,intensity,target_categories,target_purposes,capacity,deadline,funnel_available,delivered_count,viewed_count,engaged_count,planned_count,snapshot_date}',
+  '{org_id,delivery_id,delivered_at,event_name,description,reason_note,date_text,place,event_days,frequency,fee_per_event_yen,beginner_friendly,intensity,target_categories,target_purposes,capacity,deadline,funnel_available,delivered_count,viewed_count,engaged_count,planned_count,snapshot_date,stopped}',
   'T6: list_org_campaignsの戻り列はオファーsnapshotと抑制済み匿名件数のみ'
 );
 select is(

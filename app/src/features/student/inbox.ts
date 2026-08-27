@@ -25,6 +25,9 @@ export type InboxItem = {
   response: OfferResponse | null
   read: boolean
   status: OfferStatus
+  // 運営が停止したオファー（D044）。受信箱からは消さず「募集終了」として残し、
+  // 返答導線と公式窓口だけを閉じる。ローカルデモの配信は常にfalse
+  stopped: boolean
 }
 
 export type InboxView = {
@@ -88,7 +91,15 @@ export function buildInboxView(
     const read = reads.some(
       (candidate) => candidate.offerId === offer.id && candidate.studentId === student.id,
     )
-    items.push({ offer, club, result, response, read, status: deriveOfferStatus(read, response) })
+    items.push({
+      offer,
+      club,
+      result,
+      response,
+      read,
+      status: deriveOfferStatus(read, response),
+      stopped: false,
+    })
   }
 
   return { items, paused: student.reception.paused }

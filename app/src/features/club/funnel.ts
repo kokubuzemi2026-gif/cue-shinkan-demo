@@ -25,6 +25,10 @@ export type CampaignView = {
   funnel: FunnelCounts | DisclosedFunnel
   // 集計の基準日（サーバー由来のときだけ入る。1日1回の安定したsnapshot・D037）
   snapshotDate?: string
+  // 運営が停止したオファー（D044）。**必須**にして、サーバー由来の値を
+  // 詰め忘れたときにtscが落ちるようにする（optionalだと静かに欠落する）。
+  // ローカルデモの配信は常にfalse
+  stopped: boolean
 }
 
 export function buildFunnel(
@@ -83,5 +87,7 @@ export function listClubCampaigns(
     .map((delivery) => ({
       offer: delivery.offer,
       funnel: buildFunnel(delivery, reads, responses),
+      // ローカルデモには運営操作が無いため常にfalse
+      stopped: false,
     }))
 }

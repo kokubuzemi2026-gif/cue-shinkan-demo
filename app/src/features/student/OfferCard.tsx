@@ -17,7 +17,7 @@ export function OfferCard({
   arrivalPhase = null,
   onArrivalSettled,
 }: OfferCardProps) {
-  const { offer, club, result, response, status } = item
+  const { offer, club, result, response, status, stopped } = item
   const statusLabel = OFFER_STATUS_LABELS[status]
   const firstReason = result.reasons[0]
   const isArrival = arrivalPhase !== null
@@ -33,10 +33,13 @@ export function OfferCard({
           onArrivalSettled?.(offer.id)
         }
       }}
-      aria-label={`${isArrival ? '新着 ' : ''}${statusLabel} ${club.name} ${offer.eventName} マッチ度${result.score}`}
+      aria-label={`${isArrival ? '新着 ' : ''}${stopped ? '募集終了 ' : ''}${statusLabel} ${club.name} ${offer.eventName} マッチ度${result.score}`}
     >
       <span className="offer-card-top">
         {isArrival && <span className="arrival-chip">新着</span>}
+        {/* D044: 停止されたオファーは消さずに「募集終了」として残す。
+            色だけに意味を持たせず、文言でも分かるようにする */}
+        {stopped && <span className="offer-closed-chip">募集終了</span>}
         <span className={`offer-status offer-status--${status}`}>{statusLabel}</span>
         <span className="offer-match-chip">マッチ度 {result.score}</span>
       </span>

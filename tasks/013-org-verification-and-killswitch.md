@@ -16,8 +16,9 @@
 ## In scope
 
 - `app/supabase/migrations/2026*_0013_*.sql`
-- `app/supabase/tests/26_*.sql`〜`28_*.sql`
-- `app/src/org/`（停止状態の表示）
+- `app/supabase/tests/27_*.sql`〜`29_*.sql`（26はTask 010が使用済み）
+- `app/src/org/` / `app/src/features/student/` / `app/src/student/`（停止状態の表示）
+- `app/e2e/task013-org-controls.spec.ts`
 - `docs/operations.md`（新規・運営操作の正本）、`docs/decisions.md`、`docs/launch_plan.md`
 - `tasks/013-org-verification-and-killswitch.md`
 
@@ -28,26 +29,28 @@
 
 ## Acceptance criteria
 
-- [ ] 団体状態が `pending` / `verified` / `suspended` の3値で管理されている
-- [ ] `verified` 以外の団体はオファーを配信できない（既存の`org_not_verified`を維持）
-- [ ] 状態変更は service role または安全なadmin経路だけが行える。クライアント経路が存在しない
-- [ ] 団体を `suspended` にすると、その団体の新規配信が止まる
-- [ ] 個別のofferを停止でき、停止後は学生の受信箱に「募集終了」等が反映される
-- [ ] 全団体の配信を止める緊急停止（kill switch）があり、1操作で有効化・解除できる
-- [ ] kill switch有効中は `send_offer` が明確な理由で拒否される
-- [ ] 他団体への越権操作（状態変更・offer停止）ができないことのnegative testがある
-- [ ] admin権限をクライアント側の判定だけに依存させていない
-- [ ] 認証・配信・通知・権限変更の必要最小限の監査記録が残る（PIIを含まない）
-- [ ] 監査記録に学生の希望条件・メール・氏名が含まれない
-- [ ] pgTAP / lint / test / build がgreen
+- [x] 団体状態が `pending` / `verified` / `suspended` の3値で管理されている
+- [x] `verified` 以外の団体はオファーを配信できない（既存の`org_not_verified`を維持）
+- [x] 状態変更は service role または安全なadmin経路だけが行える。クライアント経路が存在しない
+- [x] 団体を `suspended` にすると、その団体の新規配信が止まる
+- [x] 個別のofferを停止でき、停止後は学生の受信箱に「募集終了」等が反映される
+- [x] 全団体の配信を止める緊急停止（kill switch）があり、1操作で有効化・解除できる
+- [x] kill switch有効中は `send_offer` が明確な理由で拒否される
+- [x] 他団体への越権操作（状態変更・offer停止）ができないことのnegative testがある
+- [x] admin権限をクライアント側の判定だけに依存させていない
+- [x] 認証・配信・通知・権限変更の必要最小限の監査記録が残る（PIIを含まない）
+- [x] 監査記録に学生の希望条件・メール・氏名が含まれない
+- [x] pgTAP / lint / test / build がgreen
 
 ## Test plan
 
 | 受入条件 | 検証手段 | 場所 |
 |---|---|---|
-| 状態遷移と配信可否 | pgTAP | `supabase/tests/26_org_status_test.sql` |
-| kill switch | pgTAP | `supabase/tests/27_kill_switch_test.sql` |
-| 越権操作の拒否・監査記録のPII | pgTAP | `supabase/tests/28_admin_boundary_test.sql` |
+| 状態遷移と配信可否・オファー停止 | pgTAP | `supabase/tests/27_org_status_test.sql` |
+| kill switch | pgTAP | `supabase/tests/28_kill_switch_test.sql` |
+| 越権操作の拒否・監査記録のPII | pgTAP | `supabase/tests/29_admin_boundary_test.sql` |
+| 停止状態の画面表示・運営操作の反映 | Playwright | `e2e/task013-org-controls.spec.ts` |
+| 受信行・キャンペーン行の`stopped`変換 | Vitest | `src/serverdata/serverData.test.ts` |
 
 ## Rollback
 
@@ -55,4 +58,112 @@
 
 ## Verification record
 
-実装後に記入する。
+実装日: 2026-08-27 / ブランチ: `feat/013-org-verification`
+
+### 変更したもの
+
+| ファイル | 内容 |
+|---|---|
+| `supabase/migrations/20260827120000_0013_admin_controls.sql` | `platform_controls`（単一行のkill switch）・`admin_audit_log`・`offer_deliveries.stopped_at/stopped_reason`・配信行とpreviewキャッシュのBEFORE INSERTトリガ（ともに`ENABLE ALWAYS`） |
+| `supabase/migrations/20260827120002_0013_admin_rpcs.sql` | 運営RPC 4本（service_role専用）・`private.cancel_offer_mail`・`list_my_inbox`/`list_org_campaigns`へ`stopped`列追加・`respond_to_offer`の`offer_stopped` |
+| `supabase/tests/27_〜29_*.sql` | 状態遷移・kill switch・越権/PIIの3ファイル（+68テスト） |
+| `supabase/tests/16_org_funnel_pii_test.sql` | `list_org_campaigns`の戻り列allowlistへ`stopped`を追加 |
+| `src/features/student/inbox.ts` / `serverdata/inboxApi.ts` / `serverdata/offerApi.ts` / `features/club/funnel.ts` | `stopped`をInboxItem・ServerCampaignへ伝搬 |
+| `src/features/student/OfferCard.tsx` / `student/ServerOfferDetail.tsx` / `features/club/ClubDashboard.tsx` | 「募集終了」「停止中」の表示と返答導線の閉鎖 |
+| `src/lib/database.types.ts` | `stopped`列と運営RPC 4本を追記 |
+| `src/styles/inbox.css` / `club.css` | 停止表示のスタイル（色だけに依存させない） |
+| `e2e/task013-org-controls.spec.ts` | 審査待ち→確認→配信→停止→緊急停止→解除の通し |
+| `docs/operations.md`（新規）/ `decisions.md` D043〜D045 / `server_data_model.md` §11 / `runbook_supabase_hosted.md` §6.2・§8 | 正本の更新 |
+
+### 実行した検証
+
+| 検証 | 結果 |
+|---|---|
+| pgTAP（ローカルPostgres 16 + Supabase相当スキャフォールド） | 29ファイル **490テスト PASS**（Task 012時点の399から+91） |
+| 並行配信テスト（`npm run db:test:concurrency`） | 8件 PASS（Task 013のトリガ追加後も不変） |
+| oxlint / tsc / vitest / vite build | すべてgreen（ユニット346テスト） |
+| E2E typecheck | green（実行はCIのローカルSupabaseスタック上） |
+
+### mutation test（テストが実際に壊れを捕まえるか）
+
+| 壊した箇所 | 落ちたテスト |
+|---|---|
+| トリガのkill switch判定を削除 | 28: 5件 |
+| 停止済みofferへの返答拒否を無効化 | 27: 1件 |
+| 停止時の公式窓口非開示を無効化 | 27: 2件 |
+| 団体停止時のoffer一括停止を削除 | 27: 2件 |
+| 運営RPCを`authenticated`へgrant | 29: 5件 |
+| 緊急停止中のpreview拒否を削除（L1） | 28: 3件 |
+| `pending`でオファーを止めない（L2） | 27: 2件 |
+| トリガを`ENABLE ALWAYS`から戻す（L3） | 28: 1件 |
+| 未確認団体の案内を戻せるようにする（B1） | 27: 3件 |
+| `platform_controls_missing`を出さない（N2） | 28: 1件 |
+| トリガをfail openへ戻す（N2） | 28: 1件 |
+| 送信直前の取り消しを削除（N3） | 27: 1件 |
+| トリガの`org_not_verified`分岐を削除（N4） | 28: 1件 |
+| `list_org_campaigns.stopped`を常にfalse（N5） | 27: 1件 |
+| offer停止時のメール取り消しを削除 | 27: 2件 |
+| 団体停止時のメール取り消しを削除 | 27: 1件 |
+
+### 独立レビューの結論と対応
+
+- **security-reviewer**: Blocker 0 / Critical・High・Medium 0。権限昇格・kill switch迂回・
+  停止オファーからの窓口回収・監査記録からの個人特定・差分攻撃の復活・DoSを実ロールで
+  実行し、すべて防がれることを確認。指摘は Low 3件。
+- **Low 3件はいずれも自分で再現したうえで、文書化ではなく構造で直した**:
+  - L1: 緊急停止がpreviewを止めない（停止中に区分`5-9`が返ることを再現）
+    → previewキャッシュへの挿入トリガで、**新しい条件**の評価を止める。
+      24時間以内に答えた同一条件は返す（既に団体が知っている値で、新しい情報を渡さない）
+  - L2: `pending`へ戻しても配信中オファーが止まらない（停止後も返答でき、
+    公式窓口`@repro`が開示され続けることを再現）
+    → `verified`以外へ変える操作すべてで配信中オファーを止める
+  - L3: トリガが既定の`ENABLE`（`session_replication_role='replica'`で不発になり得る）
+    → 両トリガを`ENABLE ALWAYS`にする
+- **reviewer**: Blocker 1件 / Non-blocker 9件。権限昇格・停止の実効性・原子性・
+  既存機能の破壊・PIIサーフェスは実ロールでの総当たりで問題なしと確認された。
+  **Blocker と実質的なNon-blockerはすべて自分で再現したうえで修正した**:
+  - **B1（Blocker）**: `admin_set_offer_stopped(..., false, ...)` に団体状態の確認が無く、
+    `suspended` のまま個別に戻すと公式窓口（`@b1`）と返答導線が再び開くことを再現。
+    L2で入れた不変条件の鏡像 → 兄弟RPCでも `org_not_verified` で守る
+  - N2: `platform_controls` の単一行が失われると kill switch が fail open になり、
+    監査記録だけが「止めた」と残る → トリガを fail closed にし、0行更新なら
+    `platform_controls_missing` を送出して事実と食い違う記録を残さない
+  - N3: 停止時に `sending` だったメールが取り消されず、一時失敗で `pending` へ戻ると
+    停止済み配信のまま再送される → `claim_email_batch` の送信直前でも取り消す
+    （通知設定と同じ「送信時が権威ある関門」パターン）
+  - N4: トリガの `org_not_verified` 分岐が pgTAP で無検査（削除しても477件PASS）
+    → 未確認団体への直接insertを検査するテストを追加
+  - N5: `list_org_campaigns.stopped` が pgTAP で無検査（常にfalseにしても477件PASS）
+    → SQLの値そのものを検査するテストを追加
+  - N6: `ENABLE ALWAYS` は data-only restore でも発火する
+    → `runbook_supabase_hosted.md` §8 へ手順を記載
+  - N7: 既定値のある引数の生成型が `?` になっていない → 4本を修正
+  - N8: 「認証・配信・通知・権限変更の監査」がどこで担保されるかが未記載
+    → `operations.md` §6 に対応表を追加
+  - N9: 実効性の無いアサーション2件 → 意味のある検査へ置換
+  - N10: `reason` 200文字超が生の制約違反になり、DETAILへ対象行の全列が展開される
+    → 入口で長さを検査して `invalid_admin_action` に統一
+  - 指摘のうちコード変更が不要と判断したものはありません
+
+### CIで見つけて直したもの
+
+- e2eの`getByText('審査待ち')`がstrict mode violation（状態チップと説明文の2要素に一致）。
+  調査中に、`delivery_paused` / `offer_stopped` が `serverErrorMessage` の既知コードに無く、
+  「通信環境を確認して…」という誤解を招く汎用文言になっていたことを発見して修正
+- e2eのtask011が「ファネルの抑制表示」で失敗（受け取った配列が空）。
+  `allInnerTexts()` は自動待機しないため、キャンペーン一覧の非同期取得が終わる前に
+  読んでいた既存の競合。ダッシュボード見出しの表示だけでは一覧の取得完了を保証しない
+  → 自動待機するassertionを先に置く（task009の同じ形2箇所もあわせて修正）
+- e2eの最終検査（console errorが無いこと）が失敗。意図的に拒否される要求について、
+  ブラウザは`response`とは別に console へも「Failed to load resource」を出すため、
+  「拒否されたこと」自体を失敗として数えていた → 拒否を許す区間をフラグで明示する
+- e2eの「団体側にも停止が見える」が失敗。`OrgOffersPanel`が`ServerCampaign`→`CampaignView`を
+  1項目ずつ書き写す形で`stopped`を落としていた。`CampaignView.stopped`をoptionalにしていた
+  ためtscが検出できなかった → **必須**にして、書き忘れがコンパイルエラーになることを確認
+
+### 残る課題
+
+- 運営画面UIは未実装（SQL Editorからの操作。`docs/operations.md`が手順の正本）
+- 停止を団体へ能動的に通知する仕組みが無い（Task 017）
+- `daily_digest`は取り消せない（D044に理由と影響を記録）
+- 監査記録の保持期間・削除方針が未定（Task 017）

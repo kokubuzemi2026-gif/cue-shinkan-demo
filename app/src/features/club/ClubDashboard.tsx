@@ -101,9 +101,17 @@ export function ClubDashboard({
                 <li key={campaign.offer.id} className="campaign-card">
                   <div className="campaign-head">
                     <span className="campaign-name">{campaign.offer.eventName}</span>
-                    <span className="campaign-status-chip">配信済み</span>
+                    {/* D044: 運営が止めたオファー。止められた側にも状態が分かるようにする */}
+                    <span className="campaign-status-chip">
+                      {campaign.stopped ? '停止中' : '配信済み'}
+                    </span>
                   </div>
                   <p className="campaign-date">{campaign.offer.dateText}</p>
+                  {campaign.stopped && (
+                    <p className="campaign-stopped-note">
+                      運営がこの案内の配信を停止しました。学生の受信箱では「募集終了」と表示され、新しい返答は届きません。心当たりがない場合は運営へ連絡してください。
+                    </p>
+                  )}
                   <dl className="campaign-funnel">
                     {FUNNEL_LABELS.map((metric) => (
                       <div key={metric.key} className="funnel-item">

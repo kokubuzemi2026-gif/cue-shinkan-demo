@@ -100,6 +100,7 @@ const INBOX_ROW: InboxRow = {
   read_at: null,
   response_choice: null,
   responded_at: null,
+  stopped: false,
 }
 
 describe('inboxApi', () => {
@@ -119,6 +120,25 @@ describe('inboxApi', () => {
     expect(item.read).toBe(false)
     expect(item.response).toBeNull()
     expect(item.status).toBe('unread')
+    expect(item.stopped).toBe(false)
+  })
+
+  // Task 013 / D044: 停止されたオファーは受信箱から消さず、停止状態を運ぶ。
+  // 公式窓口はサーバー側が空文字で返す（クライアント判定に依存させない）
+  it('停止されたオファーの受信行はstopped=trueで、公式窓口が空で届く', () => {
+    const item = inboxRowToItem({
+      ...INBOX_ROW,
+      read_at: '2026-08-25T02:00:00Z',
+      response_choice: 'interested',
+      responded_at: '2026-08-25T02:01:00Z',
+      org_contact_label: '',
+      org_contact_handle: '',
+      stopped: true,
+    })
+    expect(item.stopped).toBe(true)
+    expect(item.club.contact).toEqual({ label: '', handle: '' })
+    // 停止しても返答の記録自体は残る（消さずに履歴として見せる）
+    expect(item.response?.choice).toBe('interested')
   })
 
   it('既読・保留の受信行は状態thinkingになる', () => {
@@ -209,10 +229,12 @@ describe('offerApi', () => {
       engaged_count: 10,
       planned_count: 10,
       snapshot_date: '2026-08-25',
+      stopped: false,
     })
     expect(view.offer.id).toBe('55555555-5555-5555-5555-555555555555')
     expect(view.deliveredAt).toBe('2026-08-25T03:00:00Z')
     expect(view.snapshotDate).toBe('2026-08-25')
+    expect(view.stopped).toBe(false)
     expect(view.funnel).toEqual({
       available: true,
       rounded: true,
@@ -248,8 +270,11 @@ describe('offerApi', () => {
       engaged_count: null,
       planned_count: null,
       snapshot_date: '2026-08-25',
+      stopped: true,
     } as unknown as Parameters<typeof campaignRowToView>[1]
     const view = campaignRowToView('44444444-4444-4444-4444-444444444444', row)
+    // Task 013 / D044: 停止状態は団体側にも届く（理由の本文は返さない）
+    expect(view.stopped).toBe(true)
     expect(view.funnel).toEqual({
       available: false,
       rounded: true,
@@ -273,6 +298,19 @@ describe('apiText', () => {
       '現在の条件で配信できる新入生がいないため送信できません',
     )
     expect(serverErrorCode({ message: 'not_student' })).toBe('not_student')
+  })
+
+  // Task 013 / D044・D045: 意図的な停止を汎用文言（通信環境を確認して…）にすると、
+  // 利用者は原因を誤解して再試行を繰り返す。理由が伝わることを固定する
+  it('運営による停止は「通信環境の問題」ではなく理由が伝わる', () => {
+    const paused = serverErrorMessage({ message: 'delivery_paused' })
+    expect(paused).toContain('配信を一時停止')
+    expect(paused).not.toContain('通信環境')
+    const stopped = serverErrorMessage({ message: 'offer_stopped' })
+    expect(stopped).toContain('募集を終了')
+    expect(stopped).not.toContain('通信環境')
+    expect(serverErrorCode({ message: 'delivery_paused' })).toBe('delivery_paused')
+    expect(serverErrorCode({ message: 'offer_stopped' })).toBe('offer_stopped')
   })
 
   it('未知のエラーは内容を出さず汎用文言になる', () => {

@@ -223,6 +223,11 @@ test('Task 011: 対象規模の区分表示・最小5人の配信拒否・ファ
     })
 
     await test.step('4: ファネルは配信のみ丸めて開示し、残りは「—」で非表示にする（D037）', async () => {
+      // キャンペーン一覧はダッシュボード表示後に非同期で取得される。
+      // allInnerTexts()は自動待機しないため、先に自動待機するassertionで揃うのを待つ
+      // （待たないと空配列を読んでしまう）
+      await expect(page.locator('.campaign-card')).toHaveCount(1)
+      await expect(page.locator('.funnel-value')).toHaveCount(4)
       const funnel = await page.locator('.funnel-value').allInnerTexts()
       // 配信12→10へ丸め、閲覧・関心・参加意向は0人だが10人未満のため抑制される。
       // 「0」と表示してしまうと「誰も見ていない」と誤読されるため必ず「—」にする
