@@ -178,6 +178,14 @@ select ok(
 );
 
 -- ---- backoffが実際に使われている ----
+-- ここから先は「期限が来た行がちょうど1件取り出される」ことを見る。
+-- 直前のまとめ検査で積んだ daily_digest は、固定日付（2026-08-27）の
+-- 18時JST＝09:00 UTC が送信時刻になるため、**実時間がその時刻を過ぎると
+-- due になり、claimが一緒に拾ってしまう**（このテストは2026-08-27の
+-- 09:00 UTCを境に必ず落ちる時限式だった）。
+-- 実時間に依存しないよう、対象外の pending 行を先送りしてから測る。
+update private.email_outbox set next_attempt_at = now() + interval '1 day'
+ where status = 'pending';
 insert into private.email_outbox (kind, user_id, dedupe_key, next_attempt_at)
 values ('offer_arrival', '00000000-0000-0000-0000-00000000d903', 'k5', now() - interval '1 minute');
 -- 裸のselectはTAPが結果行をテスト行と誤読するため、必ずアサーションで包む
