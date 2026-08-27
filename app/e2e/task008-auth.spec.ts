@@ -184,7 +184,11 @@ test('3-25: 登録→権限→団体→招待→切替の一連フロー', async
 
     await test.step('13-14: プロフィール保存後も団体画面に留まり保存内容が確認できる', async () => {
       await pageA.getByLabel('紹介文（500文字まで）').fill('E2Eで保存した紹介文')
-      await pageA.getByRole('button', { name: '保存する' }).click()
+      // Task 009で公式窓口フォーム（保存するボタン）が追加されたため、プロフィール編集カードへ限定する
+      await pageA
+        .locator('section[aria-label="団体プロフィールの編集"]')
+        .getByRole('button', { name: '保存する' })
+        .click()
       await expect(pageA.getByText('保存しました。')).toBeVisible()
       // 修正対象の不具合: account再取得中に全画面ローディングへ戻ると
       // 選択中コンテキストが初期値（新入生）へ戻る。再取得完了を跨いで団体画面に留まること

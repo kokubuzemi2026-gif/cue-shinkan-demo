@@ -50,6 +50,8 @@ Before User Created Hookは採用しない（現行プランではTeam以上限�
 | `public` | enum（`org_role`・`org_status`）、`student_accounts`・`organizations`・`organization_memberships`、クライアント公開RPC | Data API公開対象。grantは§7の最小限のみ |
 | `private` | `organization_invitations`、内部関数（メール判定・orgヘルパ・ラベル生成・trigger関数） | **Data API非公開**。anon/authenticatedへschema usageを含む一切の権限なし |
 
+Task 009はこの構成に従い、興味パスポート（`public.student_passports`）と配信・受信者・既読・返答（`private.offer_*` 4テーブル）を追加した。詳細は`docs/server_data_model.md`を正本とする。
+
 - enumをpublicへ置く理由: public表とRPCの引数・戻り値に現れ、`supabase gen types`の生成型（`app/src/lib/database.types.ts`）へenumリテラル型として含める必要があるため。
 - 招待テーブルは生トークンを保存せず**SHA-256ハッシュのみ**。メール指定招待を行わないため招待先メール列は存在しない。
 - migrationは`app/supabase/migrations/`の4本（schema→domain functions→RPC→RLS/grant）。ロールバックは逆順のdrop（policy→function→trigger→table→type→schema）で行う。実データ投入前はstagingプロジェクトの削除・再作成が最も確実。
