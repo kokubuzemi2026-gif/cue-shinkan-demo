@@ -43,8 +43,9 @@
 
 | 受入条件 | 検証手段 | 場所 |
 |---|---|---|
-| 390px・状態・キーボード・フォーカス | E2E | `e2e/task016-*.spec.ts` |
-| コントラスト | 手動測定（結果を本ファイルへ記録） | 本ファイル |
+| 390px・状態・キーボード・フォーカス | E2E | `e2e/task016-a11y.spec.ts` |
+| コントラスト | 計算（WCAG 2.1 相対輝度。結果を本ファイルへ記録） | 本ファイル |
+| 完全導線（新入生・団体） | 既存E2E + 本タスクのa11y spec（対応は下表） | `e2e/` |
 
 ## Rollback
 
@@ -52,4 +53,109 @@
 
 ## Verification record
 
-実装後に記入する。
+実装日: 2026-08-27 / ブランチ: `feat/016-ux-a11y-e2e` / PR: #17
+
+### 直した問題（実装のバグ）
+
+**画面が切り替わってもフォーカスが移っていなかった。**
+CUEはルーティングライブラリを使わず、stateで画面そのものを差し替える。
+そのため画面が変わると、フォーカスは「消えたボタン」から`body`へ落ちる。
+スクリーンリーダーは新しい画面を読み上げず、キーボード利用者は毎回
+先頭からTabをやり直すことになっていた。
+
+Phase 1のデモ画面（`src/features/`）には`headingRef`パターンが入っていたが、
+Task 008〜015で追加したPhase 2の画面には入っていなかった
+（`OrgOffersPanel`・`ServerOfferDetail`・`NotificationSettings`の3つを除く）。
+
+- `src/a11y/useScreenFocus.ts`: 共通フック（見出しへフォーカス＋先頭へスクロール）
+- 適用: `SignInScreen`（メール⇄コード）・`ConsentScreen`・`RoleOnboarding`・
+  `OrgCreateScreen`・`AcceptInviteScreen`・`OrgHome`・`StudentArea`の
+  `HomePanel`/`InboxPanel`
+- `DeletionCard`: 確認が開いたら確認見出しへ（「消えるもの／残るもの」を
+  読み飛ばして実行ボタンへ着かないように）
+- 見出しへのフォーカスに`:focus-visible`の枠（マウス操作では出ない）
+
+**親子のeffect順序**に注意した。Reactは子のeffectを先に走らせるため、
+親（`OrgHome`）が無条件にフォーカスを取ると子（`OrgOffersPanel`）の移動を
+上書きしてしまう。`OrgHome`は団体IDが変わったときだけ動かす。
+
+### 既存実装で満たしていた項目（調査結果）
+
+| 受入条件 | 根拠 |
+|---|---|
+| 非interactive要素へのクリック | `div`/`li`/`span`の`onClick`は**0件**（すべて`button`） |
+| すべての入力にラベル | 全`input`/`textarea`/`select`に`htmlFor`または`aria-label` |
+| 二重送信の防止 | 16ファイルで`disabled={...busy}`、送信は`sendingRef`の一次防衛つき |
+| 色だけに依存しない | 状態チップは文字、通知設定は`●`/`○`、完了は`✓`＋文言 |
+| バリデーション文言 | 「イベント名を入力してください」など対象フィールドを名指し |
+| loading/empty/error/retry | 各画面が3値以上の状態を持ち、errorには再試行ボタンがある |
+| フォーカスリング | `.button`・`.choice-chip`・`.text-input`・`.club-input`・`.offer-card`・`.context-switcher-button`・`.bottom-nav-item`に`:focus-visible` |
+| タップ領域 | `--tap-target: 44px` / `.button { min-height: 48px }` |
+
+### コントラスト（`tokens.css`・WCAG 2.1 相対輝度で計算）
+
+| 前景 | 背景 | 比 | AA本文(4.5) | AA大字(3.0) |
+|---|---|---|---|---|
+| ink #17212b | cream #fff8f0 | 15.47 | OK | OK |
+| ink | white #ffffff | 16.29 | OK | OK |
+| ink | mint #dff6e8 | 14.34 | OK | OK |
+| ink | coral #ff6b5e | 5.83 | OK | OK |
+| muted #66727d | cream | 4.67 | OK | OK |
+| muted | white | 4.92 | OK | OK |
+| muted | mint | 4.33 | NG | OK |
+| white | coral | 2.79 | NG | NG |
+
+NGの2組は**実際には使われていない**ことを確認した。
+
+- `passport.css`冒頭に「coral背景に白文字は載せない」と明記され、
+  `.button-primary`は`color: var(--color-ink)`（5.83）
+- mint背景のルール内に`color: var(--color-muted)`を持つものは0件（走査で確認）
+- `.button:disabled { opacity: 0.45 }`はコントラストを下げるが、WCAG 1.4.3は
+  無効コントロールを対象外とする。状態は文言（「送信しています…」等）でも示す
+
+### 「完全なE2E」の対応
+
+受入条件の「完全な導線」は、既存specの積み上げと本タスクのa11y specで満たす。
+**同じ機能を3度検証してCI時間を延ばすことはしない。**
+
+| 導線の区間 | 検証しているspec |
+|---|---|
+| 登録（OTP）→同意→権限選択 | `task008-auth` / 全spec共通のログインヘルパー |
+| パスポート作成 | `task009` step1 / `task016` step1-3（キーボードのみ） |
+| 団体作成→審査待ち→verified | `task009` step4-5 / `task013` step2-3 / `task016` step2-2〜2-4 |
+| 公式窓口の登録 | `task009` step6 |
+| オファー作成→preview（区分）→送信 | `task009` step7 / `task011` step2-3 / `task016` step2-5 |
+| 受信→既読→返答→窓口開示 | `task009` step8-9 / `task013` step4 |
+| ファネル（10–5） | `task009` step10 / `task011` step4-5 |
+| 通知設定の変更・停止 | `task010` step3・5 / `task016` step1-6（キーボードのみ） |
+| パスポート削除・アカウント削除・脱退 | `task014` step3-8 |
+| 再読み込み・ログアウト・別context | `task009` step11-12 / `task016` step1-4・1-8・1-9 |
+| 停止・緊急停止 | `task013` step5-7 |
+
+本タスクで新しく足したのは、上記の**どのspecも検証していなかった**次の観点。
+
+1. キーボードだけで主要導線を完了できる（`tabTo`はTabで到達できなければ失敗する）
+2. 画面が切り替わるたびに、その画面の見出しへフォーカスが移る
+3. 390px幅で横スクロールが起きない（各画面で個別に検査）
+4. メールのリンク（`#notifications`）で着地でき、URLにhashが残らない
+5. 別ページから戻ってもセッションが残り、白画面にならない
+6. `sb-*`を消した（＝期限切れ・別端末でのログアウト相当）状態でも
+   白画面にならずログイン画面へ戻る
+
+### 実行した検証
+
+| 検証 | 結果 |
+|---|---|
+| oxlint / tsc / vitest / vite build | すべてgreen（ユニット362テスト） |
+| E2E typecheck | green |
+| E2E 実行 | CIで確認（本環境にDockerが無く、ローカル実行不可） |
+
+### 残る課題
+
+- コントラストは**計算値**であり、実機のディスプレイ・OSの設定（ダークモード・
+  ハイコントラスト）での確認は未実施
+- スクリーンリーダー実機（VoiceOver / TalkBack）での読み上げ確認は未実施。
+  自動検証では「フォーカスが移ること」までしか保証できない
+- `NotificationSettings`・`OrgOffersPanel`・`ServerOfferDetail`は
+  `useScreenFocus`を使わず、以前からの個別実装のまま残している
+  （挙動が微妙に異なり、書き換えると回帰リスクだけが増えるため）
