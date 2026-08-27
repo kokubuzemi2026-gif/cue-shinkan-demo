@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = public, extensions;
 
-select plan(31);
+select plan(34);
 
 -- ---- 権限: 運営（service_role）だけが health を見られる ----
 select is(
@@ -241,6 +241,26 @@ select is(
   (select count(*)::int from private.deletion_audit_log where occurred_on > (now() - interval '30 days')::date),
   1,
   'T1: 削除監査も保持期間内の行は残る'
+);
+-- 引数が効いていることを検査する。上までは既定の365日しか渡しておらず、
+-- `make_interval(days => retain_days)` を固定値にした変異体が全件通ってしまう。
+-- 下限は30日なので、60日前の行を足して 365 と 30 で結果が変わることを見る
+insert into private.admin_audit_log (action, actor_label, created_at) values
+  ('delivery_paused', 'ops-60d', now() - interval '60 days');
+select is(
+  (select admin_rows_deleted from private.prune_audit_logs(365)),
+  0,
+  'T1: retain_days=365 なら60日前の行は消えない'
+);
+select is(
+  (select admin_rows_deleted from private.prune_audit_logs(30)),
+  1,
+  'T1: retain_days=30 なら60日前の行だけが消える（引数が効いている）'
+);
+select is(
+  (select count(*)::int from private.admin_audit_log where actor_label = 'ops-new'),
+  1,
+  'T1: 保持期間内（10日前）の行はそのまま残る'
 );
 select throws_ok(
   $$select private.prune_audit_logs(29)$$,

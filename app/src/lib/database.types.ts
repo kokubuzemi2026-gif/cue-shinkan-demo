@@ -118,9 +118,21 @@ export type Database = {
         Relationships: []
       }
       student_consents: {
-        Row: { agreed_at: string; consent_version: number; user_id: string }
-        Insert: { agreed_at?: string; consent_version: number; user_id: string }
-        Update: { agreed_at?: string; consent_version?: number; user_id?: string }
+        Row: {
+          agreed_at: string
+          consent_version: number
+          user_id: string
+        }
+        Insert: {
+          agreed_at?: string
+          consent_version: number
+          user_id: string
+        }
+        Update: {
+          agreed_at?: string
+          consent_version?: number
+          user_id?: string
+        }
         Relationships: []
       }
       student_notification_settings: {
@@ -297,7 +309,7 @@ export type Database = {
       }
       delete_student_passport: { Args: never; Returns: undefined }
       email_outbox_health: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           cancelled_count: number
           failed_count: number
@@ -380,6 +392,7 @@ export type Database = {
           viewed_count: number
         }[]
       }
+      mark_offer_read: { Args: { delivery_id: string }; Returns: undefined }
       my_consent: {
         Args: never
         Returns: {
@@ -388,7 +401,6 @@ export type Database = {
           needs_consent: boolean
         }[]
       }
-      mark_offer_read: { Args: { delivery_id: string }; Returns: undefined }
       org_member_directory: {
         Args: { org_id: string }
         Returns: {
@@ -396,6 +408,25 @@ export type Database = {
           joined_at: string
           member_label: string
           role: Database["public"]["Enums"]["org_role"]
+        }[]
+      }
+      platform_health: {
+        Args: never
+        Returns: {
+          admin_audit_rows: number
+          checked_at: string
+          confirmed_identities: number
+          delivery_paused: boolean
+          identities_created_last_7d: number
+          non_university_identities: number
+          oldest_pending_overdue_minutes: number
+          orphan_identities: number
+          outbox_failed: number
+          outbox_pending: number
+          outbox_stuck_sending: number
+          pending_organizations: number
+          quota_over_limit: number
+          stale_preview_rows: number
         }[]
       }
       preview_invitation: {
@@ -647,6 +678,8 @@ export const Constants = {
     Enums: {
       activity_style: ["relaxed", "moderate", "serious"],
       day_slot: ["weekday_day", "weekday_night", "weekend"],
+      email_kind: ["offer_arrival", "daily_digest"],
+      email_status: ["pending", "sending", "sent", "failed", "cancelled"],
       experience_level: ["none", "some", "experienced"],
       frequency: ["monthly_1_2", "weekly_1", "weekly_2_plus"],
       interest_category: [
@@ -659,6 +692,7 @@ export const Constants = {
         "volunteer",
         "international",
       ],
+      notification_mode: ["each", "daily", "off"],
       org_role: ["owner", "admin", "member"],
       org_status: ["pending", "verified", "suspended"],
       purpose: ["friends", "challenge", "exercise", "creation"],
