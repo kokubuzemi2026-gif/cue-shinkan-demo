@@ -289,6 +289,10 @@ test('Task 014: 本人がデータを削除でき、復元可能な個人情報�
       expect(
         execSql(`select count(*)::int from public.student_passports where user_id = '${studentId}'`),
       ).toBe('0')
+      // 削除でカードが「登録されていません」へ切り替わって結果が消えないこと
+      await expect(
+        pageStudent.getByText('新しい案内は届かなくなります', { exact: false }),
+      ).toBeVisible()
 
       await pageStudent.getByRole('button', { name: '受信箱', exact: true }).click()
       await expect(pageStudent.getByText(`留学生交流会-${RUN}`)).toBeVisible({ timeout: 15_000 })
@@ -334,7 +338,14 @@ test('Task 014: 本人がデータを削除でき、復元可能な個人情報�
       ).toBe('0')
     })
 
-    await test.step('6: 削除後は利用できる権限が無くなる', async () => {
+    await test.step('6: 結果を読んでから利用者の操作で次へ進む', async () => {
+      // 自動で画面が切り替わると「消えた」以外に何も分からないため、
+      // 完了表示を残して利用者の操作で進ませる
+      await pageStudent.getByRole('button', { name: 'はじめの画面へ', exact: true }).click()
+      await expect(pageStudent.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
+        timeout: 15_000,
+      })
+      // 再読込しても権限は戻らない
       await pageStudent.reload()
       await expect(pageStudent.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
         timeout: 15_000,

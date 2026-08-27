@@ -12,6 +12,10 @@ type DeletionCardProps = {
   onRequest: () => void
   onCancel: () => void
   onConfirm: () => void
+  // 完了後に次へ進む導線。省略すると結果表示だけで止まる。
+  // 画面が自動で切り替わると「消えた」以外に何も分からないため、
+  // 結果を読んでから利用者の操作で進ませる
+  doneAction?: { label: string; onClick: () => void }
 }
 
 // 取り消せない操作の共通カード。
@@ -24,6 +28,7 @@ export function DeletionCard({
   onRequest,
   onCancel,
   onConfirm,
+  doneAction,
 }: DeletionCardProps) {
   const copy = DELETION_COPY[kind]
 
@@ -33,6 +38,13 @@ export function DeletionCard({
         <p role="status" className="danger-done">
           {copy.done}
         </p>
+        {doneAction !== undefined && (
+          <div className="danger-actions">
+            <button type="button" className="button button-primary" onClick={doneAction.onClick}>
+              {doneAction.label}
+            </button>
+          </div>
+        )}
       </section>
     )
   }

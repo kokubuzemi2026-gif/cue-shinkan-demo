@@ -34,6 +34,7 @@ export function AccountDataPanel({
       try {
         await deleteStudentPassport(client)
         passportDispatch({ type: 'succeeded' })
+        // 受信箱・ホームの表示を最新にする。このパネルは完了表示を保持する
         onPassportDeleted()
       } catch (error) {
         passportDispatch({ type: 'failed', message: serverErrorMessage(error) })
@@ -47,7 +48,8 @@ export function AccountDataPanel({
       try {
         await deleteMyAccount(client)
         accountDispatch({ type: 'succeeded' })
-        onAccountDeleted()
+        // シェルの再読込はここでは行わない。先に結果を見せ、
+        // 利用者が「はじめの画面へ」を押してから切り替える
       } catch (error) {
         accountDispatch({ type: 'failed', message: serverErrorMessage(error) })
       }
@@ -61,7 +63,10 @@ export function AccountDataPanel({
         CUEに保存されているあなたのデータを、自分で削除できます。削除した内容は元に戻せません。
       </p>
 
-      {hasPassport ? (
+      {/* 削除に成功すると hasPassport は false になるが、完了表示は残す。
+          結果を見せずにカードが「登録されていません」へ切り替わると、
+          消えたのかどうかが利用者に分からない */}
+      {hasPassport || passportState.phase === 'done' ? (
         <DeletionCard
           kind="passport"
           state={passportState}
@@ -84,6 +89,7 @@ export function AccountDataPanel({
         onRequest={() => accountDispatch({ type: 'request' })}
         onCancel={() => accountDispatch({ type: 'cancel' })}
         onConfirm={runAccountDelete}
+        doneAction={{ label: 'はじめの画面へ', onClick: onAccountDeleted }}
       />
 
       <p className="auth-hint">
