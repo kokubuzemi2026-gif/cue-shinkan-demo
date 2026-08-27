@@ -180,20 +180,25 @@ decision番号は既存D001〜D035。新規はD036以降。
 
 ## 6. 完了条件（Definition of Done for v1.0）
 
-- [ ] Task 010・011・013〜018がすべて`develop`へmerge済み
-- [ ] P0/P1の既知不具合ゼロ
-- [ ] 未解決の認証・RLS・privacy blockerゼロ
-- [ ] 全CI green（quality / db-tests / e2e）
-- [ ] staging E2E green
-- [ ] migration・rollback確認済み
-- [ ] secret漏洩なし（リポジトリ・CI・PR・ログ）
-- [ ] 合成データ以外がcommitされていない
-- [ ] privacy / termsのdraftがあり、要確認箇所が明示されている
-- [ ] 公開後smoke testとrollback手順がある
-- [ ] release notesと既知制限がある
-- [ ] `develop` → `main` のrelease PRに独立レビューとセキュリティレビューを実施
-- [ ] main反映後のdeploy監視とsmoke test完了
-- [ ] `v1.0.0` のrelease / tag作成
+状態は2026-08-27時点。**未達の3件はすべて `docs/launch_plan.md` §7 の
+人間待ち項目（H1・H6〜H10）が原因**で、実装側からは進められない。
+
+| 条件 | 状態 | 根拠・残る作業 |
+|---|---|---|
+| Task 010・011・013〜018がすべて`develop`へmerge済み | **達成**（+019） | 008〜017・019がmerge済み。018は本タスク |
+| P0/P1の既知不具合ゼロ | **達成** | §7.1 の既知リスク一覧にP0/P1無し |
+| 未解決の認証・RLS・privacy blockerゼロ | **達成** | 各タスクの独立レビュー・security-reviewerでBlocker 0 |
+| 全CI green | **達成** | quality / db-tests / e2e / audit |
+| staging E2E green | **未達** | H1・H9。Supabaseアカウントが要る |
+| migration・rollback確認済み | **一部** | ローカル35 migrationの適用は毎回検証。hostedでの適用・切り戻しは未実施（H1） |
+| secret漏洩なし | **達成** | `VITE_*` 以外をビルドへ入れないことを実測。E2Eアーティファクトの入力値漏れも塞いだ（D051） |
+| 合成データ以外がcommitされていない | **達成** | テストデータは `demo-*@stu.kobe-u.ac.jp` の合成のみ |
+| privacy / termsのdraftがあり、要確認箇所が明示されている | **達成** | `docs/legal/`・【要確認】（D050）。**法令適合は運営者の最終確認事項** |
+| 公開後smoke testとrollback手順がある | **達成** | `tasks/018-release-v1.md` §公開後smoke test / `docs/runbook_operations.md` §4・§7 |
+| release notesと既知制限がある | **達成** | `docs/release_notes_v1.0.md` / §7.1 |
+| release PRに独立レビューとセキュリティレビューを実施 | **達成** | Task 018 のPRで実施 |
+| main反映後のdeploy監視とsmoke test完了 | **未達** | H6〜H8が未了のためmergeしていない |
+| `v1.0.0` のrelease / tag作成 | **未達** | main反映後に作る |
 
 ## 7. 人間が行う必要のある操作（Blocker候補）
 
@@ -313,10 +318,45 @@ Task 018のsmoke testも全滅する。
   CIの時限式pgTAPを別PR #18で修正。E2Eの失敗アーティファクトへ入力値が残る件を
   実機確認して別PR #19で修正。Task 017着手 |
 
+| 2026-08-27 | Task 017完了（PR #20 `cebabdd`）。独立レビュー3周・security-reviewer 2周で
+  Blocker 8件を検出し、すべて自分で再現して修正（quota超過の誤発報／health列の無検査＝
+  リテラル0の変異体が全件pass／権限テストのPUBLIC除外／backup手順がリポジトリへPIIを
+  書き出す／監査行数の恒真検査）。pgTAP 607→622件 |
+
+| 2026-08-27 | Task 019完了（PR #21）。既知リスクE5（`email_outbox`の剪定経路が無い）を閉じ、
+  ワーカーの並行取り出しを実プロセス並行で検証、生成型の差分を解消。
+  pgTAP 622→636件、並行10→15件 |
+
+| 2026-08-27 | Task 018（release準備）。`deploy-pages.yml` へ接続設定の受け渡しと
+  検証ステップを追加。release notes・公開後smoke test・READMEの公開手順を用意。
+  **release PRはdraftのまま**（H6〜H8が未了） |
+
 ## 9. 次回再開時の開始点
 
-本書§3の表で「未着手」の最小番号のTaskから再開する。
-再開時は必ず次を再確認する。
+**実装側の作業は Task 019 まで完了している。次に必要なのは §7 の人間の操作。**
+
+### いま止まっているもの
+
+| 番号 | 内容 | これが無いと |
+|---|---|---|
+| **H6** | 公開用Supabaseプロジェクトの作成（または staging を昇格する判断） | 接続先が決まらない |
+| **H7** | GitHub Actions **variables** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` | 公開ビルドが接続設定を持てない（deployが検証ステップで止まる） |
+| **H8** | Supabase Auth の Site URL / Redirect URL を公開URLへ | OTPのリンク先が壊れる |
+| H1・H9 | hosted staging での通し確認（migration適用・OTP往復・実メール） | §6 の「staging E2E green」が埋まらない |
+| H10 | 退会後の `auth.users` 削除の挙動確認 | 退会したのに大学メールが残る |
+
+H6〜H8 が揃うまで **`main` へmergeしない**。
+
+### 揃ったあとの手順
+
+1. `feat/018-release-v1` の release PR（draft）を ready にする
+2. 独立レビュー + security-reviewer → CI green を確認して `main` へmerge
+3. Actionsタブで「Deploy to GitHub Pages」の成功を確認
+4. `tasks/018-release-v1.md` §公開後smoke test を上から実行する
+5. 安定を確認してから `v1.0.0` の tag / release を作る
+6. 本書 §6 を完了へ更新する
+
+### 再開時に必ず再確認する
 
 1. `git fetch origin && git log --oneline -5 origin/develop`
 2. open PRとCIの状態

@@ -80,11 +80,12 @@ CUE は、新入生が事前に登録した「興味パスポート」をもと�
 
 ## 現在地
 
-Phase 1（2026年8月22日のメンバー持ち寄りデモ）は完了し、`main`ブランチと公開デモを凍結しています。現在はPhase 2（アカウント・権限・サーバーデータ化）を`develop`ブランチで開発中です。
+Phase 1（2026年8月22日のメンバー持ち寄りデモ）は完了しました。Phase 2（アカウント・権限・サーバーデータ化・通知・運用）は`develop`で**実装が完了**しています（Task 008〜019）。閉鎖β v1.0の公開は、**人間にしかできない準備が終わってから**行います。
 
-- 公開デモ（凍結中・mainのlocalStorage版）: https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/
-- Phase 2の技術: Supabase Auth（メールOTP）+ PostgreSQL + RLS
-- ブランチ運用: `main`は凍結。Task 008〜011は`develop`をbaseにしたPRで進め、`main`へはマージしない
+- 公開デモ（現在公開中・mainのlocalStorage版）: https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/
+- **`main`へのmergeを止めている理由**: 公開用Supabaseプロジェクト（H6）・Actions variables（H7）・Auth Site URL（H8）が未設定です。この状態でmergeすると、`.github/workflows/deploy-pages.yml` の検証ステップがdeployを止めます（いま動いている公開デモは残ります）。詳細は `docs/launch_plan.md` §7
+- Phase 2の技術: Supabase Auth（メールOTP）+ PostgreSQL + RLS + Edge Functions
+- ブランチ運用: `develop`をbaseにした1タスク1PR。`main`へのmergeは公開判断のときだけ
 - 認証・権限の正本: `docs/auth_and_authorization.md`、決定は`docs/decisions.md`（D026〜D034）
 - サーバーデータ（パスポート・オファー配信・受信箱・ファネル）の正本: `docs/server_data_model.md`（Task 009）
 - hosted環境（staging）の構築・確認手順: `docs/runbook_supabase_hosted.md`
@@ -139,12 +140,24 @@ npm run dev             # http://localhost:5173/cue-shinkan-demo/
 - 公開URL: https://kokubuzemi2026-gif.github.io/cue-shinkan-demo/
 - 公開元はGitHub Actions（Settings → Pages → Build and deployment → Source: GitHub Actions）
 - `main`へのpushで自動公開。Actionsタブの「Deploy to GitHub Pages」からworkflow_dispatchで手動再公開できる
-- デモ状態はブラウザのlocalStorageへ保存される。ヘッダーの「デモ用架空データ」バッジから、いつでも初期状態へ戻せる
-- 表示されるのはすべて架空データで、実在する学生の情報を含まない
 
-公開URLで問題がある場合の確認手順:
+### 公開に必要なActions variables
+
+Phase 2のアプリは、ビルド時に接続先が埋め込まれていないと「接続設定が必要です」の案内画面になります。**Settings → Secrets and variables → Actions → Variables** に次の2つを設定してください（`docs/launch_plan.md` §7 H7）。
+
+| 変数 | 中身 |
+|---|---|
+| `VITE_SUPABASE_URL` | 公開用SupabaseプロジェクトのProject URL |
+| `VITE_SUPABASE_PUBLISHABLE_KEY` | 同プロジェクトのpublishable key（`sb_publishable_...`） |
+
+**どちらもブラウザへ出る値**なのでsecretではなくvariableで構いません。secret key・service-role key・DBパスワード・アクセストークンは**絶対に置かないでください**（D027）。
+
+未設定のままmergeした場合、build後の「Verify build has Supabase config」がdeployを止めます。**すでに公開されているページはそのまま残ります**（壊れたものが公開されるより、古いものが残るほうがよいという判断です）。
+
+### 公開URLで問題がある場合
 
 1. Actionsタブで「Deploy to GitHub Pages」の最新runが成功しているか確認する
-2. Settings → Pages のSourceが「GitHub Actions」になっているか確認する
-3. ブラウザを再読み込みする（必要ならキャッシュを削除する）
-4. 表示が崩れた状態が残る場合は「デモ用架空データ」バッジからデモをリセットする
+2. 「Verify build has Supabase config」で落ちている場合は、上記のvariablesを設定する
+3. Settings → Pages のSourceが「GitHub Actions」になっているか確認する
+4. ブラウザを再読み込みする（必要ならキャッシュを削除する）
+5. 公開そのものを止めるときは `docs/runbook_operations.md` §7（公開停止の5段階）
