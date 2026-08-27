@@ -79,6 +79,16 @@ async function fetchOtpMail(
 }
 
 // メール入力→OTP受信→検証ログインまで（登録とログインの統合導線）
+// Task 015: 同意画面が出たら同意して進む（初回・版更新時）
+async function passConsentIfPresent(page: Page) {
+  const heading = page.getByRole('heading', { name: 'はじめる前に' })
+  if (await heading.isVisible({ timeout: 8000 }).catch(() => false)) {
+    await page.getByRole('checkbox', { name: /同意します/u }).check()
+    await page.getByRole('button', { name: '同意して進む', exact: true }).click()
+    await expect(heading).toBeHidden({ timeout: 15000 })
+  }
+}
+
 async function signInWithOtp(
   page: Page,
   request: APIRequestContext,
@@ -97,6 +107,8 @@ async function signInWithOtp(
   const mail = await fetchOtpMail(request, expectedAddress)
   await codeInput.fill(mail.code)
   await page.getByRole('button', { name: 'ログインする' }).click()
+  // Task 015: 登録の前に同意画面を通す（D050）
+  await passConsentIfPresent(page)
   await expect(page.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
     timeout: 15_000,
   })

@@ -43,6 +43,9 @@ from (values
 
 -- a01の団体（verified化）・a02の団体（pendingのまま）
 select set_config('request.jwt.claims', '{"sub":"00000000-0000-0000-0000-000000000a01","role":"authenticated"}', true);
+-- Task 015: 同意ゲートを通すため、作成済みの全ユーザーへ同意を記録する（テスト用）
+insert into public.student_consents (user_id, consent_version)
+  select id, private.current_consent_version() from auth.users on conflict (user_id) do nothing;
 set local role authenticated;
 create temp table org1 as select public.create_organization('送信テスト団体') as id;
 reset role;

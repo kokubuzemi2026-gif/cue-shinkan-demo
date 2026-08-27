@@ -97,8 +97,8 @@ Phase 2はTask 008（認証・権限）とTask 009（サーバーデータ）ま
 | 011 | 匿名性（k=5・区分preview・10–5ファネル）・並行quota・入力検証 | **完了（developへmerge済み `ee08d12`）** | [#12](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/12) | — |
 | 010 | メール通知（outbox・digest・設定・unsubscribe） | **完了（developへmerge済み `18c1e3a`）。実メール送信のみhosted待ち** | [#13](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/13) | 011 |
 | 013 | 団体確認（pending/verified/suspended）・停止・kill switch・監査 | **完了（developへmerge済み `e8b333c`）** | [#14](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/14) | — |
-| 014 | アカウント・データライフサイクル（削除・脱退・孤児データ） | **実装完了・レビュー中** | — | 013 |
-| 015 | プライバシー・同意・利用規約draft・同意バージョン | 未着手（仕様は `tasks/015-*.md`） | — | — |
+| 014 | アカウント・データライフサイクル（削除・脱退・孤児データ） | **完了（developへmerge済み `7da6919`）** | [#15](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/15) | 013 |
+| 015 | プライバシー・同意・利用規約draft・同意バージョン | **実装完了・レビュー中** | — | — |
 | 016 | UX・アクセシビリティ・完全E2E | 未着手（仕様は `tasks/016-*.md`） | — | 010〜015 |
 | 017 | 運用（structured logging・health・runbook・secret rotation） | 未着手（仕様は `tasks/017-*.md`） | — | 010 |
 | 018 | リリース（release notes・smoke test・staging記録・main PR） | 未着手（仕様は `tasks/018-*.md`） | — | 全部 |

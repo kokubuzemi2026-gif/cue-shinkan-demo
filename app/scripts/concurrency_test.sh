@@ -80,6 +80,9 @@ insert into private.student_delivery_quota (user_id)
 select ('00000000-0000-0000-0000-0000000cc1' || to_char(n, 'FM00'))::uuid
 from generate_series(1, 6) as n
 on conflict (user_id) do nothing;
+-- Task 015: 同意ゲートを通す
+insert into public.student_consents (user_id, consent_version)
+values ('$OWNER', private.current_consent_version()) on conflict (user_id) do nothing;
 select set_config('request.jwt.claims', '$CLAIMS', false);
 set role authenticated;
 select public.create_organization('$ORG_A');
@@ -207,6 +210,8 @@ note 'Task 014 並行脱退テスト: 準備'
 insert into auth.users (id, email, email_confirmed_at, created_at, updated_at) values
   ('$LEAVE_1', 'demo-leave-1@stu.kobe-u.ac.jp', now(), now(), now()),
   ('$LEAVE_2', 'demo-leave-2@stu.kobe-u.ac.jp', now(), now(), now());
+insert into public.student_consents (user_id, consent_version)
+values ('$LEAVE_1', private.current_consent_version()) on conflict (user_id) do nothing;
 select set_config('request.jwt.claims',
   '{"sub":"$LEAVE_1","role":"authenticated"}', false);
 set role authenticated;

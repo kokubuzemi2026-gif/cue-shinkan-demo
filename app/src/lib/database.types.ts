@@ -117,6 +117,12 @@ export type Database = {
         }
         Relationships: []
       }
+      student_consents: {
+        Row: { agreed_at: string; consent_version: number; user_id: string }
+        Insert: { agreed_at?: string; consent_version: number; user_id: string }
+        Update: { agreed_at?: string; consent_version?: number; user_id?: string }
+        Relationships: []
+      }
       student_notification_settings: {
         Row: {
           created_at: string
@@ -374,6 +380,14 @@ export type Database = {
           viewed_count: number
         }[]
       }
+      my_consent: {
+        Args: never
+        Returns: {
+          agreed_version: number
+          current_version: number
+          needs_consent: boolean
+        }[]
+      }
       mark_offer_read: { Args: { delivery_id: string }; Returns: undefined }
       org_member_directory: {
         Args: { org_id: string }
@@ -420,6 +434,7 @@ export type Database = {
           weekly_limit: number
         }[]
       }
+      record_consent: { Args: { version: number }; Returns: undefined }
       respond_to_offer: {
         Args: {
           choice: Database["public"]["Enums"]["response_choice"]

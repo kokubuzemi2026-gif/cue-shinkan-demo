@@ -99,6 +99,17 @@ async function fetchOtpCode(request: APIRequestContext, address: string): Promis
   return otpMatch![1]
 }
 
+// Task 015: 同意画面が出たら同意して進む（初回・版更新時）。
+// 既に同意済みなら何もしない
+async function passConsentIfPresent(page: Page) {
+  const heading = page.getByRole('heading', { name: 'はじめる前に' })
+  if (await heading.isVisible({ timeout: 8000 }).catch(() => false)) {
+    await page.getByRole('checkbox', { name: /同意します/u }).check()
+    await page.getByRole('button', { name: '同意して進む', exact: true }).click()
+    await expect(heading).toBeHidden({ timeout: 15000 })
+  }
+}
+
 async function signInWithOtp(page: Page, request: APIRequestContext, address: string) {
   await page.goto(BASE)
   await page.getByLabel('大学メールアドレス').fill(address)
@@ -110,6 +121,8 @@ async function signInWithOtp(page: Page, request: APIRequestContext, address: st
   const code = await fetchOtpCode(request, address)
   await codeInput.fill(code)
   await page.getByRole('button', { name: 'ログインする' }).click()
+  // Task 015: ログイン後、登録の前に同意画面を通す（D050）
+  await passConsentIfPresent(page)
 }
 
 // 意図的に拒否される要求（緊急停止中の確認・送信）を数えるためのフラグ。
@@ -349,8 +362,10 @@ test('Task 014: 本人がデータを削除でき、復元可能な個人情報�
       await expect(pageStudent.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
         timeout: 15_000,
       })
-      // 再読込しても権限は戻らない
+      // 再読込しても権限は戻らない。
+      // アカウント削除で同意記録も消えるため、再読込後は同意画面から始まる（D050）
       await pageStudent.reload()
+      await passConsentIfPresent(pageStudent)
       await expect(pageStudent.getByRole('heading', { name: '利用方法を選ぶ' })).toBeVisible({
         timeout: 15_000,
       })

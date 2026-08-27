@@ -33,6 +33,9 @@ returns void language plpgsql as $$
 begin
   perform set_config('request.jwt.claims',
     '{"sub":"' || uid || '","role":"authenticated"}', true);
+-- Task 015: 同意ゲートを通すため、作成済みの全ユーザーへ同意を記録する（テスト用）
+insert into public.student_consents (user_id, consent_version)
+  select id, private.current_consent_version() from auth.users on conflict (user_id) do nothing;
   set local role authenticated;
   perform public.save_notification_settings(m);
   reset role;

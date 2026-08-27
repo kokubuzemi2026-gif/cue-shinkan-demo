@@ -91,6 +91,17 @@ async function fetchOtpCode(request: APIRequestContext, address: string): Promis
   return otpMatch![1]
 }
 
+// Task 015: 同意画面が出たら同意して進む（初回・版更新時）。
+// 既に同意済みなら何もしない
+async function passConsentIfPresent(page: Page) {
+  const heading = page.getByRole('heading', { name: 'はじめる前に' })
+  if (await heading.isVisible({ timeout: 8000 }).catch(() => false)) {
+    await page.getByRole('checkbox', { name: /同意します/u }).check()
+    await page.getByRole('button', { name: '同意して進む', exact: true }).click()
+    await expect(heading).toBeHidden({ timeout: 15000 })
+  }
+}
+
 async function signInWithOtp(page: Page, request: APIRequestContext, address: string) {
   await page.goto(BASE)
   await page.getByLabel('大学メールアドレス').fill(address)
@@ -102,6 +113,8 @@ async function signInWithOtp(page: Page, request: APIRequestContext, address: st
   const code = await fetchOtpCode(request, address)
   await codeInput.fill(code)
   await page.getByRole('button', { name: 'ログインする' }).click()
+  // Task 015: ログイン後、登録の前に同意画面を通す（D050）
+  await passConsentIfPresent(page)
 }
 
 function watchPage(page: Page, sink: string[], label: string) {
