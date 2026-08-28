@@ -85,9 +85,9 @@ export type LogSafeRecord = {
 // 既知の分類だけを短いコードへ落とし、それ以外は 'unknown' にする
 export function classifyError(error: unknown): string {
   const obj = typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : null
-  // nodemailerは message に加えて code（EAUTH等）と responseCode（535等）を返す。
-  // messageだけを見ていると原因不明の`unknown`になり、運用時に何も分からない
-  // （2026-08-28のsmoke test Bで実際にそうなった・D058）。3つとも突き合わせる
+  // nodemailerは message に加えて code（EAUTH・ETLS・ESOCKET等）と
+  // responseCode（535・421・550等）を返す。messageだけを見ると原因不明の`unknown`になり、
+  // 運用で何も切り分けられない（2026-08-28のsmoke test Bで実際にそうなった・D058）
   const message = [
     obj !== null && 'message' in obj ? String(obj.message) : String(error ?? ''),
     obj !== null && 'code' in obj ? String(obj.code) : '',
@@ -95,28 +95,46 @@ export function classifyError(error: unknown): string {
   ]
     .join(' ')
     .toLowerCase()
-  if (message.includes('auth') || message.includes('535')) return 'smtp_auth'
-  if (message.includes('timeout') || message.includes('etimedout')) return 'smtp_timeout'
-  if (message.includes('connect') || message.includes('econnrefused')) return 'smtp_connect'
-  if (message.includes('550') || message.includes('mailbox')) return 'recipient_rejected'
-  if (message.includes('rate') || message.includes('421') || message.includes('quota')) {
-    return 'rate_limited'
+
+  // **判定順序が仕様**。nodemailerの実際の例外文は複数の語を同時に含むため、
+  // 具体的な語（コード・SMTP応答番号）を先に、包括的な語を後に見る。
+  // 例: `Error upgrading connection with STARTTLS`(ETLS) は 'connect' を含むので、
+  // TLSを先に見ないとTLS剥奪の兆候が smtp_connect に埋もれる（独立レビュー指摘）
+  if (message.includes('535') || message.includes('eauth') || message.includes('auth')) {
+    return 'smtp_auth'
   }
-  // TLS由来を先に見る（`esocket`は下の'socket'にも一致するため順序が重要）
-  if (message.includes('certificate') || message.includes('tls')) {
+  if (
+    message.includes('etls') ||
+    message.includes('starttls') ||
+    message.includes('certificate') ||
+    message.includes('tls')
+  ) {
     return 'smtp_tls'
   }
-  // 接続はできたのに会話の途中で切れる系（denomailerで実際に起きた事象）。
-  // `unknown`へ落とすと原因の切り分けができないため独立させる
+  // 421はGmailの上限応答。`Server terminates connection. response=421` のように
+  // 'connect' を含むため、connect判定より先に見る（runbook §6.1の約束と揃える）
+  if (message.includes('421') || message.includes('rate') || message.includes('quota')) {
+    return 'rate_limited'
+  }
+  if (message.includes('550') || message.includes('mailbox')) return 'recipient_rejected'
+  if (message.includes('timeout') || message.includes('etimedout')) return 'smtp_timeout'
+  // 接続はできたのに会話の途中で切れる系（denomailerで実際に起きた事象）
   if (
     message.includes('interrupted') ||
     message.includes('canceled') ||
     message.includes('cancelled') ||
-    message.includes('socket') ||
     message.includes('econnreset') ||
-    message.includes('epipe')
+    message.includes('epipe') ||
+    message.includes('socket')
   ) {
     return 'smtp_stream'
+  }
+  if (
+    message.includes('econnrefused') ||
+    message.includes('econnection') ||
+    message.includes('connect')
+  ) {
+    return 'smtp_connect'
   }
   return 'unknown'
 }

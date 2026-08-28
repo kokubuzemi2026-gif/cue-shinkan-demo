@@ -85,7 +85,11 @@ PR・チャットへ置かない。**
    （Edge Functions → Secrets／エディタで `index.ts`+`emailTemplate.ts` の2ファイルをデプロイ／
    Integrations → Cron `*/5 * * * *`）。実測で確定した2点:
    - **`CUE_SMTP_PORT` は `465`（暗黙TLS）を使う**。587のSTARTTLSはEdgeランタイムで
-     `invalid cmd at SMTPConnection.assertCode` となり接続できない（launch_plan §7.1 E7）
+     `invalid cmd at SMTPConnection.assertCode` となり接続できなかった（launch_plan §7.1 E7）。
+     ※このエラー文はdenomailer時代のもの。**2026-08-28にsmoke test Bで実送信が全失敗し
+     （`Interrupted: operation canceled`）、SMTPライブラリを `npm:nodemailer` へ置き換えた
+     （Task 022・D058）。上の手順4「実際にメールが届くことを確認する」は、
+     nodemailer版を再デプロイしたうえで実施する（H9-2）**
    - 関数の「**Verify JWT with legacy secret**」は**OFF**にする。本プロジェクトはlegacyキーを
      無効化済み（§5）のため、ONだとCronからの呼び出しが恒常的に401になる。ワーカーの権限は
      DB側のservice_role専用RPCが握っており、OFFにしても呼び出し元へ権限は渡らない

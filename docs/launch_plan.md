@@ -16,7 +16,7 @@
 | `main` | `646278f`（Phase 1公開デモ・**公開中**・凍結） |
 | 完了Task | **000〜021**（020は `607891f`・021は `6bf1829`）。**022はhosted再検証待ち**（D058） |
 | migration | **20本**（0008×4・0009×4・0011×3・0010×2・0013×2・0014・0015・0017・0018・0019） |
-| unit test | **373件 / 32ファイル**（021で+3） |
+| unit test | **376件 / 32ファイル**（022で+3） |
 | pgTAP | **653件 / 36ファイル** |
 | 並行テスト | **15件**（`npm run db:test:concurrency`） |
 | hookテスト | 201件 |
@@ -28,7 +28,12 @@ Phase 2の**実装はTask 021まで完了**している。学生の登録・パ�
 本人によるデータ削除、同意管理、health checkまでがサーバー側
 （RLS + SECURITY DEFINER RPC）で動作する。
 
-**残るのは人間の操作だけ**（§7 H2・H4・H5・H10とsmoke test。H1・H3・H6〜H9・H11は2026-08-28完了）。実装側からは進められない。
+**残るのは人間の操作だけ**（§7 H2・H4・H5・H10、**H9の再デプロイ**、smoke test。H1・H3・H6〜H8・H11は2026-08-28完了）。実装側からは進められない。
+
+> **2026-08-28（smoke test B）: メール通知は現時点で1通も送れていない。** 送信ワーカーは動いているが、
+> SMTPライブラリ（denomailer）がEdge Runtimeで動かず、outboxが `attempts=5` / `failed` になった。
+> Task 022（D058）で `npm:nodemailer` へ置き換え済み。**新コードの再デプロイ（人間の操作）と
+> 実送達の再確認が済むまで、メール通知は動作しないものとして扱う。**
 
 ## 2. v1.0の完成像と現状のgap
 
@@ -44,7 +49,7 @@ Phase 2の**実装はTask 021まで完了**している。学生の登録・パ�
 | パスポートの登録・更新 | ✅ | 009 |
 | パスポートの**削除** | ✅ `delete_student_passport`（D046） | 014 |
 | 個人情報を団体へ非公開のままオファー受信 | ✅ | 009 |
-| オファー到着のメール通知 | ✅ ワーカー稼働中（2026-08-28設置・H9）。**実送達の確認はsmoke test A/B** | 010 |
+| オファー到着のメール通知 | ⚠️ ワーカーは稼働中だが**実送達は失敗を確認済み**（smoke test B・2026-08-28）。Task 022で修正済み・**再デプロイ待ち** | 010/022 |
 | 受信箱で確認し3段階で返答 | ✅ | 009 |
 | 「行ってみたい」後だけ公式窓口を開示 | ✅ | 009 |
 | 通知設定の管理 | ✅ オファーごと / 1日1回 / 通知しない | 010 |
@@ -225,7 +230,7 @@ decision番号は **D058まで使用済み**（D054はTask 018＝PR #22、D055�
 | H6 | **公開用Supabaseプロジェクトの決定**（stagingを流用するか、productionを新規に作るか） | Supabaseアカウントの操作。Freeプランの範囲なら課金は発生しない | **完了（2026-08-28）**。既存 `cue-shinkan-staging` を昇格する |
 | H7 | **GitHub Actions **secrets** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` を設定** | どちらもブラウザへ出る値だが、**貼り間違いの封じ込めのためsecretへ置く**（D054。`vars.*` はログでマスクされない）。**チャットへ貼らない**。貼り間違えたら**先にSupabaseで失効**させる | **完了（2026-08-28）**。dry_run空撃ちの1回目でURL形式検査が正しく停止（貼り間違いを検出）→修正後の2回目でbuild・検証green・deploy skip |
 | H8 | **Supabase Auth の Site URL を公開URLへ変更**（**Redirect URLsは追加しない**・§7.2） | Dashboardの操作 | **完了（2026-08-28）**。Site URLのみ変更・Redirect URLs追加なし |
-| H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | Supabaseアクセストークンが必要（`docs/runbook_supabase_hosted.md` §6.1） | **完了（2026-08-28）**。Dashboardのみで実施: エディタで2ファイルをデプロイ・Secrets6件・Integrations→Cron（`*/5 * * * *`・pg_net拡張を導入）。関数の「Verify JWT with legacy secret」は**OFF**（legacyキー無効化済みの本プロジェクトでは何も通らず恒常401になるため。権限はDB側RPCが握る）。`CUE_SMTP_PORT`は**465**（587のSTARTTLSはEdgeで`invalid cmd`・E7）。稼働確認: Invocations 200×2・`email_outbox_health()`全0。**実メール送達はsmoke test A/Bで確認** |
+| H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | Supabaseアクセストークンが必要（`docs/runbook_supabase_hosted.md` §6.1） | **完了（2026-08-28）**。Dashboardのみで実施: エディタで2ファイルをデプロイ・Secrets6件・Integrations→Cron（`*/5 * * * *`・pg_net拡張を導入）。関数の「Verify JWT with legacy secret」は**OFF**（legacyキー無効化済みの本プロジェクトでは何も通らず恒常401になるため。権限はDB側RPCが握る）。`CUE_SMTP_PORT`は**465**（587のSTARTTLSはEdgeで`invalid cmd`・E7）。稼働確認: Invocations 200×2・`email_outbox_health()`全0（当時はキューが空）。**その後のsmoke test Bで実送信が全失敗し、Task 022（D058）で修正。新コードの再デプロイが未実施＝H9は「要再実施」** |
 | H10 | 本番Supabaseでの `auth.users` 削除挙動の確認 | Dashboardでの実操作が必要（`docs/operations.md` §9） | 未実施 |
 | **H11** | **公開前に Supabase Auth の Attack Protection（CAPTCHA・レート制限）を設定** | Dashboardの操作。**D030はこれをTask 011へ委ねたが、011のscopeに入っておらず実施されていない**（独立レビューで発覚） | **完了（2026-08-28）**。レート制限（メール送信20/時＝送信元Gmailの500/日の内側・他は既定のまま）＋Task 021 merge後にDashboardでCAPTCHA（Turnstile）を有効化・Secret KeyはDashboardのみ。**実機でのウィジェット付きログイン確認は公開後smoke test A** |
 
@@ -314,7 +319,7 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 |---|---|---|---|---|
 | E1 | **P2** | **Freeプロジェクトは約1週間の非アクティブでpauseされ得る** | 突然ログインできなくなる | 定期的に稼働を確認する |
 | E2 | **P2** | **Authログの保持期間が短い** | 認証障害の事後調査ができない | 発生当日中に調査する |
-| E3 | **P1** | 実メール送信がhosted未検証。**送信ワーカー（Edge Function）が未デプロイ**（H9） | デプロイしないとメール通知が**1通も飛ばない**。release notesは通知を機能として挙げている | **設置済み（2026-08-28・H9完了）**: ワーカー稼働中（5分間隔・`email_outbox_health()`全0）。**実配信の確認はsmoke test A/Bで行い、それまで実送達は未検証のP1として扱う** |
+| E3 | **P1** | 実メール送信がhosted未検証。**送信ワーカー（Edge Function）が未デプロイ**（H9） | デプロイしないとメール通知が**1通も飛ばない**。release notesは通知を機能として挙げている | **未解決（2026-08-28時点）**: ワーカーは設置・稼働しているが、smoke test Bで**実送信が全失敗**した（denomailerがEdge Runtimeで動かず `attempts=5` で `failed`・E7）。Task 022（D058）で `npm:nodemailer` へ置き換え済みだが、**hostedへ再デプロイするまでメール通知は1通も飛ばない**。公開前に再デプロイと実送達の確認が必須 |
 | E4 | **P2** | 外部の監視サービスを使っていない | 障害に気づくのが遅れる | `platform_health()` を毎日見る運用（`docs/runbook_operations.md` §8）。**有料サービスは承認なしに追加しない** |
 | E5 | **—** | ~~`email_outbox` の古い行を消す経路が無い~~ **対応済み（Task 019）** | — | `private.prune_email_outbox(retain_days)`（既定90日）を追加。**pending・sending は消さない**。定期作業へ登録した（`docs/runbook_operations.md` §8） |
 | E6 | **P1** | **staging のSMTPは個人のGmail（1日500宛先）** | 本番の規模で頭打ちになる。送信元ドメインも借り物 | 本番は独自ドメイン＋専用プロバイダが必要（`docs/runbook_supabase_hosted.md` §7）。**H6と同時に判断する** |
@@ -428,6 +433,16 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   - 画面: 公開URL（または `npm run dev`）のログイン画面
   - 入力場所: 運営者本人の `@stu.kobe-u.ac.jp`
   - 成功判定: メールが届き、6桁コードでログインできる。件名・本文にコード以外の情報が無い
+
+- [ ] **H9-2 送信ワーカーを nodemailer 版へ再デプロイする**（Task 022・D058）
+  - なぜ: 初回デプロイ（denomailer）は**実送信が1通も成功しない**ことがsmoke test Bで判明した
+  - 画面: Dashboard → Edge Functions → `send-notifications` → エディタで
+    `index.ts` と `emailTemplate.ts` をTask 022の内容へ更新してDeploy
+  - 続けて: SQL Editorで `update private.email_outbox set status='pending', attempts=0,
+    next_attempt_at=now(), last_error_code=null where status='failed';`
+  - 成功判定: **5分以内に実メールが届く**。届かない場合は `last_error_code` を見る
+    （`smtp_auth` / `smtp_tls` / `smtp_stream` 等で原因が切り分けられる）
+  - **`logger` / `debug` を有効にしないこと**（SMTP会話に全宛先と本文が載る・D042）
 
 - [x] **H9 送信ワーカー（Edge Function）をデプロイする** — **2026-08-28完了**。
   実施記録（すべてDashboard・CLI不使用）: Secrets6件（`CUE_SMTP_PORT`は**465**。587の
@@ -563,7 +578,8 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
 
 **実装側の作業は Task 020 まで完了し、ソフトウェア側のrelease blockerは解消済み。
 H1・H3・H6〜H8・H11と空撃ち（dry_run・Task 021検証込み）も2026-08-28に完了。
-残りは §7 の人間の操作（H2・H4・H10）とsmoke test、段階3のrelease PR（H5）以降。**
+**ただしsmoke test Bでメール通知の実送信が全失敗し、Task 022（D058）で修正済み・再デプロイ待ち（H9-2）。**
+残りは §7 の人間の操作（H2・H4・H10・**H9-2**）とsmoke test、段階3のrelease PR（H5）以降。**
 
 ### いま止まっているもの
 
@@ -574,7 +590,7 @@ H1・H3・H6〜H8・H11と空撃ち（dry_run・Task 021検証込み）も2026-0
 | H8 | ✅ **2026-08-28完了**（Site URLのみ変更・Redirect URLs追加なし） | 本番でSite URLがlocalhostを指したまま残る |
 | H1 | ✅ **2026-08-28完了**（SQL Editor方式で全20本） | §6 の「migration・rollback確認済み」が埋まらない |
 | H2 | 大学メールでのOTP実機確認 | ログインの生存確認ができない |
-| H9 | ✅ **2026-08-28完了**（Cron 5分間隔で稼働・health全0） | 実メールが1通も飛ばない |
+| **H9-2** | ⚠️ **要再実施**: 初回デプロイ（denomailer）は実送信が全失敗。Task 022で修正済みの**再デプロイが未実施** | 実メールが1通も飛ばない |
 | H11 | ✅ **2026-08-28完了**（レート制限 + Turnstile有効化） | 公開後にOTP送信を濫用されうる（§7.1 B7・**P1**） |
 | H10 | 退会後の `auth.users` 削除の挙動確認 | 退会したのに大学メールが残る |
 

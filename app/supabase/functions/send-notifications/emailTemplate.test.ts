@@ -90,6 +90,71 @@ describe('emailTemplate', () => {
     expect(classifyError('plain string 421 rate')).toBe('rate_limited')
   })
 
+  it('nodemailerの実際の例外を、判定順序どおりに分類する（分岐ごとに検出力を持たせる）', () => {
+    // 以下の文言・codeは nodemailer 9.0.6 の実ソース（lib/smtp-connection/index.js）と
+    // 2026-08-28にhostedで観測した例外から取っている。
+    // いずれも複数の語を含むため、判定順序が壊れると別のコードへ落ちる
+    const cases: [unknown, string][] = [
+      // 1. TLS: 'connection' を含むがTLS由来（STARTTLS拒否＝TLS剥奪の兆候）
+      [Object.assign(new Error('Error upgrading connection with STARTTLS'), { code: 'ETLS' }), 'smtp_tls'],
+      [
+        Object.assign(
+          new Error('Client network socket disconnected before secure TLS connection was established'),
+          { code: 'ESOCKET' },
+        ),
+        'smtp_tls',
+      ],
+      [new Error('self signed certificate in certificate chain'), 'smtp_tls'],
+      // 2. rate: 'connection' を含むが421はGmailの上限応答
+      [
+        Object.assign(new Error('Server terminates connection. response=421 4.7.0 Try again later'), {
+          code: 'ECONNECTION',
+          responseCode: 421,
+        }),
+        'rate_limited',
+      ],
+      // 3. stream: 会話の途中で切れる系（今回hostedで観測した文言そのもの）
+      [new Error('Interrupted: operation canceled'), 'smtp_stream'],
+      [Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }), 'smtp_stream'],
+      [new Error('read ECONNRESET'), 'smtp_stream'],
+      // 4. connect: 上のどれにも当たらない純粋な接続失敗
+      [Object.assign(new Error('connect ECONNREFUSED 10.0.0.1:465'), { code: 'ECONNREFUSED' }), 'smtp_connect'],
+      // 5. 既存分類の退行防止
+      [Object.assign(new Error('Invalid login'), { code: 'EAUTH', responseCode: 535 }), 'smtp_auth'],
+      [Object.assign(new Error('Greeting never received'), { code: 'ETIMEDOUT' }), 'smtp_timeout'],
+      [Object.assign(new Error('Message failed'), { responseCode: 550 }), 'recipient_rejected'],
+      [new Error('突然の未知の障害'), 'unknown'],
+    ]
+    for (const [error, expected] of cases) {
+      expect(classifyError(error)).toBe(expected)
+    }
+  })
+
+  it('分類コードは決まった集合の中からしか返さない（生メッセージが混ざらない）', () => {
+    const allowed = [
+      'smtp_auth',
+      'smtp_tls',
+      'rate_limited',
+      'recipient_rejected',
+      'smtp_timeout',
+      'smtp_stream',
+      'smtp_connect',
+      'unknown',
+    ]
+    const inputs: unknown[] = [
+      new Error('550 mailbox unavailable for demo-x@stu.kobe-u.ac.jp'),
+      Object.assign(new Error('Invalid login: 535 5.7.8 password=hunter2'), { code: 'EAUTH' }),
+      'plain string',
+      null,
+      undefined,
+      { message: { nested: 'object' } },
+      12345,
+    ]
+    for (const input of inputs) {
+      expect(allowed).toContain(classifyError(input))
+    }
+  })
+
   it('分類コードは短く、宛先や本文を含まない', () => {
     const code = classifyError(new Error('550 mailbox unavailable for demo-x@stu.kobe-u.ac.jp'))
     expect(code).toBe('recipient_rejected')

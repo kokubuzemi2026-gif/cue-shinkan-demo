@@ -53,7 +53,11 @@ Supabase公式のEdge Function SMTPサンプルは **nodemailer** を使って�
    平文へ落ちる経路を作らない
 3. secret・宛先・本文をログ・応答へ出さない（既存の方針を維持）
 4. `classifyError` が nodemailer の `code`（EAUTH等）・`responseCode`（535等）も見る
-5. 会話の途中で切れる系を `smtp_stream` として独立分類する（`unknown`に埋もれさせない）
+5. 会話の途中で切れる系を `smtp_stream` として独立分類する（`unknown`に埋もれさせない）。
+   **部分一致の食い合いを起こさない判定順序**にする（`Error upgrading connection with STARTTLS`
+   は 'connect' を含むためTLSを先に、`response=421` も 'connect' を含むためrateを先に見る）
+5b. 1バッチを1接続で送る（`pool`）。denomailerは1接続を再利用しており、非pool構成だと
+   1バッチ最大50回のGmailログインになる
 6. 既存のunit testが全green、追加テストは変異テストで検出力を確認する
 7. DB・アプリ本体・依存関係に差分が無い
 
@@ -61,8 +65,8 @@ Supabase公式のEdge Function SMTPサンプルは **nodemailer** を使って�
 
 | 検証 | 結果 |
 |---|---|
-| unit（emailTemplate） | **11件 PASS**（+2ケース群） |
-| 変異テスト | `code`/`responseCode` を見ない旧実装へ戻すと新テストが**落ちる**ことを確認 |
+| unit（emailTemplate） | **13件 PASS**（+2本: 分岐ごとの分類12ケース / 返り値の集合固定7ケース） |
+| 変異テスト | 4変異すべて検出: (a) `code`/`responseCode` を見ない旧実装 / (b) `smtp_tls` 分岐の削除 / (c) `smtp_stream` 分岐の削除 / (d) 判定順序の入れ替え（421がsmtp_connectへ落ちる） |
 | 全体unit / lint / build | （実施結果は下の「実行した検証」に記録） |
 | hosted実送信 | **未検証**。デプロイ後にsmoke test Bの再送で確認する（下記手順） |
 
@@ -73,4 +77,19 @@ Supabase公式のEdge Function SMTPサンプルは **nodemailer** を使って�
 2. SQL Editorで失敗行を再送待ちへ戻す:
    `update private.email_outbox set status='pending', attempts=0, next_attempt_at=now(), last_error_code=null where status='failed';`
 3. 5分以内にメールが届くことを確認。届かない場合は同じ診断SQLで
-   `last_error_code` を見る（`smtp_auth` / `smtp_stream` 等で原因が切り分けられる）
+   `last_error_code` を見る（`smtp_auth` / `smtp_tls` / `smtp_stream` 等で原因が切り分けられる）
+
+> **`logger` / `debug` を有効にしないこと。** 有効にするとSMTP会話がそのままFunctionログへ出て、
+> `RCPT TO` の宛先と本文全文が残る（D042違反）。資格情報はマスクされるがPIIは出る。
+
+## 残るリスク（本タスクで閉じていないもの）
+
+- **hostedでの実送信は未検証**。nodemailerがSupabase Edge Runtime（Deno 2.1.4の
+  node互換層）で動くか、`npm:` 指定子がDashboardエディタ経由のデプロイで解決されるかは、
+  実機でしか確認できない。失敗しても平文送信にはならず（`requireTLS`でfail-closed）、
+  `smtp_tls` / `smtp_stream` として記録される
+- **`app/supabase/functions/**` は `tsc -b` の対象外**（`tsconfig.app.json` の `include` は `src` のみ）で、
+  CIにも含まれない。今回の `send`→`sendMail`・`content`→`text` のようなAPI差し替えを
+  自動検出する仕組みが無く、`emailTemplate.test.ts` 以外の防御が無い（既存の穴）
+- **`npm:nodemailer` は `npm audit` / Dependabot の対象外**（Deno側依存）。
+  週次の手動確認へ寄せる（`docs/runbook_operations.md` §8）

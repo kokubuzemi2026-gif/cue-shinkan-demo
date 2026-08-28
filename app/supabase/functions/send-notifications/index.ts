@@ -67,6 +67,21 @@ Deno.serve(async () => {
         user: requiredEnv('CUE_SMTP_USER'),
         pass: requiredEnv('CUE_SMTP_PASSWORD'),
       },
+      // 1バッチ（最大BATCH_SIZE件）を**1接続**で送る。poolを付けないと
+      // nodemailerはsendMailごとに新しい接続とAUTHを張り、Gmailから
+      // 短時間の多数回ログインとして扱われる（§7.1 E6・B7と複合する）
+      pool: true,
+      maxConnections: 1,
+      maxMessages: BATCH_SIZE,
+      // 既定は connection 2分 / greeting 30秒 / socket 10分。
+      // 今回踏んだ障害は「会話の途中で止まる」型で、既定のままだと1件の
+      // ストールでFunctionの実行枠を使い切り、掴んだ行がsendingのまま残る
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 30_000,
+      // **loggerとdebugを有効にしないこと。** 有効にするとSMTP会話が
+      // そのままFunctionログへ出る＝RCPT TOの宛先と本文全文が残る（D042違反）。
+      // 資格情報はマスクされるがPIIは出る。障害調査はlast_error_codeで行う
     })
     from = requiredEnv('CUE_SMTP_FROM')
     appUrl = requiredEnv('CUE_APP_URL')
