@@ -204,6 +204,43 @@ describe('emailTemplate', () => {
         Object.assign(new Error('550-5.7.1 Daily sending quota exceeded'), { responseCode: 550 }),
         'rate_limited',
       ],
+      // 上限系のトークンは互いに冗長になりやすいので、1語ずつ効いていることを固定する。
+      // `5.4.5` を含まないrelay形式・`unusual rate` を含まない unsolicited 形式・
+      // `5.4.5` を含まない sending limit 形式を、それぞれ1件ずつ置く
+      [
+        Object.assign(new Error('550-5.7.1 Daily SMTP relay limit exceeded'), {
+          responseCode: 550,
+        }),
+        'rate_limited',
+      ],
+      [
+        Object.assign(
+          new Error('550-5.7.1 Our system has detected that this message is likely unsolicited'),
+          { responseCode: 550 },
+        ),
+        'rate_limited',
+      ],
+      [
+        Object.assign(new Error('550-5.7.1 Daily user sending limit exceeded'), {
+          responseCode: 550,
+        }),
+        'rate_limited',
+      ],
+      // runbook §7が名指しで約束しているのは 5.4.5 なので、他のトークンに頼らず
+      // 5.4.5 単独でも上限系に入ることを固定する（'quota' は550より下にある）
+      [
+        Object.assign(new Error('550-5.4.5 Daily message quota exceeded'), { responseCode: 550 }),
+        'rate_limited',
+      ],
+      // 実際のGmailは 'unusual rate of unsolicited mail' と続けるので unsolicited 側でも
+      // 拾えるが、文言違いに備えて 'unusual rate' 単独でも上限系に入ることを固定する
+      [
+        Object.assign(
+          new Error('550-5.7.1 We detected an unusual rate of mail originating from your account'),
+          { responseCode: 550 },
+        ),
+        'rate_limited',
+      ],
       // 9. maxRequeues: 0 の失敗文言は 'connection' を含むが、実体は会話中の切断
       [new Error('Reached maximum number of retries after connection was closed'), 'smtp_stream'],
     ]
@@ -214,8 +251,8 @@ describe('emailTemplate', () => {
 
   it('宛先アドレスの綴りで分類が変わらない（分類前にアドレスを取り除く）', () => {
     // 同じ「550 User unknown」バウンスで局所部だけを変えても、分類は1種類に収まる。
-    // このうちアドレス除去でしか閉じないのは starttls-test（→smtp_tls）と
-    // mauth（→smtp_auth）の2件。他は550を上に置く判定順序で閉じている
+    // このうちアドレス除去でしか閉じないのは demo-starttls（→smtp_tls）と
+    // demo-mauth（→smtp_auth）の2件。他は550を上に置く判定順序で閉じている
     const codes = new Set(
       ['demo-taro', 'demo-hirate', 'demo-kquota', 'demo-bartls', 'demo-mauth', 'demo-starttls'].map(
         (local) =>
@@ -238,6 +275,8 @@ describe('emailTemplate', () => {
   it('区切りの無い長大な応答文でも、分類が現実的な時間で終わる', () => {
     // アドレス除去の正規表現を束縛しないと、この入力で二次時間になる（実測4.5秒）。
     // 応答文の長さを決めるのはリモートサーバー側なので、上限を持たせている
+    // このリポジトリで唯一の時間依存アサーション。実測4.5msに対して閾値500ms＝
+    // 約110倍の余裕を取っている（束縛を外すと4.5秒＝閾値の9倍かかる）
     const started = performance.now()
     expect(classifyError(new Error('x'.repeat(64_000)))).toBe('unknown')
     expect(performance.now() - started).toBeLessThan(500)
