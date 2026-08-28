@@ -19,6 +19,7 @@ Task 010 のメール送信ワーカーです。outbox を1バッチ取り出し
 | `SUPABASE_URL` | Supabaseが自動注入 |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabaseが自動注入。`claim_email_batch` / `complete_email` はservice_role専用 |
 | `CUE_SMTP_HOST` / `CUE_SMTP_PORT` | SMTPサーバー。**465なら暗黙TLS、それ以外はSTARTTLSで昇格を要求**する。平文へ落とす設定は用意していない |
+| ↑hosted実測（2026-08-28） | **hostedでは465を使用**。587のSTARTTLSはEdgeランタイムで `invalid cmd` となり接続不可だった（`docs/launch_plan.md` §7.1 E7） |
 | `CUE_SMTP_USER` / `CUE_SMTP_PASSWORD` | SMTP認証 |
 | `CUE_SMTP_FROM` | 差出人アドレス |
 | `CUE_APP_URL` | 受信箱・通知設定へのリンクの基点 |

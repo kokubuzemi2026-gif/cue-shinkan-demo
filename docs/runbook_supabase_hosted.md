@@ -74,12 +74,21 @@ PR・チャットへ置かない。**
    ```bash
    cd app
    npx supabase link --project-ref <stagingのproject ref>
-   npx supabase secrets set CUE_SMTP_HOST=... CUE_SMTP_PORT=587 \
+   npx supabase secrets set CUE_SMTP_HOST=... CUE_SMTP_PORT=465 \
      CUE_SMTP_USER=... CUE_SMTP_PASSWORD=... CUE_SMTP_FROM=... \
      CUE_APP_URL=http://localhost:5173/cue-shinkan-demo/
    ```
 
    `SUPABASE_URL` と `SUPABASE_SERVICE_ROLE_KEY` はSupabaseが自動注入するため設定不要。
+
+   **2026-08-28の実施記録（CLI不使用・Dashboardのみ）**: 上記1〜3をすべてDashboardで実施した
+   （Edge Functions → Secrets／エディタで `index.ts`+`emailTemplate.ts` の2ファイルをデプロイ／
+   Integrations → Cron `*/5 * * * *`）。実測で確定した2点:
+   - **`CUE_SMTP_PORT` は `465`（暗黙TLS）を使う**。587のSTARTTLSはEdgeランタイムで
+     `invalid cmd at SMTPConnection.assertCode` となり接続できない（launch_plan §7.1 E7）
+   - 関数の「**Verify JWT with legacy secret**」は**OFF**にする。本プロジェクトはlegacyキーを
+     無効化済み（§5）のため、ONだとCronからの呼び出しが恒常的に401になる。ワーカーの権限は
+     DB側のservice_role専用RPCが握っており、OFFにしても呼び出し元へ権限は渡らない
 
 2. デプロイする
 
@@ -87,7 +96,8 @@ PR・チャットへ置かない。**
    npx supabase functions deploy send-notifications
    ```
 
-3. スケジュールを設定する（Dashboard → Edge Functions → Schedules）。
+3. スケジュールを設定する（現行UIでは **Dashboard → Integrations → Cron**。
+   初回は `pg_net` 拡張のインストールを求められるので有効化する）。
    5〜10分間隔を目安にする。まとめ（Asia/Tokyo 18時）を落とさない間隔にすること。
 
 4. 確認する
