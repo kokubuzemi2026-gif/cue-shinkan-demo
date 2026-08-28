@@ -105,6 +105,9 @@ const CODE_LIMIT = 100
 // （単語1つだけのメッセージ `ECONNREFUSED` を消さない）
 function truncateMessage(text: string): string {
   const cut = text.slice(0, MESSAGE_LIMIT)
+  // **charAtのまま置いておくこと。** 範囲外で空文字を返す性質に依存している。
+  // `text[MESSAGE_LIMIT]` や `.at()` へ変えるとundefinedが返り、RegExp.testが
+  // 文字列 'undefined' へ強制変換するため、短いメッセージすべてで末尾語が落ちる
   const boundaryIsWord = /[^\s<>(),;:"]/u.test(text.charAt(MESSAGE_LIMIT))
   return boundaryIsWord ? cut.replace(/[^\s<>(),;:"]+$/u, '') : cut
 }
