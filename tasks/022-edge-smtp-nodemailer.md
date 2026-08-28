@@ -70,8 +70,8 @@ Supabase公式のEdge Function SMTPサンプルは **nodemailer** を使って�
 
 | 検証 | 結果 |
 |---|---|
-| unit（emailTemplate） | **16件 PASS**（developの10件から+6本: 分岐ごとの分類33ケース / 宛先の綴りで分類が変わらないこと / 長大な応答文でcode・responseCodeが届くこと / 長大な応答文でも現実的な時間で終わること / 返り値の集合固定7ケース） |
-| 変異テスト | **21変異すべて検出**: (a) アドレス除去を外す / (b) `code`・`responseCode` を見ない旧実装 / (c) 素の rate・quota を550の上へ戻す / (d) `was closed` を削る / (e) 広いtls分岐の削除 / (f) `wrong version` の削除 / (g) `smtp_stream` 分岐の削除 / (h) 先頭の `etls|starttls` 規則の削除 / (i) `enotfound|edns` の削除 / (j) 上限系トークンの削除 / (k) 広いtlsを550の上へ移動 / (l) `unsolicited|unusual rate` の削除 / (m) `sending quota|relay limit` の削除 / (n) 応答文の長さ上限を外す / (o) 切り詰めをjoin後へ移す / (p)〜(u) 上限系トークン（`relay limit`・`sending quota`・`sending limit`・`unsolicited`・`unusual rate`・`5.4.5`）の単独削除 |
+| unit（emailTemplate） | **18件 PASS**（developの10件から+8本: 分岐ごとの分類33ケース / 宛先の綴りで分類が変わらないこと / 長大な応答文でcode・responseCodeが届くこと / 長大な応答文でも現実的な時間で終わること / 返り値の集合固定7ケース） |
+| 変異テスト | **25変異すべて検出**: (a) アドレス除去を外す / (b) `code`・`responseCode` を見ない旧実装 / (c) 素の rate・quota を550の上へ戻す / (d) `was closed` を削る / (e) 広いtls分岐の削除 / (f) `wrong version` の削除 / (g) `smtp_stream` 分岐の削除 / (h) 先頭の `etls|starttls` 規則の削除 / (i) `enotfound|edns` の削除 / (j) 上限系トークンの削除 / (k) 広いtlsを550の上へ移動 / (l) `unsolicited|unusual rate` の削除 / (m) `sending quota|relay limit` の削除 / (n) 応答文の長さ上限を外す / (o) 切り詰めをjoin後へ移す / (p)〜(u) 上限系トークン（`relay limit`・`sending quota`・`sending limit`・`unsolicited`・`unusual rate`・`5.4.5`）の単独削除 / (v) 切り詰め時の末尾トークン除去を外す / (w) 末尾トークン除去を無条件にする / (x)(y) `code`・`responseCode` の上限を外す |
 | 全体unit / lint / build | （実施結果は下の「実行した検証」に記録） |
 | hosted実送信 | **未検証**。デプロイ後にsmoke test Bの再送で確認する（下記手順） |
 
@@ -89,10 +89,11 @@ Supabase公式のEdge Function SMTPサンプルは **nodemailer** を使って�
 
 ## 残るリスク（本タスクで閉じていないもの）
 
-- 応答文の切り詰め（先頭2000字）の副作用として、**2000字目が宛先アドレスの `@` の手前に
-  落ちると局所部だけが残り、アドレス除去が効かない**（独立レビューが実測: `demo-starttls`
-  の先頭が残ると `smtp_tls` になる）。Gmailの実応答は最長でも400字程度のため実際には
-  起きないが、上限を上げる・除去の順序を変える場合はここを再確認する
+- 応答文の切り詰め（先頭2000字）の副作用（2000字目が宛先アドレスの `@` の手前に落ちると
+  局所部の断片が残り、アドレス除去をすり抜ける）は、**切り詰めたときだけ末尾の途切れた語を
+  落とすことで閉じた**（境界61通りをテストで固定）。ただし「2000字より後ろにしか
+  上限系トークンが無い応答」は依然 `recipient_rejected` へ落ちる。Gmailは上限の理由を
+  先頭行に置くため実害はないが、上限値を変える場合はここを再確認する
 
 - **hostedでの実送信は未検証**。nodemailerがSupabase Edge Runtime（Deno 2.1.4の
   node互換層）で動くか、`npm:` 指定子がDashboardエディタ経由のデプロイで解決されるかは、

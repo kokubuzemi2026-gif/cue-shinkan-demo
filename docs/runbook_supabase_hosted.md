@@ -165,6 +165,11 @@ Task 013時点のチェックリストに加えて、次を確認する。
   `email_outbox_health()` の `failed_count` を運用で監視する（Task 017）。
   Gmailの上限応答は `421`（一時）と `550-5.4.5 Daily user sending limit exceeded` の
   両形式があり、どちらも `rate_limited` へ分類する（Task 022・D058）。
+  **`rate_limited` は「上限」だけでなく「送信元アカウントの評判ブロック」も指す。**
+  `550-5.7.1 ... unusual rate of unsolicited mail ...` のように、Gmailが送信元を
+  迷惑メール判定して止めた応答も同じコードへ入れている（どちらも運用の打ち手が
+  「送信を絞る・送信元を見直す」で同じであり、宛先の問題と読み違えないため）。
+  宛先1件の問題は `recipient_rejected` に分かれる。
 
 ## 8. ロールバック
 

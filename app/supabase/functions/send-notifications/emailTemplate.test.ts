@@ -279,7 +279,32 @@ describe('emailTemplate', () => {
     // 約110倍の余裕を取っている（束縛を外すと4.5秒＝閾値の9倍かかる）
     const started = performance.now()
     expect(classifyError(new Error('x'.repeat(64_000)))).toBe('unknown')
+    // code・responseCodeにも上限が要る。message側だけを切ると、ここが二次時間になる
+    expect(classifyError(Object.assign(new Error('boom'), { code: 'E'.repeat(64_000) }))).toBe(
+      'unknown',
+    )
+    expect(
+      classifyError(Object.assign(new Error('boom'), { responseCode: 'E'.repeat(64_000) })),
+    ).toBe('unknown')
     expect(performance.now() - started).toBeLessThan(500)
+  })
+
+  it('切り詰めの境界がどこに落ちても、宛先の断片で分類が変わらない', () => {
+    // 境界が宛先アドレスの '@' の手前に落ちると局所部の断片が残り、
+    // 'starttls' / 'auth' の規則（550より上）へ部分一致してしまう。
+    // 切り詰め時に末尾の途切れた語を落として閉じている
+    const bounce = ' 550 5.1.1 <demo-starttls@stu.kobe-u.ac.jp>: User unknown'
+    for (let pad = 1_950; pad <= 2_010; pad += 1) {
+      const error = Object.assign(new Error('x'.repeat(pad) + bounce), { responseCode: 550 })
+      expect(classifyError(error)).toBe('recipient_rejected')
+    }
+  })
+
+  it('切り詰めていないメッセージの末尾は削らない', () => {
+    // 末尾トークンの除去を無条件に掛けると、単語1つだけのメッセージが消える
+    expect(classifyError(new Error('ECONNREFUSED'))).toBe('smtp_connect')
+    expect(classifyError(new Error('550'))).toBe('recipient_rejected')
+    expect(classifyError(new Error('mailbox'))).toBe('recipient_rejected')
   })
 
   it('分類コードは決まった集合の中からしか返さない（生メッセージが混ざらない）', () => {

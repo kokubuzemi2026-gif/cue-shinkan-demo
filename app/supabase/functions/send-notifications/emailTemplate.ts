@@ -93,6 +93,19 @@ function stripAddresses(text: string): string {
   return text.replace(/[^\s<>(),;:"]+@[^\s<>(),;:"]+/gu, '')
 }
 
+const MESSAGE_LIMIT = 2000
+const CODE_LIMIT = 100
+
+// 切り詰めたときだけ、末尾で途切れた語を落とす。切り詰めの境界が宛先アドレスの '@' の
+// 手前に落ちると局所部の断片（`demo-starttls`）が残り、アドレス除去をすり抜けて
+// 上位規則へ部分一致する（独立レビューが実測）。
+// **切り詰めていないときは触らない。** 単語1つだけのメッセージ（`ECONNREFUSED`）を
+// 消してしまうため
+function truncateMessage(text: string): string {
+  if (text.length <= MESSAGE_LIMIT) return text
+  return text.slice(0, MESSAGE_LIMIT).replace(/[^\s<>(),;:"]+$/u, '')
+}
+
 // SMTPライブラリの例外メッセージは、宛先・認証情報・本文断片を含み得る。
 // 既知の分類だけを短いコードへ落とし、それ以外は 'unknown' にする
 export function classifyError(error: unknown): string {
@@ -103,14 +116,15 @@ export function classifyError(error: unknown): string {
   // 応答文の長さはリモート側が決める（nodemailerの_formatErrorが応答全文を連結する）。
   // アドレス除去の正規表現は「区切り文字を含まない長大な1トークン」で二次時間になり、
   // Edge Functionのイベントループを同期的に塞ぐ（実測64KBで4.5秒）。分類に使うのは
-  // 先頭だけで足りるので上限を切る。**code・responseCodeは切り詰めの後ろへ置き**、
-  // 応答文がどれだけ長くても分類へ届くようにする
+  // 先頭だけで足りるので、**3要素それぞれに**上限を切る。
+  // code・responseCodeはライブラリが決める短い値なので実際には切られないが、
+  // 「上限が掛かる」ことを構造で保証しておく（偶然に頼らない）
   const rawMessage = obj !== null && 'message' in obj ? String(obj.message) : String(error ?? '')
   const message = stripAddresses(
     [
-      rawMessage.slice(0, 2000),
-      obj !== null && 'code' in obj ? String(obj.code) : '',
-      obj !== null && 'responseCode' in obj ? String(obj.responseCode) : '',
+      truncateMessage(rawMessage),
+      obj !== null && 'code' in obj ? String(obj.code).slice(0, CODE_LIMIT) : '',
+      obj !== null && 'responseCode' in obj ? String(obj.responseCode).slice(0, CODE_LIMIT) : '',
     ].join(' '),
   ).toLowerCase()
 
