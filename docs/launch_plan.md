@@ -28,7 +28,7 @@ Phase 2の**実装はTask 021まで完了**している。学生の登録・パ�
 本人によるデータ削除、同意管理、health checkまでがサーバー側
 （RLS + SECURITY DEFINER RPC）で動作する。
 
-**残るのは人間の操作だけ**（§7 H2・H4・H5・H9・H10。H1・H3・H6〜H8・H11は2026-08-28完了）。実装側からは進められない。
+**残るのは人間の操作だけ**（§7 H2・H4・H5・H10とsmoke test。H1・H3・H6〜H9・H11は2026-08-28完了）。実装側からは進められない。
 
 ## 2. v1.0の完成像と現状のgap
 
@@ -44,7 +44,7 @@ Phase 2の**実装はTask 021まで完了**している。学生の登録・パ�
 | パスポートの登録・更新 | ✅ | 009 |
 | パスポートの**削除** | ✅ `delete_student_passport`（D046） | 014 |
 | 個人情報を団体へ非公開のままオファー受信 | ✅ | 009 |
-| オファー到着のメール通知 | ✅（**実送信はhosted待ち**・H9） | 010 |
+| オファー到着のメール通知 | ✅ ワーカー稼働中（2026-08-28設置・H9）。**実送達の確認はsmoke test A/B** | 010 |
 | 受信箱で確認し3段階で返答 | ✅ | 009 |
 | 「行ってみたい」後だけ公式窓口を開示 | ✅ | 009 |
 | 通知設定の管理 | ✅ オファーごと / 1日1回 / 通知しない | 010 |
@@ -84,7 +84,7 @@ Phase 2の**実装はTask 021まで完了**している。学生の登録・パ�
 | アクセシビリティ（キーボード・focus・label・contrast） | ⚠️ 体系的に検証し、コントラスト2件とフォーカス移動を修正。**入力欄の枠が1.4.11未達・スクリーンリーダー実機未確認**（§7.1 C1・C2） | 016 |
 | loading / empty / error / retry | ✅ 主要画面を確認 | 016 |
 | 認証・RLS・RPC・匿名性・E2Eの自動テスト | ✅ pgTAP **653件**（36ファイル）/ 並行15件 / unit 373件 / E2E | 008〜020 |
-| staging実環境検証 | ⚠️ **migrationは全20本適用済み（2026-08-28）**。実機検証（`tasks/009` Phase B残り・smoke test B）とH9は未実施 | Phase B |
+| staging実環境検証 | ⚠️ **migrationは全20本適用済み（2026-08-28）**。実機検証（`tasks/009` Phase B残り・smoke test B）は未実施。**H9は2026-08-28完了** | Phase B |
 | release PRと公開後smoke test | ⚠️ 手順は用意済み（production用A・staging用Bに分割）。**実行は公開後**（merge前提のH6〜H8は2026-08-28完了） | 018 |
 | P0/P1既知不具合ゼロ | ⚠️ §7.1 の28件へ重大度を付与。**P0は0件・P1は7件**（公開判断で受容が要る） | 018 |
 
@@ -190,15 +190,15 @@ decision番号は **D057まで使用済み**（D054はTask 018＝PR #22、D055�
 ## 6. 完了条件（Definition of Done for v1.0）
 
 状態は2026-08-28時点。**未達はすべて `docs/launch_plan.md` §7 の
-人間待ち項目（H2・H4・H5・H9・H10）とrelease PRの作成・判断が原因**で、実装側からは進められない。
+人間待ち項目（H2・H4・H5・H10）とsmoke test・release PRの作成・判断が原因**で、実装側からは進められない。
 
 | 条件 | 状態 | 根拠・残る作業 |
 |---|---|---|
 | Task 010・011・013〜018がすべて`develop`へmerge済み | **達成** | 008〜020がmerge済み（018は `2d4fc9f`・020は `607891f`） |
-| P0/P1の既知不具合ゼロ | **一部** | §7.1 の28件へ重大度を付与した結果、**P0は0件、P1は7件**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection＝2026-08-28設定済み・実機確認はsmoke A / C1 WCAG 1.4.11未達 / **E3 送信ワーカー未デプロイ** / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る**。2件（B6・E5）は対応済み |
+| P0/P1の既知不具合ゼロ | **一部** | §7.1 の28件へ重大度を付与した結果、**P0は0件、P1は7件**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection＝2026-08-28設定済み・実機確認はsmoke A / C1 WCAG 1.4.11未達 / E3 送信ワーカー＝2026-08-28設置済み・実配信確認はsmoke A/B / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る**。2件（B6・E5）は対応済み |
 | 未解決の認証・RLS・privacy blockerゼロ | **達成** | 各タスクの独立レビュー・security-reviewerでBlocker 0 |
 | 全CI green | **達成** | quality / db-tests / e2e / audit |
-| staging E2E green | **未達** | H9とsmoke test B（H1は2026-08-28完了）。Supabaseアカウントが要る |
+| staging E2E green | **未達** | smoke test B（H1・H9は2026-08-28完了）。Supabaseアカウントが要る |
 | migration・rollback確認済み | **一部** | ローカル**20 migration**の適用は毎回検証。**hostedへの適用は2026-08-28完了（全20本）**。hostedでの切り戻し演習は未実施 |
 | secret漏洩なし | **達成** | `VITE_*` 以外をビルドへ入れないことを実測。E2Eアーティファクトの入力値漏れも塞いだ（D051） |
 | 合成データ以外がcommitされていない | **達成** | テストデータは `demo-*@stu.kobe-u.ac.jp` の合成のみ |
@@ -206,7 +206,7 @@ decision番号は **D057まで使用済み**（D054はTask 018＝PR #22、D055�
 | 公開後smoke testとrollback手順がある | **達成** | `tasks/018-release-v1.md` §公開後smoke test / `docs/runbook_operations.md` §4・§7 |
 | release notesと既知制限がある | **達成** | `docs/release_notes_v1.0.md` / §7.1 |
 | release PRに独立レビューとセキュリティレビューを実施 | **未達** | `develop → main` のrelease PRはまだ作っていない。Task 018のPR（base=develop）では**独立レビュー3周（Blocker 4→3→3件）・security-reviewer 2周（4→1件）**を実施し、すべて修正した |
-| main反映後のdeploy監視とsmoke test完了 | **未達** | H6〜H8・H11は2026-08-28完了。release PRのmerge判断（H5）と公開前項目（H9等）が残る |
+| main反映後のdeploy監視とsmoke test完了 | **未達** | H6〜H9・H11は2026-08-28完了。release PRのmerge判断（H5）と公開後smoke testが残る |
 | `v1.0.0` のrelease / tag作成 | **未達** | main反映後に作る |
 
 ## 7. 人間が行う必要のある操作（Blocker候補）
@@ -224,7 +224,7 @@ decision番号は **D057まで使用済み**（D054はTask 018＝PR #22、D055�
 | H6 | **公開用Supabaseプロジェクトの決定**（stagingを流用するか、productionを新規に作るか） | Supabaseアカウントの操作。Freeプランの範囲なら課金は発生しない | **完了（2026-08-28）**。既存 `cue-shinkan-staging` を昇格する |
 | H7 | **GitHub Actions **secrets** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` を設定** | どちらもブラウザへ出る値だが、**貼り間違いの封じ込めのためsecretへ置く**（D054。`vars.*` はログでマスクされない）。**チャットへ貼らない**。貼り間違えたら**先にSupabaseで失効**させる | **完了（2026-08-28）**。dry_run空撃ちの1回目でURL形式検査が正しく停止（貼り間違いを検出）→修正後の2回目でbuild・検証green・deploy skip |
 | H8 | **Supabase Auth の Site URL を公開URLへ変更**（**Redirect URLsは追加しない**・§7.2） | Dashboardの操作 | **完了（2026-08-28）**。Site URLのみ変更・Redirect URLs追加なし |
-| H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | Supabaseアクセストークンが必要（`docs/runbook_supabase_hosted.md` §6.1） | 未実施 |
+| H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | Supabaseアクセストークンが必要（`docs/runbook_supabase_hosted.md` §6.1） | **完了（2026-08-28）**。Dashboardのみで実施: エディタで2ファイルをデプロイ・Secrets6件・Integrations→Cron（`*/5 * * * *`・pg_net拡張を導入）。関数の「Verify JWT with legacy secret」は**OFF**（legacyキー無効化済みの本プロジェクトでは何も通らず恒常401になるため。権限はDB側RPCが握る）。`CUE_SMTP_PORT`は**465**（587のSTARTTLSはEdgeで`invalid cmd`・E7）。稼働確認: Invocations 200×2・`email_outbox_health()`全0。**実メール送達はsmoke test A/Bで確認** |
 | H10 | 本番Supabaseでの `auth.users` 削除挙動の確認 | Dashboardでの実操作が必要（`docs/operations.md` §9） | 未実施 |
 | **H11** | **公開前に Supabase Auth の Attack Protection（CAPTCHA・レート制限）を設定** | Dashboardの操作。**D030はこれをTask 011へ委ねたが、011のscopeに入っておらず実施されていない**（独立レビューで発覚） | **完了（2026-08-28）**。レート制限（メール送信20/時＝送信元Gmailの500/日の内側・他は既定のまま）＋Task 021 merge後にDashboardでCAPTCHA（Turnstile）を有効化・Secret KeyはDashboardのみ。**実機でのウィジェット付きログイン確認は公開後smoke test A** |
 
@@ -253,7 +253,7 @@ Task 018のsmoke testも全滅する。
 - ビルド成果物に設定が入っているかを、**値を出さずに**確認するステップを足した
 - 鍵の種類を許可リスト（`sb_publishable_*`）で検査し、secret keyの混入を止めた
 
-残るのは **人間の操作だけ**（公開前に H9。H6〜H8・H11 は2026-08-28完了）。設定しないまま `main` へmergeすると、
+残るのは **人間の操作だけ**（H6〜H9・H11 は2026-08-28完了。公開判断まわりの H2・H4・H5 とsmoke testが残る）。設定しないまま `main` へmergeすると、
 検証ステップが落ちてdeployされない（**いま公開されているページはそのまま残る**）。
 
 ## 7.1 既知リスク一覧（公開前に運営者が読む）
@@ -313,11 +313,11 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 |---|---|---|---|---|
 | E1 | **P2** | **Freeプロジェクトは約1週間の非アクティブでpauseされ得る** | 突然ログインできなくなる | 定期的に稼働を確認する |
 | E2 | **P2** | **Authログの保持期間が短い** | 認証障害の事後調査ができない | 発生当日中に調査する |
-| E3 | **P1** | 実メール送信がhosted未検証。**送信ワーカー（Edge Function）が未デプロイ**（H9） | デプロイしないとメール通知が**1通も飛ばない**。release notesは通知を機能として挙げている | **H9を公開ゲートに含める**（§7）。hosted stagingで実配信を確認してから公開する |
+| E3 | **P1** | 実メール送信がhosted未検証。**送信ワーカー（Edge Function）が未デプロイ**（H9） | デプロイしないとメール通知が**1通も飛ばない**。release notesは通知を機能として挙げている | **設置済み（2026-08-28・H9完了）**: ワーカー稼働中（5分間隔・`email_outbox_health()`全0）。**実配信の確認はsmoke test A/Bで行い、それまで実送達は未検証のP1として扱う** |
 | E4 | **P2** | 外部の監視サービスを使っていない | 障害に気づくのが遅れる | `platform_health()` を毎日見る運用（`docs/runbook_operations.md` §8）。**有料サービスは承認なしに追加しない** |
 | E5 | **—** | ~~`email_outbox` の古い行を消す経路が無い~~ **対応済み（Task 019）** | — | `private.prune_email_outbox(retain_days)`（既定90日）を追加。**pending・sending は消さない**。定期作業へ登録した（`docs/runbook_operations.md` §8） |
 | E6 | **P1** | **staging のSMTPは個人のGmail（1日500宛先）** | 本番の規模で頭打ちになる。送信元ドメインも借り物 | 本番は独自ドメイン＋専用プロバイダが必要（`docs/runbook_supabase_hosted.md` §7）。**H6と同時に判断する** |
-| E7 | **P2** | denomailer 1.6.0 のSTARTTLS挙動が未確認 | 465以外のポートで平文送信になる可能性 | hosted stagingで実配信を確認するときに、ポートと暗号化を目視する（H9） |
+| E7 | **P2** | denomailer 1.6.0 のSTARTTLS挙動が未確認 | 465以外のポートで平文送信になる可能性 | hosted stagingで実配信を確認するときに、ポートと暗号化を目視する（H9） → **2026-08-28確認: 465（暗黙TLS）を採用**。587のSTARTTLSはEdgeランタイムで`invalid cmd`となり不使用（平文化の懸念経路も通らない） |
 
 ## 7.2 人間の操作チェックリスト（公開までに必要なものだけ）
 
@@ -428,7 +428,14 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   - 入力場所: 運営者本人の `@stu.kobe-u.ac.jp`
   - 成功判定: メールが届き、6桁コードでログインできる。件名・本文にコード以外の情報が無い
 
-- [ ] **H9 送信ワーカー（Edge Function）をデプロイする**
+- [x] **H9 送信ワーカー（Edge Function）をデプロイする** — **2026-08-28完了**。
+  実施記録（すべてDashboard・CLI不使用）: Secrets6件（`CUE_SMTP_PORT`は**465**。587の
+  STARTTLSはEdgeで`invalid cmd`になり465の暗黙TLSへ変更・E7）→ エディタで
+  `index.ts`+`emailTemplate.ts`の2ファイルをデプロイ → Integrations→Cronで
+  `*/5 * * * *`（pg_net拡張をインストール）→ 401×3（legacyキー無効化済みのため
+  「Verify JWT with legacy secret」が恒常拒否）→ 同設定をOFF → 503×1（STARTTLS）→
+  ポート465へ変更 → **200×2・`email_outbox_health()`全0を確認**。
+  実メール送達（§6.1手順4）はsmoke test A/Bで実施
   - なぜ: デプロイしないとメール通知が**1通も飛ばない**（§7.1 E3・**P1**）
   - 画面: 端末 + Supabase Dashboard
   - 入力場所: `npx supabase functions deploy send-notifications` →
@@ -544,11 +551,18 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   実機のウィジェット付きログイン確認は公開後smoke test Aで行う。
   残る人間の操作は H2・H4・H9・H10 と release PR（H5） |
 
+| 2026-08-28 | **H9完了**（送信ワーカー）。Dashboardのみで設置: Secrets6件→エディタデプロイ→
+  Cron 5分間隔（pg_net導入）。詰まりどころ2つを解消: (1) 401×3＝legacyキー無効化済み
+  プロジェクトで「Verify JWT with legacy secret」が恒常拒否→OFF（権限はDB側RPCが握るため
+  影響限定・Dashboard自身の推奨もOFF）。(2) 503×1＝587のSTARTTLSがEdgeで`invalid cmd`
+  （E7が実体化）→465の暗黙TLSへ。以後 200×2・`email_outbox_health()`全0。
+  実送達の確認はsmoke test A/Bへ。残る人間の操作は H2・H4・H10 と release PR（H5） |
+
 ## 9. 次回再開時の開始点
 
 **実装側の作業は Task 020 まで完了し、ソフトウェア側のrelease blockerは解消済み。
 H1・H3・H6〜H8・H11と空撃ち（dry_run・Task 021検証込み）も2026-08-28に完了。
-残りは §7 の人間の操作（H2・H4・H9・H10）と、段階3のrelease PR（H5）以降。**
+残りは §7 の人間の操作（H2・H4・H10）とsmoke test、段階3のrelease PR（H5）以降。**
 
 ### いま止まっているもの
 
@@ -559,7 +573,7 @@ H1・H3・H6〜H8・H11と空撃ち（dry_run・Task 021検証込み）も2026-0
 | H8 | ✅ **2026-08-28完了**（Site URLのみ変更・Redirect URLs追加なし） | 本番でSite URLがlocalhostを指したまま残る |
 | H1 | ✅ **2026-08-28完了**（SQL Editor方式で全20本） | §6 の「migration・rollback確認済み」が埋まらない |
 | H2 | 大学メールでのOTP実機確認 | ログインの生存確認ができない |
-| H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | 実メールが1通も飛ばない |
+| H9 | ✅ **2026-08-28完了**（Cron 5分間隔で稼働・health全0） | 実メールが1通も飛ばない |
 | H11 | ✅ **2026-08-28完了**（レート制限 + Turnstile有効化） | 公開後にOTP送信を濫用されうる（§7.1 B7・**P1**） |
 | H10 | 退会後の `auth.users` 削除の挙動確認 | 退会したのに大学メールが残る |
 
@@ -568,7 +582,7 @@ mergeされるまで公開しない（H項目ではなく実装側の条件。�
 → **解消済み（2026-08-28、PR #25のmerge `607891f`）**。
 
 H6〜H8（新規プロジェクトの場合はH3も）が揃うまで **`main` へmergeしない**
-→ **2026-08-28に充足**。**H9（送信ワーカーのデプロイ）は公開前に必ず済ませる**（§7.1 E3。H11は2026-08-28完了・B7）。
+→ **2026-08-28に充足**。H9・H11も同日完了（§7.1 E3・B7。実配信・実機確認はsmoke test A/Bへ）。
 
 ### 揃ったあとの手順
 
