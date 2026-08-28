@@ -141,7 +141,7 @@ npm run preview   # http://localhost:4173/cue-shinkan-demo/
 cd app
 npm ci
 npm run db:start        # 初回はイメージ取得で数分。API URLとpublishable keyが表示される
-cp .env.example .env.local   # 表示されたURLとキーを転記する（この2値以外は置かない）
+cp .env.example .env.local   # 表示されたURLとキーを転記する（許可された公開値以外は置かない・auth_and_authorization §9）
 npm run dev             # http://localhost:5173/cue-shinkan-demo/
 ```
 

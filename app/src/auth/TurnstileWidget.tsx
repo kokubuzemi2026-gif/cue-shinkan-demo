@@ -42,6 +42,11 @@ export function TurnstileWidget({ siteKey, onToken, resetSignal }: TurnstileWidg
       })
     return () => {
       cancelled = true
+      // 画面切替（メール⇄コード）でウィジェットが消えるときは、取得済み
+      // トークンも一緒に破棄する。表示されているウィジェットと親の保持する
+      // トークンを常に一致させ、見えないウィジェット由来のトークンで
+      // 送信できる状態を作らない
+      onTokenRef.current(null)
       if (widgetIdRef.current !== null && window.turnstile !== undefined) {
         window.turnstile.remove(widgetIdRef.current)
         widgetIdRef.current = null

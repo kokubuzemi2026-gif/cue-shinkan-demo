@@ -55,6 +55,8 @@ export function loadTurnstile(): Promise<TurnstileApi> {
       if (window.turnstile !== undefined) {
         resolve(window.turnstile)
       } else {
+        // こちらも失敗をキャッシュしない（onerrorと同じ扱いで再試行可能にする）
+        loadPromise = null
         reject(new Error('turnstile_unavailable'))
       }
     }

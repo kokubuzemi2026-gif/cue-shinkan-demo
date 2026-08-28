@@ -99,8 +99,26 @@ CAPTCHA導入を、Cloudflare Turnstileで実装する（H11bの実装側・D057
 / 8: unit・build・lintはローカルgreen、E2EはCI判定 / 9: 差分にsecret・PIIなし
 / 10: D057・launch_plan §7表・§7.2 H11・auth_and_authorization §3を更新済み
 
+### 独立レビューの結論と対応（2026-08-28）
+
+- **reviewer**: 「修正後に再レビュー」— Blocker B1（auth正本§9の許可リストが
+  `VITE_TURNSTILE_SITE_KEY` を含まず実装と矛盾）+ N1〜N5 + Nit
+- **security-reviewer**: 「承認可・Blockerなし」— Non-blocker 6件（B1と同件の§9・
+  vite-env.d.ts・supply chain明文化・editEmail時のトークン残存・
+  読み込み失敗キャッシュ・H11b文言）
+- 対応（すべて本ブランチで修正）: §9許可リストへ3値目を追記しTurnstile Secret Keyを
+  禁止側へ明記 / `vite-env.d.ts`・`.env.example`・README・hosted runbook §5の
+  許可リスト記述を更新 / ウィジェットunmount時にトークンを破棄（画面とトークンの一致）/
+  `turnstile_unavailable` でも読み込み失敗をキャッシュしない / E2E C1へ
+  `/otp` リクエストボディの `captcha_token` 不在検査（受入条件2の直接固定）と
+  コード画面のスクリプト不在検査を追加 / D057へsupply chain残余リスクの受容を明記 /
+  launch_plan H11b手順1の条件を精密化（merge≠deploy）
+
 ### 残る課題
 
 - sitekey設定時の実挙動（ウィジェット表示・token送信・Supabase側検証）は
   **H11b有効化後の公開後smoke test A**が最終確認
 - deploy検証ステップの新規検査は、merge後に `dry_run` 空撃ちで発火確認する
+- **supply chain（受容・D057）**: sitekey設定時は `challenges.cloudflare.com` の
+  スクリプトがログイン画面で実行される（CAPTCHA製品共通の構造）。
+  CSP metaによる `script-src` 限定は将来のhardening候補

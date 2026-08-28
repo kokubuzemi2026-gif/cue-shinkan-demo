@@ -31,9 +31,20 @@ test('C1: sitekey未設定ではウィジェットが出ず、OTP送信は従来
   await page.getByLabel('大学メールアドレス').fill(EMAIL)
   await expect(sendButton).toBeEnabled()
 
-  // 実際に送信してコード画面へ進める（従来フローが壊れていないこと）
+  // 実際に送信してコード画面へ進める（従来フローが壊れていないこと）。
+  // あわせて /otp リクエストの実体を捕まえ、`captcha_token` キー自体が
+  // 送られていないこと（受入条件2）をボディで固定する
+  const otpRequestPromise = page.waitForRequest(
+    (req) => req.url().includes('/auth/v1/otp') && req.method() === 'POST',
+  )
   await sendButton.click()
+  const otpRequest = await otpRequestPromise
+  const otpBody = otpRequest.postData() ?? ''
+  expect(otpBody.length > 0).toBe(true)
+  expect(otpBody).not.toContain('captcha_token')
+
   await expect(page.getByRole('textbox', { name: '6桁コード' })).toBeVisible({ timeout: 15_000 })
-  // コード画面（再送側）にもウィジェットは出ない
+  // コード画面（再送側）にもウィジェット・外部スクリプトは出ない
   await expect(page.locator('.turnstile-widget')).toHaveCount(0)
+  expect(await page.locator('script[src*="challenges.cloudflare.com"]').count()).toBe(0)
 })

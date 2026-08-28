@@ -98,7 +98,7 @@ Task 009はこの構成に従い、興味パスポート（`public.student_passp
 - メールは`auth.users`以外へコピーしない。`public`スキーマ・ログ・テスト出力・PR・スクリーンショットへ出さない（ローカル部は学籍番号相当の機密）。
 - 氏名・学籍番号はTask 008では収集しない。raw user metadataへ権限・氏名を保存しない。
 - 団体向けのtable・view・RPC・生成型に、学生のメール・氏名・学籍番号・`auth.users.id`・配信対象学生ID一覧を含めない。Task 009の集計APIも匿名件数のみを返す。
-- ブラウザ・`VITE_*`・リポジトリ・CIへ置いてよいのは`VITE_SUPABASE_URL`と`VITE_SUPABASE_PUBLISHABLE_KEY`（実値は`.env.local`のみ、コミットは`.env.example`のプレースホルダーのみ）。secret key・legacy service-role key・DBパスワード・Supabaseアクセストークン・Resend APIキーは絶対に置かない。
+- ブラウザ・`VITE_*`・リポジトリ・CIへ置いてよいのは`VITE_SUPABASE_URL`・`VITE_SUPABASE_PUBLISHABLE_KEY`と、任意の`VITE_TURNSTILE_SITE_KEY`（TurnstileのSite Key＝公開値・D057）の3値だけ（実値は`.env.local`のみ、コミットは`.env.example`のプレースホルダーのみ）。secret key・legacy service-role key・DBパスワード・Supabaseアクセストークン・Resend APIキー・**TurnstileのSecret Key**は絶対に置かない（Turnstile Secret KeyはSupabase Dashboardのみ。Site/Secretはどちらも`0x`で始まり機械判別できないため、取り違えたらTurnstile側でローテーションする）。
 - テストデータは架空の`demo-*@stu.kobe-u.ac.jp`のみ。実在の学生・団体・連絡先を使わない。
 
 ## 10. localStorageデモとの境界

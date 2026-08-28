@@ -9,7 +9,7 @@ describe('readTurnstileSiteKey', () => {
   })
 
   it('未設定ならnull（CAPTCHA機能は不活性）', () => {
-    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', undefined as unknown as string)
+    vi.stubEnv('VITE_TURNSTILE_SITE_KEY', undefined)
     expect(readTurnstileSiteKey()).toBeNull()
   })
 

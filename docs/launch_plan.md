@@ -392,7 +392,9 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
     （説明会等で同一IPの正規利用者を弾かないため）。1時間に20人超の一斉登録イベント時だけ
     一時的に引き上げる
   - **H11b CAPTCHA — アプリ側はTask 021（D057）で実装。有効化は次の順で行う**:
-    1. Task 021がdevelopへmerge済みであること（先に有効化するとhosted認証が全停止する）
+    1. Task 021のmerge後であること。**有効化した時点からhosted Authはcaptchaトークン必須**になる
+       （公開中のPhase 1デモはSupabase Auth不使用のため影響しないが、以後hostedでの
+       ログイン確認はwidget入りビルド＝Task 021以降のビルド経由でしか通らない）
     2. Actions secretsに `VITE_TURNSTILE_SITE_KEY`（TurnstileのSite Key）があること
        — 2026-08-28設定済み。**Secret Keyと取り違えないこと**（どちらも `0x` で始まり
        機械判別できない。取り違えた場合はTurnstileでSecret Keyをローテーションする）
