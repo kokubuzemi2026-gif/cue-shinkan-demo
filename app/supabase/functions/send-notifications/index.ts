@@ -37,6 +37,16 @@ function requiredEnv(name: string): string {
   return value
 }
 
+// 切断の失敗は送信結果に影響しないため握りつぶす。
+// poolを使うため、closeは「実際に接続を破棄する」意味を持つ
+function closeSmtp(transport: { close: () => void }): void {
+  try {
+    transport.close()
+  } catch {
+    // 意図的に無視する
+  }
+}
+
 Deno.serve(async () => {
   let sent = 0
   let failed = 0
@@ -73,9 +83,15 @@ Deno.serve(async () => {
       pool: true,
       maxConnections: 1,
       maxMessages: BATCH_SIZE,
+      // ライブラリ内の暗黙リトライを閉じる。既定（undefined）だと'error'より先に
+      // 'close'が来たときに同じメッセージを無限に再キューし、sendMailが解決も棄却も
+      // しないまま実行枠が切れる＝行がsendingのまま残りlast_error_codeが記録されない。
+      // 再試行・上限はDB側が持つ設計（D041）なので、ここでは1回だけ試す
+      maxRequeues: 0,
       // 既定は connection 2分 / greeting 30秒 / socket 10分。
       // 今回踏んだ障害は「会話の途中で止まる」型で、既定のままだと1件の
-      // ストールでFunctionの実行枠を使い切り、掴んだ行がsendingのまま残る
+      // ストールでFunctionの実行枠を使い切り、掴んだ行がsendingのまま残る。
+      // **10秒は暫定値**（hosted未検証）。smtp_timeoutが並ぶようなら緩める
       connectionTimeout: 10_000,
       greetingTimeout: 10_000,
       socketTimeout: 30_000,
@@ -95,8 +111,10 @@ Deno.serve(async () => {
     return Response.json({ error: 'setup_failed' }, { status: 500 })
   }
 
+  // ここから先は、どの経路で抜けても必ずSMTP接続を閉じる（poolでは実接続が閉じる）
   const { data, error } = await supabase.rpc('claim_email_batch', { batch_size: BATCH_SIZE })
   if (error) {
+    closeSmtp(smtp)
     console.error('send-notifications claim failed')
     return Response.json({ error: 'claim_failed' }, { status: 500 })
   }
@@ -146,11 +164,7 @@ Deno.serve(async () => {
     }
   }
 
-  try {
-    smtp.close()
-  } catch {
-    // 切断の失敗は送信結果に影響しない
-  }
+  closeSmtp(smtp)
 
   // 応答にも宛先・本文を含めない
   return Response.json({ sent, failed })

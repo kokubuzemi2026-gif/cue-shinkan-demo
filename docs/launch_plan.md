@@ -89,7 +89,7 @@ Phase 2の**実装はTask 021まで完了**している。学生の登録・パ�
 | アクセシビリティ（キーボード・focus・label・contrast） | ⚠️ 体系的に検証し、コントラスト2件とフォーカス移動を修正。**入力欄の枠が1.4.11未達・スクリーンリーダー実機未確認**（§7.1 C1・C2） | 016 |
 | loading / empty / error / retry | ✅ 主要画面を確認 | 016 |
 | 認証・RLS・RPC・匿名性・E2Eの自動テスト | ✅ pgTAP **653件**（36ファイル）/ 並行15件 / unit 373件 / E2E | 008〜020 |
-| staging実環境検証 | ⚠️ **migrationは全20本適用済み（2026-08-28）**。実機検証（`tasks/009` Phase B残り・smoke test B）は未実施。**H9は2026-08-28完了** | Phase B |
+| staging実環境検証 | ⚠️ **migrationは全20本適用済み（2026-08-28）**。smoke test Bは2026-08-28に実施し、**配信・匿名性・ファネルは合格／実メール送達は失敗**（Task 022で修正・再デプロイ待ち）。`tasks/009` Phase B残りは未実施 | Phase B |
 | release PRと公開後smoke test | ⚠️ 手順は用意済み（production用A・staging用Bに分割）。**実行は公開後**（merge前提のH6〜H8は2026-08-28完了） | 018 |
 | P0/P1既知不具合ゼロ | ⚠️ §7.1 の28件へ重大度を付与。**P0は0件・P1は7件**（公開判断で受容が要る） | 018 |
 
@@ -204,7 +204,7 @@ decision番号は **D058まで使用済み**（D054はTask 018＝PR #22、D055�
 | P0/P1の既知不具合ゼロ | **一部** | §7.1 の28件へ重大度を付与した結果、**P0は0件、P1は7件**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection＝2026-08-28設定済み・実機確認はsmoke A / C1 WCAG 1.4.11未達 / E3 送信ワーカー＝2026-08-28設置済み・実配信確認はsmoke A/B / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る**。2件（B6・E5）は対応済み |
 | 未解決の認証・RLS・privacy blockerゼロ | **達成** | 各タスクの独立レビュー・security-reviewerでBlocker 0 |
 | 全CI green | **達成** | quality / db-tests / e2e / audit |
-| staging E2E green | **未達** | smoke test B（H1・H9は2026-08-28完了）。Supabaseアカウントが要る |
+| staging E2E green | **未達** | smoke test Bの実メール部分が未達（H9-2の再デプロイ後に再確認）。H1は2026-08-28完了 |
 | migration・rollback確認済み | **一部** | ローカル**20 migration**の適用は毎回検証。**hostedへの適用は2026-08-28完了（全20本）**。hostedでの切り戻し演習は未実施 |
 | secret漏洩なし | **達成** | `VITE_*` 以外をビルドへ入れないことを実測。E2Eアーティファクトの入力値漏れも塞いだ（D051） |
 | 合成データ以外がcommitされていない | **達成** | テストデータは `demo-*@stu.kobe-u.ac.jp` の合成のみ |
@@ -212,7 +212,7 @@ decision番号は **D058まで使用済み**（D054はTask 018＝PR #22、D055�
 | 公開後smoke testとrollback手順がある | **達成** | `tasks/018-release-v1.md` §公開後smoke test / `docs/runbook_operations.md` §4・§7 |
 | release notesと既知制限がある | **達成** | `docs/release_notes_v1.0.md` / §7.1 |
 | release PRに独立レビューとセキュリティレビューを実施 | **未達** | `develop → main` のrelease PRはまだ作っていない。Task 018のPR（base=develop）では**独立レビュー3周（Blocker 4→3→3件）・security-reviewer 2周（4→1件）**を実施し、すべて修正した |
-| main反映後のdeploy監視とsmoke test完了 | **未達** | H6〜H9・H11は2026-08-28完了。release PRのmerge判断（H5）と公開後smoke testが残る |
+| main反映後のdeploy監視とsmoke test完了 | **未達** | H6〜H8・H11は2026-08-28完了。**H9-2（ワーカー再デプロイ）**・release PRのmerge判断（H5）・公開後smoke testが残る |
 | `v1.0.0` のrelease / tag作成 | **未達** | main反映後に作る |
 
 ## 7. 人間が行う必要のある操作（Blocker候補）
@@ -259,7 +259,7 @@ Task 018のsmoke testも全滅する。
 - ビルド成果物に設定が入っているかを、**値を出さずに**確認するステップを足した
 - 鍵の種類を許可リスト（`sb_publishable_*`）で検査し、secret keyの混入を止めた
 
-残るのは **人間の操作だけ**（H6〜H9・H11 は2026-08-28完了。公開判断まわりの H2・H4・H5 とsmoke testが残る）。設定しないまま `main` へmergeすると、
+残るのは **人間の操作だけ**（H6〜H8・H11 は2026-08-28完了。**H9-2（ワーカー再デプロイ）**・公開判断まわりの H2・H4・H5・smoke testが残る）。設定しないまま `main` へmergeすると、
 検証ステップが落ちてdeployされない（**いま公開されているページはそのまま残る**）。
 
 ## 7.1 既知リスク一覧（公開前に運営者が読む）
@@ -599,7 +599,7 @@ mergeされるまで公開しない（H項目ではなく実装側の条件。�
 → **解消済み（2026-08-28、PR #25のmerge `607891f`）**。
 
 H6〜H8（新規プロジェクトの場合はH3も）が揃うまで **`main` へmergeしない**
-→ **2026-08-28に充足**。H9・H11も同日完了（§7.1 E3・B7。実配信・実機確認はsmoke test A/Bへ）。
+→ **2026-08-28に充足**。H11も同日完了（B7）。**H9は初回デプロイが実送信に失敗したため「要再実施」（H9-2・§7.1 E3はP1のまま未解決）**。実機確認はsmoke test A/Bへ。
 
 ### 揃ったあとの手順
 

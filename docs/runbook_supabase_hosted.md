@@ -163,6 +163,8 @@ Task 013時点のチェックリストに加えて、次を確認する。
   閉鎖βの規模では足りるが、本番では独自ドメイン+専用プロバイダへの移行が必要。
   上限に当たると `email_outbox` の `last_error_code` が `rate_limited` で積み上がるため、
   `email_outbox_health()` の `failed_count` を運用で監視する（Task 017）。
+  Gmailの上限応答は `421`（一時）と `550-5.4.5 Daily user sending limit exceeded` の
+  両形式があり、どちらも `rate_limited` へ分類する（Task 022・D058）。
 
 ## 8. ロールバック
 

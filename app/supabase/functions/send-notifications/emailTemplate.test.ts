@@ -124,6 +124,37 @@ describe('emailTemplate', () => {
       [Object.assign(new Error('Greeting never received'), { code: 'ETIMEDOUT' }), 'smtp_timeout'],
       [Object.assign(new Error('Message failed'), { responseCode: 550 }), 'recipient_rejected'],
       [new Error('突然の未知の障害'), 'unknown'],
+      // 6. 独立レビューが挙げた縁ケース（リモート応答文で分類が動かされないこと）
+      // 宛先に 'tls' を含む550バウンスは宛先拒否（TLS障害と誤判定しない）
+      [
+        new Error('550 5.1.1 <bartls@stu.kobe-u.ac.jp>: Recipient address rejected'),
+        'recipient_rejected',
+      ],
+      // STARTTLS拒否の応答に "Authentication" が混ざってもTLS由来として扱う
+      [
+        Object.assign(
+          new Error('Error upgrading connection with STARTTLS: 530 5.7.0 Authentication Required'),
+          { code: 'ETLS' },
+        ),
+        'smtp_tls',
+      ],
+      // Gmailの日次上限は550形式でも来る（runbook §7が rate_limited を約束している）
+      [
+        Object.assign(new Error('550-5.4.5 Daily user sending limit exceeded'), {
+          responseCode: 550,
+        }),
+        'rate_limited',
+      ],
+      // TLSバージョン不一致はESOCKET（'socket'）だがTLS由来
+      [
+        Object.assign(new Error('wrong version number'), { code: 'ESOCKET' }),
+        'smtp_tls',
+      ],
+      // DNS解決失敗は接続不能（従来はunknownへ落ちていた）
+      [
+        Object.assign(new Error('getaddrinfo ENOTFOUND smtp.gmail.com'), { code: 'EDNS' }),
+        'smtp_connect',
+      ],
     ]
     for (const [error, expected] of cases) {
       expect(classifyError(error)).toBe(expected)

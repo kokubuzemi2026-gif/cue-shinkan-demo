@@ -96,27 +96,37 @@ export function classifyError(error: unknown): string {
     .join(' ')
     .toLowerCase()
 
-  // **判定順序が仕様**。nodemailerの実際の例外文は複数の語を同時に含むため、
-  // 具体的な語（コード・SMTP応答番号）を先に、包括的な語を後に見る。
-  // 例: `Error upgrading connection with STARTTLS`(ETLS) は 'connect' を含むので、
-  // TLSを先に見ないとTLS剥奪の兆候が smtp_connect に埋もれる（独立レビュー指摘）
+  // **判定順序が仕様**。nodemailerの例外文は複数の語を同時に含み、しかも
+  // message にはリモートサーバーの応答文がそのまま連結される（_formatError）。
+  // そのため「具体的な語（エラーコード・SMTP応答番号）を先に、包括的な語を後に」見る。
+  // 例: `Error upgrading connection with STARTTLS: 530 Authentication Required` は
+  // 'auth' も 'connect' も含むので、etls/starttlsを最上位に置かないと分類が動かされる
+  if (message.includes('etls') || message.includes('starttls')) return 'smtp_tls'
   if (message.includes('535') || message.includes('eauth') || message.includes('auth')) {
     return 'smtp_auth'
   }
+  // 送信上限。421形式（`Server terminates connection. response=421`）は 'connect' を
+  // 含むためconnect判定より先に、550形式（`550-5.4.5 Daily user sending limit exceeded`）は
+  // 宛先拒否と紛れるため550判定より先に見る（runbook §7の運用約束と揃える）
   if (
-    message.includes('etls') ||
-    message.includes('starttls') ||
+    message.includes('421') ||
+    message.includes('rate') ||
+    message.includes('quota') ||
+    message.includes('sending limit') ||
+    message.includes('5.4.5')
+  ) {
+    return 'rate_limited'
+  }
+  // 宛先アドレスがmessageに載る（550バウンス）。アドレスに 'tls' が含まれても
+  // TLS障害と誤判定しないよう、下の広いtls判定より先に見る
+  if (message.includes('550') || message.includes('mailbox')) return 'recipient_rejected'
+  if (
     message.includes('certificate') ||
+    message.includes('wrong version') ||
     message.includes('tls')
   ) {
     return 'smtp_tls'
   }
-  // 421はGmailの上限応答。`Server terminates connection. response=421` のように
-  // 'connect' を含むため、connect判定より先に見る（runbook §6.1の約束と揃える）
-  if (message.includes('421') || message.includes('rate') || message.includes('quota')) {
-    return 'rate_limited'
-  }
-  if (message.includes('550') || message.includes('mailbox')) return 'recipient_rejected'
   if (message.includes('timeout') || message.includes('etimedout')) return 'smtp_timeout'
   // 接続はできたのに会話の途中で切れる系（denomailerで実際に起きた事象）
   if (
@@ -132,6 +142,8 @@ export function classifyError(error: unknown): string {
   if (
     message.includes('econnrefused') ||
     message.includes('econnection') ||
+    message.includes('enotfound') ||
+    message.includes('edns') ||
     message.includes('connect')
   ) {
     return 'smtp_connect'
