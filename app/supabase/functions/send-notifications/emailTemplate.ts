@@ -96,14 +96,17 @@ function stripAddresses(text: string): string {
 const MESSAGE_LIMIT = 2000
 const CODE_LIMIT = 100
 
-// 切り詰めたときだけ、末尾で途切れた語を落とす。切り詰めの境界が宛先アドレスの '@' の
-// 手前に落ちると局所部の断片（`demo-starttls`）が残り、アドレス除去をすり抜けて
-// 上位規則へ部分一致する（独立レビューが実測）。
-// **切り詰めていないときは触らない。** 単語1つだけのメッセージ（`ECONNREFUSED`）を
-// 消してしまうため
+// 切り詰めで**途切れた**末尾の語だけを落とす。境界が宛先アドレスの '@' の手前に
+// 落ちると局所部の断片（`demo-starttls`）が残り、アドレス除去をすり抜けて上位規則へ
+// 部分一致するため（独立レビューが実測）。
+// 判定は「境界の次の文字が語の一部か」だけでよい。語の直後で切れた場合まで落とすと、
+// 完結している手掛かり（`550`・`ETIMEDOUT`）を捨てて `unknown` になる。
+// 切り詰めが起きていないときは境界の次が空文字になり、同じ経路で末尾が残る
+// （単語1つだけのメッセージ `ECONNREFUSED` を消さない）
 function truncateMessage(text: string): string {
-  if (text.length <= MESSAGE_LIMIT) return text
-  return text.slice(0, MESSAGE_LIMIT).replace(/[^\s<>(),;:"]+$/u, '')
+  const cut = text.slice(0, MESSAGE_LIMIT)
+  const boundaryIsWord = /[^\s<>(),;:"]/u.test(text.charAt(MESSAGE_LIMIT))
+  return boundaryIsWord ? cut.replace(/[^\s<>(),;:"]+$/u, '') : cut
 }
 
 // SMTPライブラリの例外メッセージは、宛先・認証情報・本文断片を含み得る。

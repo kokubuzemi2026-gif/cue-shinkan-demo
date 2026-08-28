@@ -273,10 +273,11 @@ describe('emailTemplate', () => {
   })
 
   it('区切りの無い長大な応答文でも、分類が現実的な時間で終わる', () => {
-    // アドレス除去の正規表現を束縛しないと、この入力で二次時間になる（実測4.5秒）。
-    // 応答文の長さを決めるのはリモートサーバー側なので、上限を持たせている
-    // このリポジトリで唯一の時間依存アサーション。実測4.5msに対して閾値500ms＝
-    // 約110倍の余裕を取っている（束縛を外すと4.5秒＝閾値の9倍かかる）
+    // message・code・responseCode の3要素すべてに上限が要る。どれか1つでも
+    // 素通しにすると、区切り文字を含まない長大な入力でアドレス除去が二次時間になる
+    // （実測4.5秒）。長さを決めるのはリモート側なので、上限がここでの唯一の防波堤。
+    // このリポジトリで唯一の時間依存アサーション。実測数msに対して閾値500msで、
+    // 退行時は4.5秒＝閾値の9倍になるため、余裕と検出力の両方がある
     const started = performance.now()
     expect(classifyError(new Error('x'.repeat(64_000)))).toBe('unknown')
     // code・responseCodeにも上限が要る。message側だけを切ると、ここが二次時間になる
@@ -294,10 +295,39 @@ describe('emailTemplate', () => {
     // 'starttls' / 'auth' の規則（550より上）へ部分一致してしまう。
     // 切り詰め時に末尾の途切れた語を落として閉じている
     const bounce = ' 550 5.1.1 <demo-starttls@stu.kobe-u.ac.jp>: User unknown'
+    // paddingに区切りを混ぜる。全部つなげると末尾アンカーの後戻りだけで
+    // このテストがファイル最遅になる（実測528ms）
+    const filler = `${'x'.repeat(39)} `.repeat(60)
     for (let pad = 1_950; pad <= 2_010; pad += 1) {
-      const error = Object.assign(new Error('x'.repeat(pad) + bounce), { responseCode: 550 })
+      const error = Object.assign(new Error(filler.slice(0, pad) + bounce), { responseCode: 550 })
       expect(classifyError(error)).toBe('recipient_rejected')
     }
+  })
+
+  it('切り詰めの境界が語の直後に落ちたら、その語は残す', () => {
+    // 途切れていない語まで落とすと、完結している手掛かりを捨てて unknown になる
+    const head = `${'y'.repeat(1_996)} 550`
+    expect(head.length).toBe(2_000)
+    // ちょうど2000字＝切り詰めが起きない
+    expect(classifyError(new Error(head))).toBe('recipient_rejected')
+    // 2001字目が区切り＝2000字目までの語は完結している
+    expect(classifyError(new Error(`${head} rest`))).toBe('recipient_rejected')
+    // 2001字目が語の一部＝2000字目までの語は途切れている
+    expect(classifyError(new Error(`${head}5 rest`))).toBe('unknown')
+  })
+
+  it('局所部が64字を超えるアドレスでも、綴りで分類が変わらない', () => {
+    // アドレス除去の正規表現に長さの束縛を入れると、局所部の先頭が残って
+    // 'starttls' へ部分一致する。stu.kobe-u.ac.jp の局所部に長さ上限は無い（D028）
+    const local = `demo-starttls${'a'.repeat(70)}`
+    expect(local.length).toBeGreaterThan(64)
+    expect(
+      classifyError(
+        Object.assign(new Error(`550 5.1.1 <${local}@stu.kobe-u.ac.jp>: User unknown`), {
+          responseCode: 550,
+        }),
+      ),
+    ).toBe('recipient_rejected')
   })
 
   it('切り詰めていないメッセージの末尾は削らない', () => {
