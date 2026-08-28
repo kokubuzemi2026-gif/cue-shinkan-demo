@@ -42,7 +42,7 @@ npx supabase db push                                      # app/supabase/migrati
 
 ## 5. 接続情報の配布
 
-- Project Settings → API の **URL** と **publishable key** を各開発者へ手渡しし、`app/.env.local`へ設定する（この2値以外は配布しない）。
+- Project Settings → API の **URL** と **publishable key** を各開発者へ手渡しし、`app/.env.local`へ設定する（配布するのはこの2値のみ。CAPTCHAの動作確認が必要な開発者にはTurnstileの**Site Key**＝公開値も渡してよいが、**Secret Keyは配布しない**・D057）。
 - キーは**新形式（`sb_publishable_...` / `sb_secret_...`）を使用**する。stagingでは2026-08-24にlegacy `anon`/`service_role`キーを無効化済み（legacyキーでのアクセスは401になる）。`sb_secret_...`は配布せず、管理処理（テストユーザー作成・削除等）での一時利用に限る。
 
 ## 6. Phase B チェックリスト（人間+実装者）

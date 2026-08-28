@@ -5,6 +5,8 @@ import type { EntryIntent } from '../account/contextModel'
 import type { CueSupabaseClient } from '../lib/supabaseClient'
 import { canResend, initialAuthUiState, reduceAuthUi } from './authMachine'
 import { AUTH_TEXT, mapOtpSendError } from './errorMessages'
+import { readTurnstileSiteKey } from './turnstile'
+import { TurnstileWidget } from './TurnstileWidget'
 import { isUniversityEmail, normalizeUniversityEmail } from './universityEmail'
 
 type SignInScreenProps = {
@@ -59,6 +61,13 @@ export function SignInScreen({
   const emailValid = isUniversityEmail(normalizedEmail)
   const showDomainWarning = rawEmail.trim().length > 0 && !emailValid
 
+  // Task 021: CAPTCHA（Turnstile・D057）。sitekey未設定なら完全に従来どおり。
+  // 対象はOTP送信（/otp。初回と再送）だけで、コード検証（/verify）はCAPTCHA対象外
+  const [turnstileSiteKey] = useState(() => readTurnstileSiteKey())
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [captchaResetSignal, setCaptchaResetSignal] = useState(0)
+  const captchaReady = turnstileSiteKey === null || captchaToken !== null
+
   // 再送クールダウンの残秒表示用（コード入力中だけ動かす）
   useEffect(() => {
     if (ui.step !== 'enterCode') return
@@ -71,8 +80,18 @@ export function SignInScreen({
       email,
       // 登録とログインの統合導線（新規ユーザーもここで作成される）。
       // emailRedirectToは渡さない＝Magic Linkを使わない
-      options: { shouldCreateUser: true },
+      options: {
+        shouldCreateUser: true,
+        // CAPTCHA有効時のみ付く（sitekey未設定ならキー自体を送らない）
+        ...(captchaToken !== null ? { captchaToken } : {}),
+      },
     })
+    // Turnstileトークンは/otp呼び出し1回ごとの単回使用。成功・失敗に関わらず
+    // 消費済みとして破棄し、ウィジェットへ再取得を指示する
+    if (turnstileSiteKey !== null) {
+      setCaptchaToken(null)
+      setCaptchaResetSignal((n) => n + 1)
+    }
     if (error) {
       dispatch({ type: 'otpSendFailed', reason: mapOtpSendError(error) })
     } else {
@@ -82,7 +101,7 @@ export function SignInScreen({
 
   const handleEmailSubmit = (event: FormEvent) => {
     event.preventDefault()
-    if (!emailValid || ui.step !== 'enterEmail') return
+    if (!emailValid || ui.step !== 'enterEmail' || !captchaReady) return
     dispatch({ type: 'submitEmail', normalizedEmail })
     void sendOtp(normalizedEmail)
   }
@@ -101,7 +120,7 @@ export function SignInScreen({
   }
 
   const handleResend = () => {
-    if (ui.step !== 'enterCode' || !canResend(ui, Date.now())) return
+    if (ui.step !== 'enterCode' || !canResend(ui, Date.now()) || !captchaReady) return
     const email = ui.email
     dispatch({ type: 'resendRequested', nowMs: Date.now() })
     void sendOtp(email)
@@ -165,10 +184,17 @@ export function SignInScreen({
                 {SEND_ERROR_TEXT[ui.error]}
               </p>
             )}
+            {turnstileSiteKey !== null && (
+              <TurnstileWidget
+                siteKey={turnstileSiteKey}
+                onToken={setCaptchaToken}
+                resetSignal={captchaResetSignal}
+              />
+            )}
             <button
               type="submit"
               className="button button-primary auth-submit"
-              disabled={!emailValid || sending}
+              disabled={!emailValid || sending || !captchaReady}
             >
               {sending ? '送信しています…' : '6桁コードを送る'}
             </button>
@@ -226,12 +252,24 @@ export function SignInScreen({
             {verifying ? '確認しています…' : 'ログインする'}
           </button>
         </form>
+        {turnstileSiteKey !== null && (
+          <TurnstileWidget
+            siteKey={turnstileSiteKey}
+            onToken={setCaptchaToken}
+            resetSignal={captchaResetSignal}
+          />
+        )}
         <div className="auth-subactions">
           <button
             type="button"
             className="button button-secondary"
             onClick={handleResend}
-            disabled={verifying || resendWaitSeconds > 0 || (ui.step === 'enterCode' && ui.resending)}
+            disabled={
+              verifying ||
+              resendWaitSeconds > 0 ||
+              (ui.step === 'enterCode' && ui.resending) ||
+              !captchaReady
+            }
           >
             {resendWaitSeconds > 0 ? `再送（あと${resendWaitSeconds}秒）` : 'コードを再送する'}
           </button>

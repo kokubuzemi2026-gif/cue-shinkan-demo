@@ -58,6 +58,10 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          # Task 021: Turnstileのsite key（公開値）。本番はSupabase側でCAPTCHAを
+          # 有効化するため、これが無いビルドを公開するとログインが全滅する。
+          # 下の検証ステップが必須値として検査する
+          VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
         run: npm run build
       - name: Verify build has Supabase config
         # **値そのものは出さない。** 埋まっているかどうかだけを見る。
@@ -78,6 +82,7 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_TURNSTILE_SITE_KEY: ${{ secrets.VITE_TURNSTILE_SITE_KEY }}
         run: |
           set -euo pipefail
           if [ -z "${VITE_SUPABASE_URL:-}" ] || [ -z "${VITE_SUPABASE_PUBLISHABLE_KEY:-}" ]; then
@@ -138,6 +143,33 @@ jobs:
             echo "VITE_SUPABASE_PUBLISHABLE_KEY が短すぎます（途中で切れていませんか）。" >&2
             exit 1
           fi
+          # Task 021: Turnstileのsite key。本番はSupabase側でCAPTCHAを有効化する
+          # 前提のため、site keyの無いビルド＝公開後にOTP送信が全滅する。ここで止める。
+          # 注意: TurnstileのSite KeyとSecret Keyは**どちらも 0x で始まり**、
+          # prefixでは区別できない。取り違えの検査はできないため、置き場所の運用
+          # （Secret KeyはSupabase Dashboardのみ）と、取り違えた場合のローテーションを
+          # docs/launch_plan.md §7.2 H11 に定める
+          if [ -z "${VITE_TURNSTILE_SITE_KEY:-}" ]; then
+            echo "VITE_TURNSTILE_SITE_KEY が未設定です。" >&2
+            echo "Settings → Secrets and variables → Actions → **Secrets** で設定してください" >&2
+            echo "（TurnstileのSite Key。docs/launch_plan.md §7.2 H11 / tasks/021 を参照）。" >&2
+            exit 1
+          fi
+          TS_TRIM="$(printf '%s' "$VITE_TURNSTILE_SITE_KEY" | tr -d '[:space:]')"
+          if [ -z "$TS_TRIM" ] || [ "$TS_TRIM" != "$VITE_TURNSTILE_SITE_KEY" ]; then
+            echo "VITE_TURNSTILE_SITE_KEY が空白だけ、または空白を含んでいます。貼り直してください。" >&2
+            exit 1
+          fi
+          case "$VITE_TURNSTILE_SITE_KEY" in
+            0x*) ;;
+            *) echo "VITE_TURNSTILE_SITE_KEY が Turnstile のkey形式（0x…）ではありません。" >&2
+               echo "Supabaseの鍵や別の値を貼っていませんか。" >&2
+               exit 1 ;;
+          esac
+          if [ "${#VITE_TURNSTILE_SITE_KEY}" -lt 10 ]; then
+            echo "VITE_TURNSTILE_SITE_KEY が短すぎます（途中で切れていませんか）。" >&2
+            exit 1
+          fi
           if [ ! -d dist/assets ]; then
             echo "dist/assets がありません。buildが成果物を出していません。" >&2
             exit 1
@@ -148,6 +180,11 @@ jobs:
           fi
           if ! grep -rqF -e "$VITE_SUPABASE_PUBLISHABLE_KEY" dist/assets; then
             echo "ビルド成果物へ VITE_SUPABASE_PUBLISHABLE_KEY が入っていません。" >&2
+            echo "（build step へ env: が渡っていないか、古い dist が残っていませんか）" >&2
+            exit 1
+          fi
+          if ! grep -rqF -e "$VITE_TURNSTILE_SITE_KEY" dist/assets; then
+            echo "ビルド成果物へ VITE_TURNSTILE_SITE_KEY が入っていません。" >&2
             echo "（build step へ env: が渡っていないか、古い dist が残っていませんか）" >&2
             exit 1
           fi

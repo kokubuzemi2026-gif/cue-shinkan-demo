@@ -8,22 +8,22 @@
   `docs/matching_and_safety.md`）に従い、本書はそれらを束ねる。
 - 実行規約: `docs/agent_harness.md`（Plan → Implement → Verify → Review → Repair）
 
-## 1. 現在地（2026-08-27時点）
+## 1. 現在地（2026-08-28時点）
 
 | 項目 | 値 |
 |---|---|
-| `develop` | `2d4fc9f`（PR #22 merge後） |
+| `develop` | `1eb6c15`（PR #26 merge後） |
 | `main` | `646278f`（Phase 1公開デモ・**公開中**・凍結） |
-| 完了Task | 000〜020（020は本表を含むPR [#25](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/25) のmergeで完了） |
+| 完了Task | 000〜020（020は `607891f`）。**021（CAPTCHA・D057）は本表を含むPRのmergeで完了** |
 | migration | **20本**（0008×4・0009×4・0011×3・0010×2・0013×2・0014・0015・0017・0018・0019） |
-| unit test | **370件 / 31ファイル**（020で+5） |
+| unit test | **373件 / 32ファイル**（021で+3） |
 | pgTAP | **653件 / 36ファイル** |
 | 並行テスト | **15件**（`npm run db:test:concurrency`） |
 | hookテスト | 201件 |
 | lint / build / CI | green（quality / db-tests / e2e / audit の4ジョブ） |
 | hosted staging | Supabase `cue-shinkan-staging`（`ap-northeast-1`）。**全20本適用済み**（2026-08-28・H1完了）。H6の決定（2026-08-28）で**このプロジェクトを公開用へ昇格**する。※本書の旧記載「0008・0009まで適用済み」は誤りで、実態は0008の4本のみだった（`tasks/009-server-data-migration.md` Phase B「未実施」が正） |
 
-Phase 2の**実装はTask 019まで完了**している。学生の登録・パスポート・オファー受信・返答、
+Phase 2の**実装はTask 020まで完了**している（021=CAPTCHAは本PRで実装）。学生の登録・パスポート・オファー受信・返答、
 団体のオファー作成・送信・ファネル、メール通知、運営の確認・停止・緊急停止、
 本人によるデータ削除、同意管理、health checkまでがサーバー側
 （RLS + SECURITY DEFINER RPC）で動作する。
@@ -33,7 +33,7 @@ Phase 2の**実装はTask 019まで完了**している。学生の登録・パ�
 ## 2. v1.0の完成像と現状のgap
 
 凡例: ✅ 実装済み / ⚠️ 部分的 / ❌ 未実装
-**最終更新: 2026-08-27（Task 019まで完了時点）**
+**最終更新: 2026-08-28（Task 020完了・021実装時点）**
 
 ### 2.1 新入生
 
@@ -83,7 +83,7 @@ Phase 2の**実装はTask 019まで完了**している。学生の登録・パ�
 | スマホ主要導線 | ✅ | 006/008/009 |
 | アクセシビリティ（キーボード・focus・label・contrast） | ⚠️ 体系的に検証し、コントラスト2件とフォーカス移動を修正。**入力欄の枠が1.4.11未達・スクリーンリーダー実機未確認**（§7.1 C1・C2） | 016 |
 | loading / empty / error / retry | ✅ 主要画面を確認 | 016 |
-| 認証・RLS・RPC・匿名性・E2Eの自動テスト | ✅ pgTAP **653件**（36ファイル）/ 並行15件 / unit 370件 / E2E | 008〜020 |
+| 認証・RLS・RPC・匿名性・E2Eの自動テスト | ✅ pgTAP **653件**（36ファイル）/ 並行15件 / unit 373件 / E2E | 008〜020 |
 | staging実環境検証 | ⚠️ **migrationは全20本適用済み（2026-08-28）**。実機検証（`tasks/009` Phase B残り・smoke test B）とH9は未実施 | Phase B |
 | release PRと公開後smoke test | ⚠️ 手順は用意済み（production用A・staging用Bに分割）。**実行は公開後**（merge前提のH6〜H8は2026-08-28完了） | 018 |
 | P0/P1既知不具合ゼロ | ⚠️ §7.1 の28件へ重大度を付与。**P0は0件・P1は7件**（公開判断で受容が要る） | 018 |
@@ -109,10 +109,11 @@ Phase 2の**実装はTask 019まで完了**している。学生の登録・パ�
 | 017 | 運用（structured logging・health・runbook・secret rotation） | **完了（developへmerge済み `cebabdd`）** | [#20](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/20) | 010 |
 | 019 | outboxの剪定・ワーカー並行検証・生成型の同期 | **完了（developへmerge済み `05e2701`）** | [#21](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/21) | 017 |
 | 018 | リリース（release notes・smoke test・deploy設定・main PR） | **完了（developへmerge済み `2d4fc9f`）** | [#22](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/22) | 全部 |
-| 020 | 入口分離（新入生／団体担当者の入口とログイン後の初期表示・D056） | **完了（本行を含むPRのmergeで確定）** | [#25](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/25) | 016 |
+| 020 | 入口分離（新入生／団体担当者の入口とログイン後の初期表示・D056） | **完了（developへmerge済み `607891f`）** | [#25](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/25) | 016 |
+| 021 | OTP送信のCAPTCHA（Cloudflare Turnstile・D057・H11b） | **完了（本行を含むPRのmergeで確定）** | [#27](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/27) | 008 |
 
 番号の重複回避: 既存Task番号は000〜009・012。013以降を新規に使う（010・011は既存の意味を保持）。
-decision番号は **D056まで使用済み**（D054はTask 018＝PR #22、D055はPR #24、D056はTask 020＝PR #25）。新規はD057以降。migrationの連番は **0019まで**（0012・0016は欠番）。
+decision番号は **D057まで使用済み**（D054はTask 018＝PR #22、D055はPR #24、D056はTask 020＝PR #25、D057はTask 021）。新規はD058以降。migrationの連番は **0019まで**（0012・0016は欠番）。
 
 ## 4. Task 011の確定仕様（ユーザー確定事項・2026-08-27）
 
@@ -225,7 +226,7 @@ decision番号は **D056まで使用済み**（D054はTask 018＝PR #22、D055�
 | H8 | **Supabase Auth の Site URL を公開URLへ変更**（**Redirect URLsは追加しない**・§7.2） | Dashboardの操作 | **完了（2026-08-28）**。Site URLのみ変更・Redirect URLs追加なし |
 | H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | Supabaseアクセストークンが必要（`docs/runbook_supabase_hosted.md` §6.1） | 未実施 |
 | H10 | 本番Supabaseでの `auth.users` 削除挙動の確認 | Dashboardでの実操作が必要（`docs/operations.md` §9） | 未実施 |
-| **H11** | **公開前に Supabase Auth の Attack Protection（CAPTCHA・レート制限）を設定** | Dashboardの操作。**D030はこれをTask 011へ委ねたが、011のscopeに入っておらず実施されていない**（独立レビューで発覚）。publishable keyは公開バンドルに必ず入るため、公開後は誰でもAuth APIを直接呼べる | 未実施 |
+| **H11** | **公開前に Supabase Auth の Attack Protection（CAPTCHA・レート制限）を設定** | Dashboardの操作。**D030はこれをTask 011へ委ねたが、011のscopeに入っておらず実施されていない**（独立レビューで発覚） | **一部完了**。レート制限は2026-08-28設定済み（メール送信20/時＝送信元Gmailの500/日の内側。他は既定のまま）。**CAPTCHAはTask 021（D057）でアプリ側を実装**。Supabase側の有効化はTask 021のmerge後に行う（§7.2の手順） |
 
 ### H6〜H8 が揃うまで `main` へmergeしない（重要）
 
@@ -284,7 +285,7 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 | B4 | **P2** | 運営操作は**SQL Editorから**行う（運営画面UIが無い） | 人間の操作ミスを機械的に防げない。`actor_label` の正しさは運用依存 | 手順を `docs/operations.md` に固定 |
 | B5 | **P2** | 対象人数の `0` と `1–4` を区別する（D036の残余リスク） | 小集団の在・不在が観測できる | 受容済み。preview条件数の上限と24時間固定で回数を制限 |
 | B6 | **—** | E2Eの失敗アーティファクトに入力値が残り得た | OTP・招待URLの露出 | `PLAYWRIGHT_NO_COPY_PROMPT` で停止（D051・PR #19でdevelopへmerge済み）。`test-results/` はgitignore、CIに `upload-artifact` は無い。**`toMatchAriaSnapshot` の失敗は環境変数で止まらない**ため、OTP・招待URLが出ている画面では使わない |
-| B7 | **P1** | **Auth の CAPTCHA が無効**で、Supabase既定のメール送信レート制限だけが防壁。D030は緩和策をTask 011へ委ねたが、011のscopeに入っておらず未実施 | publishable keyは公開バンドルに必ず入るため、公開後は誰でもAuth APIを直接呼べる。任意アドレスへOTPを送らせられ、(a) 新歓期間中に実在の新入生がログインできない (b) 送信元Gmailが停止する（E6と複合） | **公開前にDashboardで設定する（H11）**。設定するまで公開しない |
+| B7 | **P1** | **Auth の CAPTCHA が無効**で、Supabase既定のメール送信レート制限だけが防壁。D030は緩和策をTask 011へ委ねたが、011のscopeに入っておらず未実施 | publishable keyは公開バンドルに必ず入るため、公開後は誰でもAuth APIを直接呼べる。任意アドレスへOTPを送らせられ、(a) 新歓期間中に実在の新入生がログインできない (b) 送信元Gmailが停止する（E6と複合） | **対応中（2026-08-28）**: レート制限は強化済み（メール20/時）。CAPTCHAはアプリ側をTask 021（D057・Turnstile）で実装し、**merge後にDashboardで有効化する（H11b）。有効化するまで公開しない** |
 
 ### C. アクセシビリティ・UX
 
@@ -382,13 +383,26 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   - 成功判定: Authentication → URL Configuration の **Site URL が公開URLになっている**
     （OTP往復はSite URLの有無で結果が変わらないため、H8の判定には使えない）
 
-- [ ] **H11 Auth の Attack Protection を有効にする**
+- [ ] **H11 Auth の Attack Protection を有効にする**（レート制限=完了・CAPTCHA=有効化待ち）
   - なぜ: publishable key は公開バンドルに必ず入る。既定では CAPTCHA が無効で、
     Supabase 既定のレート制限だけが防壁（§7.1 B7・**P1**）。
     任意アドレスへ OTP を送らせられ、送信元Gmail（§7.1 E6）が止まりうる
-  - 画面: Supabase Dashboard → Authentication → Attack Protection
-  - 入力場所: CAPTCHA を有効化（hCaptcha / Turnstile）＋ レート制限を既定より強める
-  - 成功判定: 設定後、ログイン画面から通常のOTP送信が**通る**こと（過剰に締めていない）
+  - **H11a レート制限 — 2026-08-28完了**: Authentication → Rate Limits で
+    メール送信を**20/時**へ（20×24=480/日 ≤ 送信元Gmailの500/日）。他は既定のまま
+    （説明会等で同一IPの正規利用者を弾かないため）。1時間に20人超の一斉登録イベント時だけ
+    一時的に引き上げる
+  - **H11b CAPTCHA — アプリ側はTask 021（D057）で実装。有効化は次の順で行う**:
+    1. Task 021のmerge後であること。**有効化した時点からhosted Authはcaptchaトークン必須**になる
+       （公開中のPhase 1デモはSupabase Auth不使用のため影響しないが、以後hostedでの
+       ログイン確認はwidget入りビルド＝Task 021以降のビルド経由でしか通らない）
+    2. Actions secretsに `VITE_TURNSTILE_SITE_KEY`（TurnstileのSite Key）があること
+       — 2026-08-28設定済み。**Secret Keyと取り違えないこと**（どちらも `0x` で始まり
+       機械判別できない。取り違えた場合はTurnstileでSecret Keyをローテーションする）
+    3. Supabase Dashboard → Authentication → Attack Protection →
+       CAPTCHA を有効化 → provider **Turnstile** → **Secret Key** を入力
+       （Secret KeyはこのDashboard欄にだけ入力。チャット・リポジトリ禁止）
+  - 成功判定: 公開後smoke test Aで、ログイン画面にウィジェットが表示され、
+    通常のOTP送信が**通る**こと（過剰に締めていない）
 
 ### 段階2: hosted で通す（mergeの前が望ましい）
 
@@ -538,7 +552,7 @@ H1・H3・H6〜H8と空撃ち（dry_run）も2026-08-28に完了。残りは §7
 | H1 | ✅ **2026-08-28完了**（SQL Editor方式で全20本） | §6 の「migration・rollback確認済み」が埋まらない |
 | H2 | 大学メールでのOTP実機確認 | ログインの生存確認ができない |
 | H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | 実メールが1通も飛ばない |
-| **H11** | **Auth の Attack Protection 設定** | 公開後にOTP送信を濫用されうる（§7.1 B7・**P1**） |
+| **H11** | Auth の Attack Protection 設定（レート制限は✅済・**CAPTCHA有効化はTask 021 merge後**） | 公開後にOTP送信を濫用されうる（§7.1 B7・**P1**） |
 | H10 | 退会後の `auth.users` 削除の挙動確認 | 退会したのに大学メールが残る |
 
 **ソフトウェア側のrelease blocker**: Task 020（入口分離・D056）が `develop` へ

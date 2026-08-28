@@ -32,6 +32,7 @@ Before User Created Hookは採用しない（現行プランではTeam以上限�
 - エラー表示・ログへメールアドレス・コード・トークンを出さない（画面はメールのエコーバックもしない）。
 - セッションはauth-jsが自身のキー（`sb-*`）で永続化・復元する。ログアウトは`signOut()`。
 - **入口分離（Task 020・D056）**: 未ログイン時は「新入生の方／団体の方はこちら」の入口選択が先に出るが、どちらを選んでも**上記の同一OTP処理へ合流**する（変わるのはログイン画面の文脈行とリード文だけ）。招待リンク流入では入口選択を出さない。
+- **CAPTCHA（Task 021・D057）**: OTP**送信**（初回・再送＝`/otp`）の前段にCloudflare Turnstileを置ける。`VITE_TURNSTILE_SITE_KEY`未設定なら完全に不活性（ローカル・CIはこの経路）。コード**検証**（`verifyOtp`＝`/verify`）はCAPTCHA対象外。CAPTCHAは送信の濫用対策であり、本人確認・認可はこれまでどおり6桁コード検証とサーバー側（`is_university_user()`・RLS・RPC）が行う。secret keyはSupabase Dashboardのみに置く。
 
 ## 4. 権限モデル（D026）
 
@@ -97,7 +98,7 @@ Task 009はこの構成に従い、興味パスポート（`public.student_passp
 - メールは`auth.users`以外へコピーしない。`public`スキーマ・ログ・テスト出力・PR・スクリーンショットへ出さない（ローカル部は学籍番号相当の機密）。
 - 氏名・学籍番号はTask 008では収集しない。raw user metadataへ権限・氏名を保存しない。
 - 団体向けのtable・view・RPC・生成型に、学生のメール・氏名・学籍番号・`auth.users.id`・配信対象学生ID一覧を含めない。Task 009の集計APIも匿名件数のみを返す。
-- ブラウザ・`VITE_*`・リポジトリ・CIへ置いてよいのは`VITE_SUPABASE_URL`と`VITE_SUPABASE_PUBLISHABLE_KEY`（実値は`.env.local`のみ、コミットは`.env.example`のプレースホルダーのみ）。secret key・legacy service-role key・DBパスワード・Supabaseアクセストークン・Resend APIキーは絶対に置かない。
+- ブラウザ・`VITE_*`・リポジトリ・CIへ置いてよいのは`VITE_SUPABASE_URL`・`VITE_SUPABASE_PUBLISHABLE_KEY`と、任意の`VITE_TURNSTILE_SITE_KEY`（TurnstileのSite Key＝公開値・D057）の3値だけ（実値は`.env.local`のみ、コミットは`.env.example`のプレースホルダーのみ）。secret key・legacy service-role key・DBパスワード・Supabaseアクセストークン・Resend APIキー・**TurnstileのSecret Key**は絶対に置かない（Turnstile Secret KeyはSupabase Dashboardのみ。Site/Secretはどちらも`0x`で始まり機械判別できないため、取り違えたらTurnstile側でローテーションする）。
 - テストデータは架空の`demo-*@stu.kobe-u.ac.jp`のみ。実在の学生・団体・連絡先を使わない。
 
 ## 10. localStorageデモとの境界
