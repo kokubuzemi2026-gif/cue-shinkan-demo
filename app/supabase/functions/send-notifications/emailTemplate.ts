@@ -84,17 +84,39 @@ export type LogSafeRecord = {
 // SMTPライブラリの例外メッセージは、宛先・認証情報・本文断片を含み得る。
 // 既知の分類だけを短いコードへ落とし、それ以外は 'unknown' にする
 export function classifyError(error: unknown): string {
-  const message = (
-    typeof error === 'object' && error !== null && 'message' in error
-      ? String((error as { message: unknown }).message)
-      : String(error ?? '')
-  ).toLowerCase()
+  const obj = typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : null
+  // nodemailerは message に加えて code（EAUTH等）と responseCode（535等）を返す。
+  // messageだけを見ていると原因不明の`unknown`になり、運用時に何も分からない
+  // （2026-08-28のsmoke test Bで実際にそうなった・D058）。3つとも突き合わせる
+  const message = [
+    obj !== null && 'message' in obj ? String(obj.message) : String(error ?? ''),
+    obj !== null && 'code' in obj ? String(obj.code) : '',
+    obj !== null && 'responseCode' in obj ? String(obj.responseCode) : '',
+  ]
+    .join(' ')
+    .toLowerCase()
   if (message.includes('auth') || message.includes('535')) return 'smtp_auth'
   if (message.includes('timeout') || message.includes('etimedout')) return 'smtp_timeout'
   if (message.includes('connect') || message.includes('econnrefused')) return 'smtp_connect'
   if (message.includes('550') || message.includes('mailbox')) return 'recipient_rejected'
   if (message.includes('rate') || message.includes('421') || message.includes('quota')) {
     return 'rate_limited'
+  }
+  // TLS由来を先に見る（`esocket`は下の'socket'にも一致するため順序が重要）
+  if (message.includes('certificate') || message.includes('tls')) {
+    return 'smtp_tls'
+  }
+  // 接続はできたのに会話の途中で切れる系（denomailerで実際に起きた事象）。
+  // `unknown`へ落とすと原因の切り分けができないため独立させる
+  if (
+    message.includes('interrupted') ||
+    message.includes('canceled') ||
+    message.includes('cancelled') ||
+    message.includes('socket') ||
+    message.includes('econnreset') ||
+    message.includes('epipe')
+  ) {
+    return 'smtp_stream'
   }
   return 'unknown'
 }

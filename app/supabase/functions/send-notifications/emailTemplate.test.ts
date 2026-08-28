@@ -73,6 +73,23 @@ describe('emailTemplate', () => {
     expect(classifyError(null)).toBe('unknown')
   })
 
+  it('nodemailerのcode・responseCodeも分類に使う（messageだけでは不明になるため）', () => {
+    // nodemailerは message が汎用文言でも code/responseCode で原因を示す。
+    // 2026-08-28のsmoke test Bで、messageだけの分類では`unknown`しか得られず
+    // 原因の切り分けができなかった（D058）
+    expect(classifyError(Object.assign(new Error('Invalid login'), { code: 'EAUTH' }))).toBe(
+      'smtp_auth',
+    )
+    expect(classifyError(Object.assign(new Error('Conn err'), { code: 'ETIMEDOUT' }))).toBe(
+      'smtp_timeout',
+    )
+    expect(classifyError(Object.assign(new Error('Message failed'), { responseCode: 550 }))).toBe(
+      'recipient_rejected',
+    )
+    // code/responseCodeを持たない値でも従来どおり動く
+    expect(classifyError('plain string 421 rate')).toBe('rate_limited')
+  })
+
   it('分類コードは短く、宛先や本文を含まない', () => {
     const code = classifyError(new Error('550 mailbox unavailable for demo-x@stu.kobe-u.ac.jp'))
     expect(code).toBe('recipient_rejected')

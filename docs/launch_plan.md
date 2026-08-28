@@ -14,7 +14,7 @@
 |---|---|
 | `develop` | `6bf1829`（PR #27 merge後） |
 | `main` | `646278f`（Phase 1公開デモ・**公開中**・凍結） |
-| 完了Task | **000〜021**（020は `607891f`・021は `6bf1829`） |
+| 完了Task | **000〜021**（020は `607891f`・021は `6bf1829`）。**022はhosted再検証待ち**（D058） |
 | migration | **20本**（0008×4・0009×4・0011×3・0010×2・0013×2・0014・0015・0017・0018・0019） |
 | unit test | **373件 / 32ファイル**（021で+3） |
 | pgTAP | **653件 / 36ファイル** |
@@ -111,9 +111,10 @@ Phase 2の**実装はTask 021まで完了**している。学生の登録・パ�
 | 018 | リリース（release notes・smoke test・deploy設定・main PR） | **完了（developへmerge済み `2d4fc9f`）** | [#22](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/22) | 全部 |
 | 020 | 入口分離（新入生／団体担当者の入口とログイン後の初期表示・D056） | **完了（developへmerge済み `607891f`）** | [#25](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/25) | 016 |
 | 021 | OTP送信のCAPTCHA（Cloudflare Turnstile・D057・H11b） | **完了（developへmerge済み `6bf1829`）** | [#27](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/27) | 008 |
+| 022 | 送信ワーカーのSMTPをnodemailerへ置換（D058。smoke test Bで実送信が全失敗したため） | **実装完了・hosted再検証待ち** | [#30](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/30) | 010 |
 
 番号の重複回避: 既存Task番号は000〜009・012。013以降を新規に使う（010・011は既存の意味を保持）。
-decision番号は **D057まで使用済み**（D054はTask 018＝PR #22、D055はPR #24、D056はTask 020＝PR #25、D057はTask 021）。新規はD058以降。migrationの連番は **0019まで**（0012・0016は欠番）。
+decision番号は **D058まで使用済み**（D054はTask 018＝PR #22、D055はPR #24、D056はTask 020＝PR #25、D057はTask 021、D058はTask 022）。新規はD059以降。migrationの連番は **0019まで**（0012・0016は欠番）。
 
 ## 4. Task 011の確定仕様（ユーザー確定事項・2026-08-27）
 
@@ -317,7 +318,7 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 | E4 | **P2** | 外部の監視サービスを使っていない | 障害に気づくのが遅れる | `platform_health()` を毎日見る運用（`docs/runbook_operations.md` §8）。**有料サービスは承認なしに追加しない** |
 | E5 | **—** | ~~`email_outbox` の古い行を消す経路が無い~~ **対応済み（Task 019）** | — | `private.prune_email_outbox(retain_days)`（既定90日）を追加。**pending・sending は消さない**。定期作業へ登録した（`docs/runbook_operations.md` §8） |
 | E6 | **P1** | **staging のSMTPは個人のGmail（1日500宛先）** | 本番の規模で頭打ちになる。送信元ドメインも借り物 | 本番は独自ドメイン＋専用プロバイダが必要（`docs/runbook_supabase_hosted.md` §7）。**H6と同時に判断する** |
-| E7 | **P2** | denomailer 1.6.0 のSTARTTLS挙動が未確認 | 465以外のポートで平文送信になる可能性 | hosted stagingで実配信を確認するときに、ポートと暗号化を目視する（H9） → **2026-08-28確認: 465（暗黙TLS）を採用**。587のSTARTTLSはEdgeランタイムで`invalid cmd`となり不使用（平文化の懸念経路も通らない） |
+| E7 | **P2** | denomailer 1.6.0 のSTARTTLS挙動が未確認 | 465以外のポートで平文送信になる可能性 | hosted stagingで実配信を確認するときに、ポートと暗号化を目視する（H9） → **2026-08-28: 465（暗黙TLS）を採用。さらにsmoke test Bで実送信が全失敗し（`Interrupted: operation canceled`・`attempts=5`で`failed`）、denomailer自体がEdge Runtimeで使えないことが判明した。Task 022で `npm:nodemailer` へ置き換え（D058）。実送信の成功はデプロイ後の再送で確認する（未検証）** |
 
 ## 7.2 人間の操作チェックリスト（公開までに必要なものだけ）
 

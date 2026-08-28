@@ -11,7 +11,10 @@
 //
 // 実行はスケジューラ（Supabaseのcron）から。1回の呼び出しで最大 BATCH_SIZE 件を処理する。
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts'
+// SMTPはnodemailer（Supabase公式のEdge Function SMTPサンプルと同じ構成・D058）。
+// denomailer 1.6.0はEdge Runtime上でSMTP会話の途中に
+// `Interrupted: operation canceled` でストリームが切られ、送信できなかった
+import nodemailer from 'npm:nodemailer@9.0.6'
 
 import { buildEmail, classifyError, logSafe, type EmailKind } from './emailTemplate.ts'
 
@@ -49,22 +52,20 @@ Deno.serve(async () => {
       { auth: { persistSession: false } },
     )
     // SMTPの資格情報と全学生の宛先がこの接続に載るため、暗号化を必須にする。
-    // 465は最初からTLS、587はSTARTTLSで昇格する。既定は587（STARTTLS）。
-    // 平文（tls無し）に落とす設定は用意しない
+    // 465は最初からTLS（secure）、それ以外はSTARTTLSでの昇格を必須にする
+    // （requireTLS）。平文へ落とす設定は用意しない
     const port = Number(requiredEnv('CUE_SMTP_PORT'))
     if (!Number.isInteger(port) || port <= 0) {
       throw new Error('invalid_env:CUE_SMTP_PORT')
     }
-    smtp = new SMTPClient({
-      connection: {
-        hostname: requiredEnv('CUE_SMTP_HOST'),
-        port,
-        // 465は暗黙TLS、それ以外はSTARTTLSでの昇格を要求する
-        tls: port === 465,
-        auth: {
-          username: requiredEnv('CUE_SMTP_USER'),
-          password: requiredEnv('CUE_SMTP_PASSWORD'),
-        },
+    smtp = nodemailer.createTransport({
+      host: requiredEnv('CUE_SMTP_HOST'),
+      port,
+      secure: port === 465,
+      requireTLS: port !== 465,
+      auth: {
+        user: requiredEnv('CUE_SMTP_USER'),
+        pass: requiredEnv('CUE_SMTP_PASSWORD'),
       },
     })
     from = requiredEnv('CUE_SMTP_FROM')
@@ -88,11 +89,11 @@ Deno.serve(async () => {
   for (const row of (data ?? []) as ClaimedRow[]) {
     const mail = buildEmail({ kind: row.kind, offerCount: row.offer_count, appUrl })
     try {
-      await smtp.send({
+      await smtp.sendMail({
         from,
         to: row.recipient_email,
         subject: mail.subject,
-        content: mail.text,
+        text: mail.text,
       })
       const { error: completeError } = await supabase.rpc('complete_email', {
         outbox_id: row.outbox_id,
@@ -131,7 +132,7 @@ Deno.serve(async () => {
   }
 
   try {
-    await smtp.close()
+    smtp.close()
   } catch {
     // 切断の失敗は送信結果に影響しない
   }
