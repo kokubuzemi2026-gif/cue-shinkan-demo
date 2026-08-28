@@ -110,7 +110,7 @@ Phase 2の**実装はTask 020まで完了**している（021=CAPTCHAは本PRで
 | 019 | outboxの剪定・ワーカー並行検証・生成型の同期 | **完了（developへmerge済み `05e2701`）** | [#21](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/21) | 017 |
 | 018 | リリース（release notes・smoke test・deploy設定・main PR） | **完了（developへmerge済み `2d4fc9f`）** | [#22](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/22) | 全部 |
 | 020 | 入口分離（新入生／団体担当者の入口とログイン後の初期表示・D056） | **完了（developへmerge済み `607891f`）** | [#25](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/25) | 016 |
-| 021 | OTP送信のCAPTCHA（Cloudflare Turnstile・D057・H11b） | **完了（本行を含むPRのmergeで確定）** | — | 008 |
+| 021 | OTP送信のCAPTCHA（Cloudflare Turnstile・D057・H11b） | **完了（本行を含むPRのmergeで確定）** | [#27](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/27) | 008 |
 
 番号の重複回避: 既存Task番号は000〜009・012。013以降を新規に使う（010・011は既存の意味を保持）。
 decision番号は **D057まで使用済み**（D054はTask 018＝PR #22、D055はPR #24、D056はTask 020＝PR #25、D057はTask 021）。新規はD058以降。migrationの連番は **0019まで**（0012・0016は欠番）。
