@@ -82,9 +82,13 @@ export type LogSafeRecord = {
 }
 
 // 例外文にはリモートサーバーの応答がそのまま連結され、550バウンスでは**宛先アドレス**が載る。
-// アドレスの局所部は 'rate'（hirate@）・'quota'（kquota@）・'tls'（bartls@）・
-// 'auth'（mauth@）を部分一致で含み得るので、分類の前にアドレスを取り除く。
-// これをやらないと「宛先の綴り」で診断コードが変わる（2026-08-28の独立レビューで実測）
+// 局所部の綴りが分類規則へ部分一致するため、分類の前にアドレスを取り除く。
+// これで閉じるのは、**550より上に置かざるを得ない規則**と衝突する綴り
+// （`starttls-test@` → 'starttls'、`mauth@` → 'auth'）。'rate' / 'quota' / 'tls' との
+// 衝突は判定順序（550を上に置く）側で閉じている（2026-08-28の独立レビューで実測）。
+//
+// 量指定子は束縛していない。束縛すると「局所部が64字を超えるアドレスの先頭が残る」
+// という別の穴が開くため、長大な入力への備えは呼び出し側の長さ上限で持つ
 function stripAddresses(text: string): string {
   return text.replace(/[^\s<>(),;:"]+@[^\s<>(),;:"]+/gu, '')
 }
@@ -96,9 +100,15 @@ export function classifyError(error: unknown): string {
   // nodemailerは message に加えて code（EAUTH・ETLS・ESOCKET等）と
   // responseCode（535・421・550等）を返す。messageだけを見ると原因不明の`unknown`になり、
   // 運用で何も切り分けられない（2026-08-28のsmoke test Bで実際にそうなった・D058）
+  // 応答文の長さはリモート側が決める（nodemailerの_formatErrorが応答全文を連結する）。
+  // アドレス除去の正規表現は「区切り文字を含まない長大な1トークン」で二次時間になり、
+  // Edge Functionのイベントループを同期的に塞ぐ（実測64KBで4.5秒）。分類に使うのは
+  // 先頭だけで足りるので上限を切る。**code・responseCodeは切り詰めの後ろへ置き**、
+  // 応答文がどれだけ長くても分類へ届くようにする
+  const rawMessage = obj !== null && 'message' in obj ? String(obj.message) : String(error ?? '')
   const message = stripAddresses(
     [
-      obj !== null && 'message' in obj ? String(obj.message) : String(error ?? ''),
+      rawMessage.slice(0, 2000),
       obj !== null && 'code' in obj ? String(obj.code) : '',
       obj !== null && 'responseCode' in obj ? String(obj.responseCode) : '',
     ].join(' '),
@@ -113,11 +123,21 @@ export function classifyError(error: unknown): string {
   if (message.includes('535') || message.includes('eauth') || message.includes('auth')) {
     return 'smtp_auth'
   }
-  // 送信上限のうち、宛先拒否と紛れない**具体トークンだけ**を550より先に見る。
+  // 送信上限・送信元ブロックのうち、宛先拒否と紛れない**具体トークンだけ**を550より先に見る。
   // 421形式（`Server terminates connection. response=421`）は 'connect' を含むため
-  // connect判定より先に、550形式（`550-5.4.5 Daily user sending limit exceeded`）は
-  // 550と重なるためここへ置く（runbook §7の運用約束と揃える）
-  if (message.includes('421') || message.includes('sending limit') || message.includes('5.4.5')) {
+  // connect判定より先に、550形式（`550-5.4.5 Daily user sending limit exceeded` /
+  // `550-5.7.1 ... unusual rate of unsolicited mail ...`）は550と重なるためここへ置く。
+  // 後者は宛先の問題ではなく**送信元アカウントの評判ブロック**で、運用の打ち手は
+  // 上限系と同じ（送信を絞る）。runbook §7が監視シグナルにしているのもこちら側
+  if (
+    message.includes('421') ||
+    message.includes('sending limit') ||
+    message.includes('sending quota') ||
+    message.includes('relay limit') ||
+    message.includes('5.4.5') ||
+    message.includes('unsolicited') ||
+    message.includes('unusual rate')
+  ) {
     return 'rate_limited'
   }
   // 宛先拒否。応答文に紛れ込んだ素の 'rate' / 'quota' や広い 'tls' で

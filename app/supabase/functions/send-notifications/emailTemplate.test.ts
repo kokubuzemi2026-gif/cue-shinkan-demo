@@ -125,9 +125,9 @@ describe('emailTemplate', () => {
       [Object.assign(new Error('Message failed'), { responseCode: 550 }), 'recipient_rejected'],
       [new Error('突然の未知の障害'), 'unknown'],
       // 6. 独立レビューが挙げた縁ケース（リモート応答文で分類が動かされないこと）
-      // 宛先に 'tls' を含む550バウンスは宛先拒否（TLS障害と誤判定しない）
+      // 宛先に 'tls' を含む550バウンスは宛先拒否（550を広いtls判定より上に置いている）
       [
-        new Error('550 5.1.1 <bartls@stu.kobe-u.ac.jp>: Recipient address rejected'),
+        new Error('550 5.1.1 <demo-bartls@stu.kobe-u.ac.jp>: Recipient address rejected'),
         'recipient_rejected',
       ],
       // STARTTLS拒否の応答に "Authentication" が混ざってもTLS由来として扱う
@@ -155,18 +155,19 @@ describe('emailTemplate', () => {
         Object.assign(new Error('getaddrinfo ENOTFOUND smtp.gmail.com'), { code: 'EDNS' }),
         'smtp_connect',
       ],
-      // 7. 宛先アドレスの綴りが分類を動かさないこと（分類前にアドレスを取り除く）。
-      // 局所部の 'starttls' / 'auth' / 'rate' / 'quota' は上位規則へ部分一致する
+      // 7. 宛先アドレスの綴りが分類を動かさないこと。
+      // 'starttls' / 'auth' は550より上に置かざるを得ない規則へ部分一致するので、
+      // アドレス除去だけがこの2件を閉じる（'rate' / 'quota' は判定順序側で閉じている）
       [
-        new Error('550 5.1.1 <starttls-test@stu.kobe-u.ac.jp>: User unknown'),
+        new Error('550 5.1.1 <demo-starttls@stu.kobe-u.ac.jp>: User unknown'),
         'recipient_rejected',
       ],
-      [new Error('550 5.1.1 <mauth@stu.kobe-u.ac.jp>: User unknown'), 'recipient_rejected'],
+      [new Error('550 5.1.1 <demo-mauth@stu.kobe-u.ac.jp>: User unknown'), 'recipient_rejected'],
       [
-        new Error('550 5.1.1 <hirate@stu.kobe-u.ac.jp>: Recipient address rejected'),
+        new Error('550 5.1.1 <demo-hirate@stu.kobe-u.ac.jp>: Recipient address rejected'),
         'recipient_rejected',
       ],
-      [new Error('550 5.1.1 <kquota@stu.kobe-u.ac.jp>: User unknown'), 'recipient_rejected'],
+      [new Error('550 5.1.1 <demo-kquota@stu.kobe-u.ac.jp>: User unknown'), 'recipient_rejected'],
       // 8. アドレス除去では消えない、応答文そのものに混ざった素の 'rate'。
       // 素の rate / quota を550より下に置いていないと rate_limited へ流れる
       [
@@ -188,6 +189,21 @@ describe('emailTemplate', () => {
         ),
         'recipient_rejected',
       ],
+      // Gmailの送信元評判ブロックは550形式で来るが、宛先の問題ではなく送信側の問題。
+      // 運用の打ち手は上限系と同じなので rate_limited に寄せる（§7.1 E6の監視シグナル）
+      [
+        Object.assign(
+          new Error(
+            '550-5.7.1 [203.0.113.9] Our system has detected an unusual rate of unsolicited mail originating from your IP address.',
+          ),
+          { responseCode: 550 },
+        ),
+        'rate_limited',
+      ],
+      [
+        Object.assign(new Error('550-5.7.1 Daily sending quota exceeded'), { responseCode: 550 }),
+        'rate_limited',
+      ],
       // 9. maxRequeues: 0 の失敗文言は 'connection' を含むが、実体は会話中の切断
       [new Error('Reached maximum number of retries after connection was closed'), 'smtp_stream'],
     ]
@@ -198,13 +214,33 @@ describe('emailTemplate', () => {
 
   it('宛先アドレスの綴りで分類が変わらない（分類前にアドレスを取り除く）', () => {
     // 同じ「550 User unknown」バウンスで局所部だけを変えても、分類は1種類に収まる。
-    // 取り除かないと starttls-test は smtp_tls、mauth は smtp_auth へ流れる
+    // このうちアドレス除去でしか閉じないのは starttls-test（→smtp_tls）と
+    // mauth（→smtp_auth）の2件。他は550を上に置く判定順序で閉じている
     const codes = new Set(
-      ['taro', 'hirate', 'kquota', 'bartls', 'mauth', 'starttls-test'].map((local) =>
-        classifyError(new Error(`550 5.1.1 <${local}@stu.kobe-u.ac.jp>: User unknown`)),
+      ['demo-taro', 'demo-hirate', 'demo-kquota', 'demo-bartls', 'demo-mauth', 'demo-starttls'].map(
+        (local) =>
+          classifyError(new Error(`550 5.1.1 <${local}@stu.kobe-u.ac.jp>: User unknown`)),
       ),
     )
     expect([...codes]).toEqual(['recipient_rejected'])
+  })
+
+  it('応答文が極端に長くても、codeとresponseCodeは分類へ届く', () => {
+    // messageは先頭2000文字で切るが、切り詰めの後ろにcode・responseCodeを置いている。
+    // 切り詰めをmessage以外へ広げると、長い応答文のときだけunknownへ落ちる
+    const long = `x`.repeat(50_000)
+    expect(classifyError(Object.assign(new Error(long), { code: 'EAUTH' }))).toBe('smtp_auth')
+    expect(classifyError(Object.assign(new Error(long), { responseCode: 550 }))).toBe(
+      'recipient_rejected',
+    )
+  })
+
+  it('区切りの無い長大な応答文でも、分類が現実的な時間で終わる', () => {
+    // アドレス除去の正規表現を束縛しないと、この入力で二次時間になる（実測4.5秒）。
+    // 応答文の長さを決めるのはリモートサーバー側なので、上限を持たせている
+    const started = performance.now()
+    expect(classifyError(new Error('x'.repeat(64_000)))).toBe('unknown')
+    expect(performance.now() - started).toBeLessThan(500)
   })
 
   it('分類コードは決まった集合の中からしか返さない（生メッセージが混ざらない）', () => {
