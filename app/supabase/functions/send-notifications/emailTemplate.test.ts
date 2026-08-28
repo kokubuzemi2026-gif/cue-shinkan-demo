@@ -155,10 +155,56 @@ describe('emailTemplate', () => {
         Object.assign(new Error('getaddrinfo ENOTFOUND smtp.gmail.com'), { code: 'EDNS' }),
         'smtp_connect',
       ],
+      // 7. 宛先アドレスの綴りが分類を動かさないこと（分類前にアドレスを取り除く）。
+      // 局所部の 'starttls' / 'auth' / 'rate' / 'quota' は上位規則へ部分一致する
+      [
+        new Error('550 5.1.1 <starttls-test@stu.kobe-u.ac.jp>: User unknown'),
+        'recipient_rejected',
+      ],
+      [new Error('550 5.1.1 <mauth@stu.kobe-u.ac.jp>: User unknown'), 'recipient_rejected'],
+      [
+        new Error('550 5.1.1 <hirate@stu.kobe-u.ac.jp>: Recipient address rejected'),
+        'recipient_rejected',
+      ],
+      [new Error('550 5.1.1 <kquota@stu.kobe-u.ac.jp>: User unknown'), 'recipient_rejected'],
+      // 8. アドレス除去では消えない、応答文そのものに混ざった素の 'rate'。
+      // 素の rate / quota を550より下に置いていないと rate_limited へ流れる
+      [
+        new Error('550 5.1.1 Recipient address rejected: no such user hirate'),
+        'recipient_rejected',
+      ],
+      // 550が無ければ、素の rate / quota は従来どおり上限として扱う
+      [
+        Object.assign(new Error('454 4.7.1 Rate limit exceeded'), { responseCode: 454 }),
+        'rate_limited',
+      ],
+      [new Error('Too many messages: quota exceeded'), 'rate_limited'],
+      // 550バウンスの応答文に 'TLS' が出ても、送信側のTLS障害ではなく宛先側の拒否。
+      // 550判定を広いtls判定より先に置いていないと smtp_tls へ流れる
+      [
+        Object.assign(
+          new Error('550 5.7.10 Message rejected: TLS is required for this recipient'),
+          { responseCode: 550 },
+        ),
+        'recipient_rejected',
+      ],
+      // 9. maxRequeues: 0 の失敗文言は 'connection' を含むが、実体は会話中の切断
+      [new Error('Reached maximum number of retries after connection was closed'), 'smtp_stream'],
     ]
     for (const [error, expected] of cases) {
       expect(classifyError(error)).toBe(expected)
     }
+  })
+
+  it('宛先アドレスの綴りで分類が変わらない（分類前にアドレスを取り除く）', () => {
+    // 同じ「550 User unknown」バウンスで局所部だけを変えても、分類は1種類に収まる。
+    // 取り除かないと starttls-test は smtp_tls、mauth は smtp_auth へ流れる
+    const codes = new Set(
+      ['taro', 'hirate', 'kquota', 'bartls', 'mauth', 'starttls-test'].map((local) =>
+        classifyError(new Error(`550 5.1.1 <${local}@stu.kobe-u.ac.jp>: User unknown`)),
+      ),
+    )
+    expect([...codes]).toEqual(['recipient_rejected'])
   })
 
   it('分類コードは決まった集合の中からしか返さない（生メッセージが混ざらない）', () => {

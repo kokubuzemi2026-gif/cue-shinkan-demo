@@ -59,14 +59,16 @@ Supabase公式のEdge Function SMTPサンプルは **nodemailer** を使って�
 5b. 1バッチを1接続で送る（`pool`）。denomailerは1接続を再利用しており、非pool構成だと
    1バッチ最大50回のGmailログインになる
 6. 既存のunit testが全green、追加テストは変異テストで検出力を確認する
+6b. 例外の分類が**宛先アドレスの綴りに左右されない**（550バウンスの局所部に 'rate' /
+   'quota' / 'tls' / 'auth' が含まれても `recipient_rejected` のままである）
 7. DB・アプリ本体・依存関係に差分が無い
 
 ## 検証
 
 | 検証 | 結果 |
 |---|---|
-| unit（emailTemplate） | **13件 PASS**（+2本: 分岐ごとの分類12ケース / 返り値の集合固定7ケース） |
-| 変異テスト | 4変異すべて検出: (a) `code`/`responseCode` を見ない旧実装 / (b) `smtp_tls` 分岐の削除 / (c) `smtp_stream` 分岐の削除 / (d) 判定順序の入れ替え（421がsmtp_connectへ落ちる） |
+| unit（emailTemplate） | **15件 PASS**（+4本: 分岐ごとの分類26ケース / 宛先の綴りで分類が変わらないこと / 返り値の集合固定7ケース） |
+| 変異テスト | **11変異すべて検出**: (a) アドレス除去を外す / (b) `code`・`responseCode` を見ない旧実装 / (c) 素の rate・quota を550の上へ戻す / (d) `was closed` を削る / (e) 広いtls分岐の削除 / (f) `wrong version` の削除 / (g) `smtp_stream` 分岐の削除 / (h) 先頭の `etls|starttls` 規則の削除 / (i) `enotfound|edns` の削除 / (j) `5.4.5|sending limit` の削除 / (k) 広いtlsを550の上へ移動 |
 | 全体unit / lint / build | （実施結果は下の「実行した検証」に記録） |
 | hosted実送信 | **未検証**。デプロイ後にsmoke test Bの再送で確認する（下記手順） |
 

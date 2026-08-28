@@ -81,6 +81,14 @@ export type LogSafeRecord = {
   errorCode?: string
 }
 
+// 例外文にはリモートサーバーの応答がそのまま連結され、550バウンスでは**宛先アドレス**が載る。
+// アドレスの局所部は 'rate'（hirate@）・'quota'（kquota@）・'tls'（bartls@）・
+// 'auth'（mauth@）を部分一致で含み得るので、分類の前にアドレスを取り除く。
+// これをやらないと「宛先の綴り」で診断コードが変わる（2026-08-28の独立レビューで実測）
+function stripAddresses(text: string): string {
+  return text.replace(/[^\s<>(),;:"]+@[^\s<>(),;:"]+/gu, '')
+}
+
 // SMTPライブラリの例外メッセージは、宛先・認証情報・本文断片を含み得る。
 // 既知の分類だけを短いコードへ落とし、それ以外は 'unknown' にする
 export function classifyError(error: unknown): string {
@@ -88,13 +96,13 @@ export function classifyError(error: unknown): string {
   // nodemailerは message に加えて code（EAUTH・ETLS・ESOCKET等）と
   // responseCode（535・421・550等）を返す。messageだけを見ると原因不明の`unknown`になり、
   // 運用で何も切り分けられない（2026-08-28のsmoke test Bで実際にそうなった・D058）
-  const message = [
-    obj !== null && 'message' in obj ? String(obj.message) : String(error ?? ''),
-    obj !== null && 'code' in obj ? String(obj.code) : '',
-    obj !== null && 'responseCode' in obj ? String(obj.responseCode) : '',
-  ]
-    .join(' ')
-    .toLowerCase()
+  const message = stripAddresses(
+    [
+      obj !== null && 'message' in obj ? String(obj.message) : String(error ?? ''),
+      obj !== null && 'code' in obj ? String(obj.code) : '',
+      obj !== null && 'responseCode' in obj ? String(obj.responseCode) : '',
+    ].join(' '),
+  ).toLowerCase()
 
   // **判定順序が仕様**。nodemailerの例外文は複数の語を同時に含み、しかも
   // message にはリモートサーバーの応答文がそのまま連結される（_formatError）。
@@ -105,21 +113,18 @@ export function classifyError(error: unknown): string {
   if (message.includes('535') || message.includes('eauth') || message.includes('auth')) {
     return 'smtp_auth'
   }
-  // 送信上限。421形式（`Server terminates connection. response=421`）は 'connect' を
-  // 含むためconnect判定より先に、550形式（`550-5.4.5 Daily user sending limit exceeded`）は
-  // 宛先拒否と紛れるため550判定より先に見る（runbook §7の運用約束と揃える）
-  if (
-    message.includes('421') ||
-    message.includes('rate') ||
-    message.includes('quota') ||
-    message.includes('sending limit') ||
-    message.includes('5.4.5')
-  ) {
+  // 送信上限のうち、宛先拒否と紛れない**具体トークンだけ**を550より先に見る。
+  // 421形式（`Server terminates connection. response=421`）は 'connect' を含むため
+  // connect判定より先に、550形式（`550-5.4.5 Daily user sending limit exceeded`）は
+  // 550と重なるためここへ置く（runbook §7の運用約束と揃える）
+  if (message.includes('421') || message.includes('sending limit') || message.includes('5.4.5')) {
     return 'rate_limited'
   }
-  // 宛先アドレスがmessageに載る（550バウンス）。アドレスに 'tls' が含まれても
-  // TLS障害と誤判定しないよう、下の広いtls判定より先に見る
+  // 宛先拒否。応答文に紛れ込んだ素の 'rate' / 'quota' や広い 'tls' で
+  // 宛先拒否が別コードへ流れないよう、それらより先に見る
   if (message.includes('550') || message.includes('mailbox')) return 'recipient_rejected'
+  // 上限系の包括的な語。550を通り抜けた後に見る
+  if (message.includes('rate') || message.includes('quota')) return 'rate_limited'
   if (
     message.includes('certificate') ||
     message.includes('wrong version') ||
@@ -128,13 +133,16 @@ export function classifyError(error: unknown): string {
     return 'smtp_tls'
   }
   if (message.includes('timeout') || message.includes('etimedout')) return 'smtp_timeout'
-  // 接続はできたのに会話の途中で切れる系（denomailerで実際に起きた事象）
+  // 接続はできたのに会話の途中で切れる系（denomailerで実際に起きた事象）。
+  // maxRequeues: 0 の失敗文言 `Reached maximum number of retries after connection was
+  // closed` も 'connect' ではなくここへ落とす（実体は会話中の切断）
   if (
     message.includes('interrupted') ||
     message.includes('canceled') ||
     message.includes('cancelled') ||
     message.includes('econnreset') ||
     message.includes('epipe') ||
+    message.includes('was closed') ||
     message.includes('socket')
   ) {
     return 'smtp_stream'

@@ -111,61 +111,63 @@ Deno.serve(async () => {
     return Response.json({ error: 'setup_failed' }, { status: 500 })
   }
 
-  // ここから先は、どの経路で抜けても必ずSMTP接続を閉じる（poolでは実接続が閉じる）
-  const { data, error } = await supabase.rpc('claim_email_batch', { batch_size: BATCH_SIZE })
-  if (error) {
-    closeSmtp(smtp)
-    console.error('send-notifications claim failed')
-    return Response.json({ error: 'claim_failed' }, { status: 500 })
-  }
-
-  for (const row of (data ?? []) as ClaimedRow[]) {
-    const mail = buildEmail({ kind: row.kind, offerCount: row.offer_count, appUrl })
-    try {
-      await smtp.sendMail({
-        from,
-        to: row.recipient_email,
-        subject: mail.subject,
-        text: mail.text,
-      })
-      const { error: completeError } = await supabase.rpc('complete_email', {
-        outbox_id: row.outbox_id,
-        succeeded: true,
-      })
-      if (completeError) {
-        // 書き戻しに失敗するとsendingのまま残る。DB側のリース回収が拾い直すが、
-        // 気づけるようにログへ残す（宛先・本文は出さない）
-        console.error(`send-notifications complete failed outbox=${row.outbox_id}`)
-      }
-      sent += 1
-      console.log(
-        logSafe({ outboxId: row.outbox_id, kind: row.kind, attempt: row.attempt, result: 'sent' }),
-      )
-    } catch (sendError) {
-      const errorCode = classifyError(sendError)
-      const { error: completeError } = await supabase.rpc('complete_email', {
-        outbox_id: row.outbox_id,
-        succeeded: false,
-        error_code: errorCode,
-      })
-      if (completeError) {
-        console.error(`send-notifications complete failed outbox=${row.outbox_id}`)
-      }
-      failed += 1
-      console.error(
-        logSafe({
-          outboxId: row.outbox_id,
-          kind: row.kind,
-          attempt: row.attempt,
-          result: 'failed',
-          errorCode,
-        }),
-      )
+  // ここから先は、どの経路で抜けても必ずSMTP接続を閉じる（poolでは実接続が閉じる）。
+  // returnだけでなく、想定外の例外で抜ける場合も閉じたいのでfinallyに置く
+  try {
+    const { data, error } = await supabase.rpc('claim_email_batch', { batch_size: BATCH_SIZE })
+    if (error) {
+      console.error('send-notifications claim failed')
+      return Response.json({ error: 'claim_failed' }, { status: 500 })
     }
+
+    for (const row of (data ?? []) as ClaimedRow[]) {
+      const mail = buildEmail({ kind: row.kind, offerCount: row.offer_count, appUrl })
+      try {
+        await smtp.sendMail({
+          from,
+          to: row.recipient_email,
+          subject: mail.subject,
+          text: mail.text,
+        })
+        const { error: completeError } = await supabase.rpc('complete_email', {
+          outbox_id: row.outbox_id,
+          succeeded: true,
+        })
+        if (completeError) {
+          // 書き戻しに失敗するとsendingのまま残る。DB側のリース回収が拾い直すが、
+          // 気づけるようにログへ残す（宛先・本文は出さない）
+          console.error(`send-notifications complete failed outbox=${row.outbox_id}`)
+        }
+        sent += 1
+        console.log(
+          logSafe({ outboxId: row.outbox_id, kind: row.kind, attempt: row.attempt, result: 'sent' }),
+        )
+      } catch (sendError) {
+        const errorCode = classifyError(sendError)
+        const { error: completeError } = await supabase.rpc('complete_email', {
+          outbox_id: row.outbox_id,
+          succeeded: false,
+          error_code: errorCode,
+        })
+        if (completeError) {
+          console.error(`send-notifications complete failed outbox=${row.outbox_id}`)
+        }
+        failed += 1
+        console.error(
+          logSafe({
+            outboxId: row.outbox_id,
+            kind: row.kind,
+            attempt: row.attempt,
+            result: 'failed',
+            errorCode,
+          }),
+        )
+      }
+    }
+
+    // 応答にも宛先・本文を含めない
+    return Response.json({ sent, failed })
+  } finally {
+    closeSmtp(smtp)
   }
-
-  closeSmtp(smtp)
-
-  // 応答にも宛先・本文を含めない
-  return Response.json({ sent, failed })
 })
