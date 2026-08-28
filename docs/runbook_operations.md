@@ -171,7 +171,7 @@ restoreは**最後の手段**。実行前に、緊急停止（`docs/operations.m
 | 頻度 | 作業 | 手順 |
 |---|---|---|
 | 毎日（β期間中） | health check | `select * from public.platform_health();`（`docs/runbook_incident.md` §1） |
-| 週1 | 依存関係の警告確認 | GitHubのDependabot alerts / CIの `audit` ジョブ。**`npm audit` はnpmレジストリの既知脆弱性だけ**を見る。Edge Functionの Deno 依存（`denomailer`）とGitHub Actionsは対象外 |
+| 週1 | 依存関係の警告確認 | GitHubのDependabot alerts / CIの `audit` ジョブ。**`npm audit` はnpmレジストリの既知脆弱性だけ**を見る。Edge Functionの依存（`npm:nodemailer` を Deno 経由で読み込む・D058）とGitHub Actionsは対象外 |
 | 週1 | ドメイン外identityの掃除 | `docs/runbook_supabase_hosted.md` §7 |
 | 週1 | ログインの生存確認 | 合成アカウントの大学メールでOTPを1往復させる。**`platform_health()` ではAuthの生存を確認できない**（DBからAuth APIを叩けない）ので、人間が実際に通す（`docs/runbook_incident.md` §2.5） |
 | 月1 | 退会済みauth identityの掃除 | `docs/operations.md` §9 |

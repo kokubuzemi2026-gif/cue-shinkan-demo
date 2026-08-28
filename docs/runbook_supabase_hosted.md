@@ -85,7 +85,11 @@ PR・チャットへ置かない。**
    （Edge Functions → Secrets／エディタで `index.ts`+`emailTemplate.ts` の2ファイルをデプロイ／
    Integrations → Cron `*/5 * * * *`）。実測で確定した2点:
    - **`CUE_SMTP_PORT` は `465`（暗黙TLS）を使う**。587のSTARTTLSはEdgeランタイムで
-     `invalid cmd at SMTPConnection.assertCode` となり接続できない（launch_plan §7.1 E7）
+     `invalid cmd at SMTPConnection.assertCode` となり接続できなかった（launch_plan §7.1 E7）。
+     ※このエラー文はdenomailer時代のもの。**2026-08-28にsmoke test Bで実送信が全失敗し
+     （`Interrupted: operation canceled`）、SMTPライブラリを `npm:nodemailer` へ置き換えた
+     （Task 022・D058）。上の手順4「実際にメールが届くことを確認する」は、
+     nodemailer版を再デプロイしたうえで実施する（H9-2）**
    - 関数の「**Verify JWT with legacy secret**」は**OFF**にする。本プロジェクトはlegacyキーを
      無効化済み（§5）のため、ONだとCronからの呼び出しが恒常的に401になる。ワーカーの権限は
      DB側のservice_role専用RPCが握っており、OFFにしても呼び出し元へ権限は渡らない
@@ -159,6 +163,13 @@ Task 013時点のチェックリストに加えて、次を確認する。
   閉鎖βの規模では足りるが、本番では独自ドメイン+専用プロバイダへの移行が必要。
   上限に当たると `email_outbox` の `last_error_code` が `rate_limited` で積み上がるため、
   `email_outbox_health()` の `failed_count` を運用で監視する（Task 017）。
+  Gmailの上限応答は `421`（一時）と `550-5.4.5 Daily user sending limit exceeded` の
+  両形式があり、どちらも `rate_limited` へ分類する（Task 022・D058）。
+  **`rate_limited` は「上限」だけでなく「送信元アカウントの評判ブロック」も指す。**
+  `550-5.7.1 ... unusual rate of unsolicited mail ...` のように、Gmailが送信元を
+  迷惑メール判定して止めた応答も同じコードへ入れている（どちらも運用の打ち手が
+  「送信を絞る・送信元を見直す」で同じであり、宛先の問題と読み違えないため）。
+  宛先1件の問題は `recipient_rejected` に分かれる。
 
 ## 8. ロールバック
 

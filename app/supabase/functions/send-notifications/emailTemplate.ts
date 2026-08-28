@@ -81,20 +81,120 @@ export type LogSafeRecord = {
   errorCode?: string
 }
 
+// 例外文にはリモートサーバーの応答がそのまま連結され、550バウンスでは**宛先アドレス**が載る。
+// 局所部の綴りが分類規則へ部分一致するため、分類の前にアドレスを取り除く。
+// これで閉じるのは、**550より上に置かざるを得ない規則**と衝突する綴り
+// （`demo-starttls@` → 'starttls'、`demo-mauth@` → 'auth'）。'rate' / 'quota' / 'tls' との
+// 衝突は判定順序（550を上に置く）側で閉じている（2026-08-28の独立レビューで実測）。
+//
+// 量指定子は束縛していない。束縛すると「局所部が64字を超えるアドレスの先頭が残る」
+// という別の穴が開くため、長大な入力への備えは呼び出し側の長さ上限で持つ
+function stripAddresses(text: string): string {
+  return text.replace(/[^\s<>(),;:"]+@[^\s<>(),;:"]+/gu, '')
+}
+
+const MESSAGE_LIMIT = 2000
+const CODE_LIMIT = 100
+
+// 切り詰めで**途切れた**末尾の語だけを落とす。境界が宛先アドレスの '@' の手前に
+// 落ちると局所部の断片（`demo-starttls`）が残り、アドレス除去をすり抜けて上位規則へ
+// 部分一致するため（独立レビューが実測）。
+// 判定は「境界の次の文字が語の一部か」だけでよい。語の直後で切れた場合まで落とすと、
+// 完結している手掛かり（`550`・`ETIMEDOUT`）を捨てて `unknown` になる。
+// 切り詰めが起きていないときは境界の次が空文字になり、同じ経路で末尾が残る
+// （単語1つだけのメッセージ `ECONNREFUSED` を消さない）
+function truncateMessage(text: string): string {
+  const cut = text.slice(0, MESSAGE_LIMIT)
+  // **charAtのまま置いておくこと。** 範囲外で空文字を返す性質に依存している。
+  // `text[MESSAGE_LIMIT]` や `.at()` へ変えるとundefinedが返り、RegExp.testが
+  // 文字列 'undefined' へ強制変換するため、短いメッセージすべてで末尾語が落ちる
+  const boundaryIsWord = /[^\s<>(),;:"]/u.test(text.charAt(MESSAGE_LIMIT))
+  return boundaryIsWord ? cut.replace(/[^\s<>(),;:"]+$/u, '') : cut
+}
+
 // SMTPライブラリの例外メッセージは、宛先・認証情報・本文断片を含み得る。
 // 既知の分類だけを短いコードへ落とし、それ以外は 'unknown' にする
 export function classifyError(error: unknown): string {
-  const message = (
-    typeof error === 'object' && error !== null && 'message' in error
-      ? String((error as { message: unknown }).message)
-      : String(error ?? '')
+  const obj = typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : null
+  // nodemailerは message に加えて code（EAUTH・ETLS・ESOCKET等）と
+  // responseCode（535・421・550等）を返す。messageだけを見ると原因不明の`unknown`になり、
+  // 運用で何も切り分けられない（2026-08-28のsmoke test Bで実際にそうなった・D058）
+  // 応答文の長さはリモート側が決める（nodemailerの_formatErrorが応答全文を連結する）。
+  // アドレス除去の正規表現は「区切り文字を含まない長大な1トークン」で二次時間になり、
+  // Edge Functionのイベントループを同期的に塞ぐ（実測64KBで4.5秒）。分類に使うのは
+  // 先頭だけで足りるので、**3要素それぞれに**上限を切る。
+  // code・responseCodeはライブラリが決める短い値なので実際には切られないが、
+  // 「上限が掛かる」ことを構造で保証しておく（偶然に頼らない）
+  const rawMessage = obj !== null && 'message' in obj ? String(obj.message) : String(error ?? '')
+  const message = stripAddresses(
+    [
+      truncateMessage(rawMessage),
+      obj !== null && 'code' in obj ? String(obj.code).slice(0, CODE_LIMIT) : '',
+      obj !== null && 'responseCode' in obj ? String(obj.responseCode).slice(0, CODE_LIMIT) : '',
+    ].join(' '),
   ).toLowerCase()
-  if (message.includes('auth') || message.includes('535')) return 'smtp_auth'
-  if (message.includes('timeout') || message.includes('etimedout')) return 'smtp_timeout'
-  if (message.includes('connect') || message.includes('econnrefused')) return 'smtp_connect'
-  if (message.includes('550') || message.includes('mailbox')) return 'recipient_rejected'
-  if (message.includes('rate') || message.includes('421') || message.includes('quota')) {
+
+  // **判定順序が仕様**。nodemailerの例外文は複数の語を同時に含み、しかも
+  // message にはリモートサーバーの応答文がそのまま連結される（_formatError）。
+  // そのため「具体的な語（エラーコード・SMTP応答番号）を先に、包括的な語を後に」見る。
+  // 例: `Error upgrading connection with STARTTLS: 530 Authentication Required` は
+  // 'auth' も 'connect' も含むので、etls/starttlsを最上位に置かないと分類が動かされる
+  if (message.includes('etls') || message.includes('starttls')) return 'smtp_tls'
+  if (message.includes('535') || message.includes('eauth') || message.includes('auth')) {
+    return 'smtp_auth'
+  }
+  // 送信上限・送信元ブロックのうち、宛先拒否と紛れない**具体トークンだけ**を550より先に見る。
+  // 421形式（`Server terminates connection. response=421`）は 'connect' を含むため
+  // connect判定より先に、550形式（`550-5.4.5 Daily user sending limit exceeded` /
+  // `550-5.7.1 ... unusual rate of unsolicited mail ...`）は550と重なるためここへ置く。
+  // 後者は宛先の問題ではなく**送信元アカウントの評判ブロック**で、運用の打ち手は
+  // 上限系と同じ（送信を絞る）。runbook §7が監視シグナルにしているのもこちら側
+  if (
+    message.includes('421') ||
+    message.includes('sending limit') ||
+    message.includes('sending quota') ||
+    message.includes('relay limit') ||
+    message.includes('5.4.5') ||
+    message.includes('unsolicited') ||
+    message.includes('unusual rate')
+  ) {
     return 'rate_limited'
+  }
+  // 宛先拒否。応答文に紛れ込んだ素の 'rate' / 'quota' や広い 'tls' で
+  // 宛先拒否が別コードへ流れないよう、それらより先に見る
+  if (message.includes('550') || message.includes('mailbox')) return 'recipient_rejected'
+  // 上限系の包括的な語。550を通り抜けた後に見る
+  if (message.includes('rate') || message.includes('quota')) return 'rate_limited'
+  if (
+    message.includes('certificate') ||
+    message.includes('wrong version') ||
+    message.includes('tls')
+  ) {
+    return 'smtp_tls'
+  }
+  if (message.includes('timeout') || message.includes('etimedout')) return 'smtp_timeout'
+  // 接続はできたのに会話の途中で切れる系（denomailerで実際に起きた事象）。
+  // maxRequeues: 0 の失敗文言 `Reached maximum number of retries after connection was
+  // closed` も 'connect' ではなくここへ落とす（実体は会話中の切断）
+  if (
+    message.includes('interrupted') ||
+    message.includes('canceled') ||
+    message.includes('cancelled') ||
+    message.includes('econnreset') ||
+    message.includes('epipe') ||
+    message.includes('was closed') ||
+    message.includes('socket')
+  ) {
+    return 'smtp_stream'
+  }
+  if (
+    message.includes('econnrefused') ||
+    message.includes('econnection') ||
+    message.includes('enotfound') ||
+    message.includes('edns') ||
+    message.includes('connect')
+  ) {
+    return 'smtp_connect'
   }
   return 'unknown'
 }

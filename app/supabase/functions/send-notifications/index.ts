@@ -11,7 +11,10 @@
 //
 // 実行はスケジューラ（Supabaseのcron）から。1回の呼び出しで最大 BATCH_SIZE 件を処理する。
 import { createClient } from 'jsr:@supabase/supabase-js@2'
-import { SMTPClient } from 'https://deno.land/x/denomailer@1.6.0/mod.ts'
+// SMTPはnodemailer（Supabase公式のEdge Function SMTPサンプルと同じ構成・D058）。
+// denomailer 1.6.0はEdge Runtime上でSMTP会話の途中に
+// `Interrupted: operation canceled` でストリームが切られ、送信できなかった
+import nodemailer from 'npm:nodemailer@9.0.6'
 
 import { buildEmail, classifyError, logSafe, type EmailKind } from './emailTemplate.ts'
 
@@ -34,6 +37,16 @@ function requiredEnv(name: string): string {
   return value
 }
 
+// 切断の失敗は送信結果に影響しないため握りつぶす。
+// poolを使うため、closeは「実際に接続を破棄する」意味を持つ
+function closeSmtp(transport: { close: () => void }): void {
+  try {
+    transport.close()
+  } catch {
+    // 意図的に無視する
+  }
+}
+
 Deno.serve(async () => {
   let sent = 0
   let failed = 0
@@ -49,23 +62,42 @@ Deno.serve(async () => {
       { auth: { persistSession: false } },
     )
     // SMTPの資格情報と全学生の宛先がこの接続に載るため、暗号化を必須にする。
-    // 465は最初からTLS、587はSTARTTLSで昇格する。既定は587（STARTTLS）。
-    // 平文（tls無し）に落とす設定は用意しない
+    // 465は最初からTLS（secure）、それ以外はSTARTTLSでの昇格を必須にする
+    // （requireTLS）。平文へ落とす設定は用意しない
     const port = Number(requiredEnv('CUE_SMTP_PORT'))
     if (!Number.isInteger(port) || port <= 0) {
       throw new Error('invalid_env:CUE_SMTP_PORT')
     }
-    smtp = new SMTPClient({
-      connection: {
-        hostname: requiredEnv('CUE_SMTP_HOST'),
-        port,
-        // 465は暗黙TLS、それ以外はSTARTTLSでの昇格を要求する
-        tls: port === 465,
-        auth: {
-          username: requiredEnv('CUE_SMTP_USER'),
-          password: requiredEnv('CUE_SMTP_PASSWORD'),
-        },
+    smtp = nodemailer.createTransport({
+      host: requiredEnv('CUE_SMTP_HOST'),
+      port,
+      secure: port === 465,
+      requireTLS: port !== 465,
+      auth: {
+        user: requiredEnv('CUE_SMTP_USER'),
+        pass: requiredEnv('CUE_SMTP_PASSWORD'),
       },
+      // 1バッチ（最大BATCH_SIZE件）を**1接続**で送る。poolを付けないと
+      // nodemailerはsendMailごとに新しい接続とAUTHを張り、Gmailから
+      // 短時間の多数回ログインとして扱われる（§7.1 E6・B7と複合する）
+      pool: true,
+      maxConnections: 1,
+      maxMessages: BATCH_SIZE,
+      // ライブラリ内の暗黙リトライを閉じる。既定（undefined）だと'error'より先に
+      // 'close'が来たときに同じメッセージを無限に再キューし、sendMailが解決も棄却も
+      // しないまま実行枠が切れる＝行がsendingのまま残りlast_error_codeが記録されない。
+      // 再試行・上限はDB側が持つ設計（D041）なので、ここでは1回だけ試す
+      maxRequeues: 0,
+      // 既定は connection 2分 / greeting 30秒 / socket 10分。
+      // 今回踏んだ障害は「会話の途中で止まる」型で、既定のままだと1件の
+      // ストールでFunctionの実行枠を使い切り、掴んだ行がsendingのまま残る。
+      // **10秒は暫定値**（hosted未検証）。smtp_timeoutが並ぶようなら緩める
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 30_000,
+      // **loggerとdebugを有効にしないこと。** 有効にするとSMTP会話が
+      // そのままFunctionログへ出る＝RCPT TOの宛先と本文全文が残る（D042違反）。
+      // 資格情報はマスクされるがPIIは出る。障害調査はlast_error_codeで行う
     })
     from = requiredEnv('CUE_SMTP_FROM')
     appUrl = requiredEnv('CUE_APP_URL')
@@ -79,63 +111,63 @@ Deno.serve(async () => {
     return Response.json({ error: 'setup_failed' }, { status: 500 })
   }
 
-  const { data, error } = await supabase.rpc('claim_email_batch', { batch_size: BATCH_SIZE })
-  if (error) {
-    console.error('send-notifications claim failed')
-    return Response.json({ error: 'claim_failed' }, { status: 500 })
-  }
-
-  for (const row of (data ?? []) as ClaimedRow[]) {
-    const mail = buildEmail({ kind: row.kind, offerCount: row.offer_count, appUrl })
-    try {
-      await smtp.send({
-        from,
-        to: row.recipient_email,
-        subject: mail.subject,
-        content: mail.text,
-      })
-      const { error: completeError } = await supabase.rpc('complete_email', {
-        outbox_id: row.outbox_id,
-        succeeded: true,
-      })
-      if (completeError) {
-        // 書き戻しに失敗するとsendingのまま残る。DB側のリース回収が拾い直すが、
-        // 気づけるようにログへ残す（宛先・本文は出さない）
-        console.error(`send-notifications complete failed outbox=${row.outbox_id}`)
-      }
-      sent += 1
-      console.log(
-        logSafe({ outboxId: row.outbox_id, kind: row.kind, attempt: row.attempt, result: 'sent' }),
-      )
-    } catch (sendError) {
-      const errorCode = classifyError(sendError)
-      const { error: completeError } = await supabase.rpc('complete_email', {
-        outbox_id: row.outbox_id,
-        succeeded: false,
-        error_code: errorCode,
-      })
-      if (completeError) {
-        console.error(`send-notifications complete failed outbox=${row.outbox_id}`)
-      }
-      failed += 1
-      console.error(
-        logSafe({
-          outboxId: row.outbox_id,
-          kind: row.kind,
-          attempt: row.attempt,
-          result: 'failed',
-          errorCode,
-        }),
-      )
-    }
-  }
-
+  // ここから先は、どの経路で抜けても必ずSMTP接続を閉じる（poolでは実接続が閉じる）。
+  // returnだけでなく、想定外の例外で抜ける場合も閉じたいのでfinallyに置く
   try {
-    await smtp.close()
-  } catch {
-    // 切断の失敗は送信結果に影響しない
-  }
+    const { data, error } = await supabase.rpc('claim_email_batch', { batch_size: BATCH_SIZE })
+    if (error) {
+      console.error('send-notifications claim failed')
+      return Response.json({ error: 'claim_failed' }, { status: 500 })
+    }
 
-  // 応答にも宛先・本文を含めない
-  return Response.json({ sent, failed })
+    for (const row of (data ?? []) as ClaimedRow[]) {
+      const mail = buildEmail({ kind: row.kind, offerCount: row.offer_count, appUrl })
+      try {
+        await smtp.sendMail({
+          from,
+          to: row.recipient_email,
+          subject: mail.subject,
+          text: mail.text,
+        })
+        const { error: completeError } = await supabase.rpc('complete_email', {
+          outbox_id: row.outbox_id,
+          succeeded: true,
+        })
+        if (completeError) {
+          // 書き戻しに失敗するとsendingのまま残る。DB側のリース回収が拾い直すが、
+          // 気づけるようにログへ残す（宛先・本文は出さない）
+          console.error(`send-notifications complete failed outbox=${row.outbox_id}`)
+        }
+        sent += 1
+        console.log(
+          logSafe({ outboxId: row.outbox_id, kind: row.kind, attempt: row.attempt, result: 'sent' }),
+        )
+      } catch (sendError) {
+        const errorCode = classifyError(sendError)
+        const { error: completeError } = await supabase.rpc('complete_email', {
+          outbox_id: row.outbox_id,
+          succeeded: false,
+          error_code: errorCode,
+        })
+        if (completeError) {
+          console.error(`send-notifications complete failed outbox=${row.outbox_id}`)
+        }
+        failed += 1
+        console.error(
+          logSafe({
+            outboxId: row.outbox_id,
+            kind: row.kind,
+            attempt: row.attempt,
+            result: 'failed',
+            errorCode,
+          }),
+        )
+      }
+    }
+
+    // 応答にも宛先・本文を含めない
+    return Response.json({ sent, failed })
+  } finally {
+    closeSmtp(smtp)
+  }
 })

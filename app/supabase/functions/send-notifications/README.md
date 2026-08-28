@@ -8,7 +8,7 @@ Task 010 のメール送信ワーカーです。outbox を1バッチ取り出し
 |---|---|
 | DB（`claim_email_batch` / `complete_email`） | 対象の決定・冪等化・backoff・試行上限・状態遷移 |
 | `emailTemplate.ts` | 件名と本文の組み立て、例外の分類、ログ行の整形（**純粋関数・Vitestでテスト済み**） |
-| `index.ts` | SMTPへの接続と送信、DBとの往復（**hosted検証待ち**） |
+| `index.ts` | SMTPへの接続と送信、DBとの往復（nodemailer。**hostedでの実送信は再検証待ち**・Task 022） |
 
 ## 必要な環境変数
 
@@ -19,7 +19,7 @@ Task 010 のメール送信ワーカーです。outbox を1バッチ取り出し
 | `SUPABASE_URL` | Supabaseが自動注入 |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabaseが自動注入。`claim_email_batch` / `complete_email` はservice_role専用 |
 | `CUE_SMTP_HOST` / `CUE_SMTP_PORT` | SMTPサーバー。**465なら暗黙TLS、それ以外はSTARTTLSで昇格を要求**する。平文へ落とす設定は用意していない |
-| ↑hosted実測（2026-08-28） | **hostedでは465を使用**。587のSTARTTLSはEdgeランタイムで `invalid cmd` となり接続不可だった（`docs/launch_plan.md` §7.1 E7） |
+| ↑hosted実測（2026-08-28） | **hostedでは465を使用**。587のSTARTTLSはEdgeランタイムで `invalid cmd` となり接続不可だった（`docs/launch_plan.md` §7.1 E7）。さらに実送信がすべて失敗したため、SMTPライブラリを**denomailer → `npm:nodemailer@9.0.6`** へ置き換えた（Task 022・D058） |
 | `CUE_SMTP_USER` / `CUE_SMTP_PASSWORD` | SMTP認証 |
 | `CUE_SMTP_FROM` | 差出人アドレス |
 | `CUE_APP_URL` | 受信箱・通知設定へのリンクの基点 |

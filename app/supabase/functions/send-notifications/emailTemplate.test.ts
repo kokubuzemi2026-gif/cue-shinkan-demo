@@ -73,6 +73,295 @@ describe('emailTemplate', () => {
     expect(classifyError(null)).toBe('unknown')
   })
 
+  it('nodemailerのcode・responseCodeも分類に使う（messageだけでは不明になるため）', () => {
+    // nodemailerは message が汎用文言でも code/responseCode で原因を示す。
+    // 2026-08-28のsmoke test Bで、messageだけの分類では`unknown`しか得られず
+    // 原因の切り分けができなかった（D058）
+    expect(classifyError(Object.assign(new Error('Invalid login'), { code: 'EAUTH' }))).toBe(
+      'smtp_auth',
+    )
+    expect(classifyError(Object.assign(new Error('Conn err'), { code: 'ETIMEDOUT' }))).toBe(
+      'smtp_timeout',
+    )
+    expect(classifyError(Object.assign(new Error('Message failed'), { responseCode: 550 }))).toBe(
+      'recipient_rejected',
+    )
+    // code/responseCodeを持たない値でも従来どおり動く
+    expect(classifyError('plain string 421 rate')).toBe('rate_limited')
+  })
+
+  it('nodemailerの実際の例外を、判定順序どおりに分類する（分岐ごとに検出力を持たせる）', () => {
+    // 以下の文言・codeは nodemailer 9.0.6 の実ソース（lib/smtp-connection/index.js）と
+    // 2026-08-28にhostedで観測した例外から取っている。
+    // いずれも複数の語を含むため、判定順序が壊れると別のコードへ落ちる
+    const cases: [unknown, string][] = [
+      // 1. TLS: 'connection' を含むがTLS由来（STARTTLS拒否＝TLS剥奪の兆候）
+      [Object.assign(new Error('Error upgrading connection with STARTTLS'), { code: 'ETLS' }), 'smtp_tls'],
+      [
+        Object.assign(
+          new Error('Client network socket disconnected before secure TLS connection was established'),
+          { code: 'ESOCKET' },
+        ),
+        'smtp_tls',
+      ],
+      [new Error('self signed certificate in certificate chain'), 'smtp_tls'],
+      // 2. rate: 'connection' を含むが421はGmailの上限応答
+      [
+        Object.assign(new Error('Server terminates connection. response=421 4.7.0 Try again later'), {
+          code: 'ECONNECTION',
+          responseCode: 421,
+        }),
+        'rate_limited',
+      ],
+      // 3. stream: 会話の途中で切れる系（今回hostedで観測した文言そのもの）
+      [new Error('Interrupted: operation canceled'), 'smtp_stream'],
+      [Object.assign(new Error('write EPIPE'), { code: 'EPIPE' }), 'smtp_stream'],
+      [new Error('read ECONNRESET'), 'smtp_stream'],
+      // 4. connect: 上のどれにも当たらない純粋な接続失敗
+      [Object.assign(new Error('connect ECONNREFUSED 10.0.0.1:465'), { code: 'ECONNREFUSED' }), 'smtp_connect'],
+      // 5. 既存分類の退行防止
+      [Object.assign(new Error('Invalid login'), { code: 'EAUTH', responseCode: 535 }), 'smtp_auth'],
+      [Object.assign(new Error('Greeting never received'), { code: 'ETIMEDOUT' }), 'smtp_timeout'],
+      [Object.assign(new Error('Message failed'), { responseCode: 550 }), 'recipient_rejected'],
+      [new Error('突然の未知の障害'), 'unknown'],
+      // 6. 独立レビューが挙げた縁ケース（リモート応答文で分類が動かされないこと）
+      // 宛先に 'tls' を含む550バウンスは宛先拒否（550を広いtls判定より上に置いている）
+      [
+        new Error('550 5.1.1 <demo-bartls@stu.kobe-u.ac.jp>: Recipient address rejected'),
+        'recipient_rejected',
+      ],
+      // STARTTLS拒否の応答に "Authentication" が混ざってもTLS由来として扱う
+      [
+        Object.assign(
+          new Error('Error upgrading connection with STARTTLS: 530 5.7.0 Authentication Required'),
+          { code: 'ETLS' },
+        ),
+        'smtp_tls',
+      ],
+      // Gmailの日次上限は550形式でも来る（runbook §7が rate_limited を約束している）
+      [
+        Object.assign(new Error('550-5.4.5 Daily user sending limit exceeded'), {
+          responseCode: 550,
+        }),
+        'rate_limited',
+      ],
+      // TLSバージョン不一致はESOCKET（'socket'）だがTLS由来
+      [
+        Object.assign(new Error('wrong version number'), { code: 'ESOCKET' }),
+        'smtp_tls',
+      ],
+      // DNS解決失敗は接続不能（従来はunknownへ落ちていた）
+      [
+        Object.assign(new Error('getaddrinfo ENOTFOUND smtp.gmail.com'), { code: 'EDNS' }),
+        'smtp_connect',
+      ],
+      // 7. 宛先アドレスの綴りが分類を動かさないこと。
+      // 'starttls' / 'auth' は550より上に置かざるを得ない規則へ部分一致するので、
+      // アドレス除去だけがこの2件を閉じる（'rate' / 'quota' は判定順序側で閉じている）
+      [
+        new Error('550 5.1.1 <demo-starttls@stu.kobe-u.ac.jp>: User unknown'),
+        'recipient_rejected',
+      ],
+      [new Error('550 5.1.1 <demo-mauth@stu.kobe-u.ac.jp>: User unknown'), 'recipient_rejected'],
+      [
+        new Error('550 5.1.1 <demo-hirate@stu.kobe-u.ac.jp>: Recipient address rejected'),
+        'recipient_rejected',
+      ],
+      [new Error('550 5.1.1 <demo-kquota@stu.kobe-u.ac.jp>: User unknown'), 'recipient_rejected'],
+      // 8. アドレス除去では消えない、応答文そのものに混ざった素の 'rate'。
+      // 素の rate / quota を550より下に置いていないと rate_limited へ流れる
+      [
+        new Error('550 5.1.1 Recipient address rejected: no such user hirate'),
+        'recipient_rejected',
+      ],
+      // 550が無ければ、素の rate / quota は従来どおり上限として扱う
+      [
+        Object.assign(new Error('454 4.7.1 Rate limit exceeded'), { responseCode: 454 }),
+        'rate_limited',
+      ],
+      [new Error('Too many messages: quota exceeded'), 'rate_limited'],
+      // 550バウンスの応答文に 'TLS' が出ても、送信側のTLS障害ではなく宛先側の拒否。
+      // 550判定を広いtls判定より先に置いていないと smtp_tls へ流れる
+      [
+        Object.assign(
+          new Error('550 5.7.10 Message rejected: TLS is required for this recipient'),
+          { responseCode: 550 },
+        ),
+        'recipient_rejected',
+      ],
+      // Gmailの送信元評判ブロックは550形式で来るが、宛先の問題ではなく送信側の問題。
+      // 運用の打ち手は上限系と同じなので rate_limited に寄せる（§7.1 E6の監視シグナル）
+      [
+        Object.assign(
+          new Error(
+            '550-5.7.1 [203.0.113.9] Our system has detected an unusual rate of unsolicited mail originating from your IP address.',
+          ),
+          { responseCode: 550 },
+        ),
+        'rate_limited',
+      ],
+      [
+        Object.assign(new Error('550-5.7.1 Daily sending quota exceeded'), { responseCode: 550 }),
+        'rate_limited',
+      ],
+      // 上限系のトークンは互いに冗長になりやすいので、1語ずつ効いていることを固定する。
+      // `5.4.5` を含まないrelay形式・`unusual rate` を含まない unsolicited 形式・
+      // `5.4.5` を含まない sending limit 形式を、それぞれ1件ずつ置く
+      [
+        Object.assign(new Error('550-5.7.1 Daily SMTP relay limit exceeded'), {
+          responseCode: 550,
+        }),
+        'rate_limited',
+      ],
+      [
+        Object.assign(
+          new Error('550-5.7.1 Our system has detected that this message is likely unsolicited'),
+          { responseCode: 550 },
+        ),
+        'rate_limited',
+      ],
+      [
+        Object.assign(new Error('550-5.7.1 Daily user sending limit exceeded'), {
+          responseCode: 550,
+        }),
+        'rate_limited',
+      ],
+      // runbook §7が名指しで約束しているのは 5.4.5 なので、他のトークンに頼らず
+      // 5.4.5 単独でも上限系に入ることを固定する（'quota' は550より下にある）
+      [
+        Object.assign(new Error('550-5.4.5 Daily message quota exceeded'), { responseCode: 550 }),
+        'rate_limited',
+      ],
+      // 実際のGmailは 'unusual rate of unsolicited mail' と続けるので unsolicited 側でも
+      // 拾えるが、文言違いに備えて 'unusual rate' 単独でも上限系に入ることを固定する
+      [
+        Object.assign(
+          new Error('550-5.7.1 We detected an unusual rate of mail originating from your account'),
+          { responseCode: 550 },
+        ),
+        'rate_limited',
+      ],
+      // 9. maxRequeues: 0 の失敗文言は 'connection' を含むが、実体は会話中の切断
+      [new Error('Reached maximum number of retries after connection was closed'), 'smtp_stream'],
+    ]
+    for (const [error, expected] of cases) {
+      expect(classifyError(error)).toBe(expected)
+    }
+  })
+
+  it('宛先アドレスの綴りで分類が変わらない（分類前にアドレスを取り除く）', () => {
+    // 同じ「550 User unknown」バウンスで局所部だけを変えても、分類は1種類に収まる。
+    // このうちアドレス除去でしか閉じないのは demo-starttls（→smtp_tls）と
+    // demo-mauth（→smtp_auth）の2件。他は550を上に置く判定順序で閉じている
+    const codes = new Set(
+      ['demo-taro', 'demo-hirate', 'demo-kquota', 'demo-bartls', 'demo-mauth', 'demo-starttls'].map(
+        (local) =>
+          classifyError(new Error(`550 5.1.1 <${local}@stu.kobe-u.ac.jp>: User unknown`)),
+      ),
+    )
+    expect([...codes]).toEqual(['recipient_rejected'])
+  })
+
+  it('応答文が極端に長くても、codeとresponseCodeは分類へ届く', () => {
+    // messageは先頭2000文字で切るが、切り詰めの後ろにcode・responseCodeを置いている。
+    // 切り詰めをmessage以外へ広げると、長い応答文のときだけunknownへ落ちる
+    const long = `x`.repeat(50_000)
+    expect(classifyError(Object.assign(new Error(long), { code: 'EAUTH' }))).toBe('smtp_auth')
+    expect(classifyError(Object.assign(new Error(long), { responseCode: 550 }))).toBe(
+      'recipient_rejected',
+    )
+  })
+
+  it('区切りの無い長大な応答文でも、分類が現実的な時間で終わる', () => {
+    // message・code・responseCode の3要素すべてに上限が要る。どれか1つでも
+    // 素通しにすると、区切り文字を含まない長大な入力でアドレス除去が二次時間になる
+    // （実測4.5秒）。長さを決めるのはリモート側なので、上限がここでの唯一の防波堤。
+    // このリポジトリで唯一の時間依存アサーション。実測数msに対して閾値500msで、
+    // 退行時は4.5秒＝閾値の9倍になるため、余裕と検出力の両方がある
+    const started = performance.now()
+    expect(classifyError(new Error('x'.repeat(64_000)))).toBe('unknown')
+    // code・responseCodeにも上限が要る。message側だけを切ると、ここが二次時間になる
+    expect(classifyError(Object.assign(new Error('boom'), { code: 'E'.repeat(64_000) }))).toBe(
+      'unknown',
+    )
+    expect(
+      classifyError(Object.assign(new Error('boom'), { responseCode: 'E'.repeat(64_000) })),
+    ).toBe('unknown')
+    expect(performance.now() - started).toBeLessThan(500)
+  })
+
+  it('切り詰めの境界がどこに落ちても、宛先の断片で分類が変わらない', () => {
+    // 境界が宛先アドレスの '@' の手前に落ちると局所部の断片が残り、
+    // 'starttls' / 'auth' の規則（550より上）へ部分一致してしまう。
+    // 切り詰め時に末尾の途切れた語を落として閉じている
+    const bounce = ' 550 5.1.1 <demo-starttls@stu.kobe-u.ac.jp>: User unknown'
+    // paddingに区切りを混ぜる。全部つなげると末尾アンカーの後戻りだけで
+    // このテストがファイル最遅になる（実測528ms）
+    const filler = `${'x'.repeat(39)} `.repeat(60)
+    for (let pad = 1_950; pad <= 2_010; pad += 1) {
+      const error = Object.assign(new Error(filler.slice(0, pad) + bounce), { responseCode: 550 })
+      expect(classifyError(error)).toBe('recipient_rejected')
+    }
+  })
+
+  it('切り詰めの境界が語の直後に落ちたら、その語は残す', () => {
+    // 途切れていない語まで落とすと、完結している手掛かりを捨てて unknown になる
+    const head = `${'y'.repeat(1_996)} 550`
+    expect(head.length).toBe(2_000)
+    // ちょうど2000字＝切り詰めが起きない
+    expect(classifyError(new Error(head))).toBe('recipient_rejected')
+    // 2001字目が区切り＝2000字目までの語は完結している
+    expect(classifyError(new Error(`${head} rest`))).toBe('recipient_rejected')
+    // 2001字目が語の一部＝2000字目までの語は途切れている
+    expect(classifyError(new Error(`${head}5 rest`))).toBe('unknown')
+  })
+
+  it('局所部が64字を超えるアドレスでも、綴りで分類が変わらない', () => {
+    // アドレス除去の正規表現に長さの束縛を入れると、局所部の先頭が残って
+    // 'starttls' へ部分一致する。stu.kobe-u.ac.jp の局所部に長さ上限は無い（D028）
+    const local = `demo-starttls${'a'.repeat(70)}`
+    expect(local.length).toBeGreaterThan(64)
+    expect(
+      classifyError(
+        Object.assign(new Error(`550 5.1.1 <${local}@stu.kobe-u.ac.jp>: User unknown`), {
+          responseCode: 550,
+        }),
+      ),
+    ).toBe('recipient_rejected')
+  })
+
+  it('切り詰めていないメッセージの末尾は削らない', () => {
+    // 末尾トークンの除去を無条件に掛けると、単語1つだけのメッセージが消える
+    expect(classifyError(new Error('ECONNREFUSED'))).toBe('smtp_connect')
+    expect(classifyError(new Error('550'))).toBe('recipient_rejected')
+    expect(classifyError(new Error('mailbox'))).toBe('recipient_rejected')
+  })
+
+  it('分類コードは決まった集合の中からしか返さない（生メッセージが混ざらない）', () => {
+    const allowed = [
+      'smtp_auth',
+      'smtp_tls',
+      'rate_limited',
+      'recipient_rejected',
+      'smtp_timeout',
+      'smtp_stream',
+      'smtp_connect',
+      'unknown',
+    ]
+    const inputs: unknown[] = [
+      new Error('550 mailbox unavailable for demo-x@stu.kobe-u.ac.jp'),
+      Object.assign(new Error('Invalid login: 535 5.7.8 password=hunter2'), { code: 'EAUTH' }),
+      'plain string',
+      null,
+      undefined,
+      { message: { nested: 'object' } },
+      12345,
+    ]
+    for (const input of inputs) {
+      expect(allowed).toContain(classifyError(input))
+    }
+  })
+
   it('分類コードは短く、宛先や本文を含まない', () => {
     const code = classifyError(new Error('550 mailbox unavailable for demo-x@stu.kobe-u.ac.jp'))
     expect(code).toBe('recipient_rejected')
