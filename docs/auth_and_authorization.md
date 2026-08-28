@@ -32,6 +32,7 @@ Before User Created Hookは採用しない（現行プランではTeam以上限�
 - エラー表示・ログへメールアドレス・コード・トークンを出さない（画面はメールのエコーバックもしない）。
 - セッションはauth-jsが自身のキー（`sb-*`）で永続化・復元する。ログアウトは`signOut()`。
 - **入口分離（Task 020・D056）**: 未ログイン時は「新入生の方／団体の方はこちら」の入口選択が先に出るが、どちらを選んでも**上記の同一OTP処理へ合流**する（変わるのはログイン画面の文脈行とリード文だけ）。招待リンク流入では入口選択を出さない。
+- **CAPTCHA（Task 021・D057）**: OTP**送信**（初回・再送＝`/otp`）の前段にCloudflare Turnstileを置ける。`VITE_TURNSTILE_SITE_KEY`未設定なら完全に不活性（ローカル・CIはこの経路）。コード**検証**（`verifyOtp`＝`/verify`）はCAPTCHA対象外。CAPTCHAは送信の濫用対策であり、本人確認・認可はこれまでどおり6桁コード検証とサーバー側（`is_university_user()`・RLS・RPC）が行う。secret keyはSupabase Dashboardのみに置く。
 
 ## 4. 権限モデル（D026）
 

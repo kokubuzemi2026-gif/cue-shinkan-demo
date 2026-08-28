@@ -406,3 +406,11 @@
   margin: 0;
   padding: 0 var(--space-1);
 }
+
+/* Task 021: Turnstile（CAPTCHA）ウィジェットの置き場。iframeの実寸は
+   Cloudflare側が決めるため、こちらは余白と最小高さだけを確保する
+   （読み込み中のレイアウト跳ねを抑える） */
+.turnstile-widget {
+  min-height: 65px;
+  margin: var(--space-2) 0;
+}
