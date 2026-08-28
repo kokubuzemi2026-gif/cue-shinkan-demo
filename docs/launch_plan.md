@@ -12,9 +12,9 @@
 
 | 項目 | 値 |
 |---|---|
-| `develop` | `1eb6c15`（PR #26 merge後） |
+| `develop` | `6bf1829`（PR #27 merge後） |
 | `main` | `646278f`（Phase 1公開デモ・**公開中**・凍結） |
-| 完了Task | 000〜020（020は `607891f`）。**021（CAPTCHA・D057）は本表を含むPRのmergeで完了** |
+| 完了Task | **000〜021**（020は `607891f`・021は `6bf1829`） |
 | migration | **20本**（0008×4・0009×4・0011×3・0010×2・0013×2・0014・0015・0017・0018・0019） |
 | unit test | **373件 / 32ファイル**（021で+3） |
 | pgTAP | **653件 / 36ファイル** |
@@ -23,17 +23,17 @@
 | lint / build / CI | green（quality / db-tests / e2e / audit の4ジョブ） |
 | hosted staging | Supabase `cue-shinkan-staging`（`ap-northeast-1`）。**全20本適用済み**（2026-08-28・H1完了）。H6の決定（2026-08-28）で**このプロジェクトを公開用へ昇格**する。※本書の旧記載「0008・0009まで適用済み」は誤りで、実態は0008の4本のみだった（`tasks/009-server-data-migration.md` Phase B「未実施」が正） |
 
-Phase 2の**実装はTask 020まで完了**している（021=CAPTCHAは本PRで実装）。学生の登録・パスポート・オファー受信・返答、
+Phase 2の**実装はTask 021まで完了**している。学生の登録・パスポート・オファー受信・返答、
 団体のオファー作成・送信・ファネル、メール通知、運営の確認・停止・緊急停止、
 本人によるデータ削除、同意管理、health checkまでがサーバー側
 （RLS + SECURITY DEFINER RPC）で動作する。
 
-**残るのは人間の操作だけ**（§7 H2・H4・H5・H9〜H11。H1・H3・H6〜H8は2026-08-28完了）。実装側からは進められない。
+**残るのは人間の操作だけ**（§7 H2・H4・H5・H9・H10。H1・H3・H6〜H8・H11は2026-08-28完了）。実装側からは進められない。
 
 ## 2. v1.0の完成像と現状のgap
 
 凡例: ✅ 実装済み / ⚠️ 部分的 / ❌ 未実装
-**最終更新: 2026-08-28（Task 020完了・021実装時点）**
+**最終更新: 2026-08-28（Task 021完了・H11完了時点）**
 
 ### 2.1 新入生
 
@@ -110,7 +110,7 @@ Phase 2の**実装はTask 020まで完了**している（021=CAPTCHAは本PRで
 | 019 | outboxの剪定・ワーカー並行検証・生成型の同期 | **完了（developへmerge済み `05e2701`）** | [#21](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/21) | 017 |
 | 018 | リリース（release notes・smoke test・deploy設定・main PR） | **完了（developへmerge済み `2d4fc9f`）** | [#22](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/22) | 全部 |
 | 020 | 入口分離（新入生／団体担当者の入口とログイン後の初期表示・D056） | **完了（developへmerge済み `607891f`）** | [#25](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/25) | 016 |
-| 021 | OTP送信のCAPTCHA（Cloudflare Turnstile・D057・H11b） | **完了（本行を含むPRのmergeで確定）** | [#27](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/27) | 008 |
+| 021 | OTP送信のCAPTCHA（Cloudflare Turnstile・D057・H11b） | **完了（developへmerge済み `6bf1829`）** | [#27](https://github.com/kokubuzemi2026-gif/cue-shinkan-demo/pull/27) | 008 |
 
 番号の重複回避: 既存Task番号は000〜009・012。013以降を新規に使う（010・011は既存の意味を保持）。
 decision番号は **D057まで使用済み**（D054はTask 018＝PR #22、D055はPR #24、D056はTask 020＝PR #25、D057はTask 021）。新規はD058以降。migrationの連番は **0019まで**（0012・0016は欠番）。
@@ -190,12 +190,12 @@ decision番号は **D057まで使用済み**（D054はTask 018＝PR #22、D055�
 ## 6. 完了条件（Definition of Done for v1.0）
 
 状態は2026-08-28時点。**未達はすべて `docs/launch_plan.md` §7 の
-人間待ち項目（H2・H4・H5・H9〜H11）とrelease PRの作成・判断が原因**で、実装側からは進められない。
+人間待ち項目（H2・H4・H5・H9・H10）とrelease PRの作成・判断が原因**で、実装側からは進められない。
 
 | 条件 | 状態 | 根拠・残る作業 |
 |---|---|---|
 | Task 010・011・013〜018がすべて`develop`へmerge済み | **達成** | 008〜020がmerge済み（018は `2d4fc9f`・020は `607891f`） |
-| P0/P1の既知不具合ゼロ | **一部** | §7.1 の28件へ重大度を付与した結果、**P0は0件、P1は7件**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection未設定 / C1 WCAG 1.4.11未達 / **E3 送信ワーカー未デプロイ** / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る**。2件（B6・E5）は対応済み |
+| P0/P1の既知不具合ゼロ | **一部** | §7.1 の28件へ重大度を付与した結果、**P0は0件、P1は7件**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection＝2026-08-28設定済み・実機確認はsmoke A / C1 WCAG 1.4.11未達 / **E3 送信ワーカー未デプロイ** / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る**。2件（B6・E5）は対応済み |
 | 未解決の認証・RLS・privacy blockerゼロ | **達成** | 各タスクの独立レビュー・security-reviewerでBlocker 0 |
 | 全CI green | **達成** | quality / db-tests / e2e / audit |
 | staging E2E green | **未達** | H9とsmoke test B（H1は2026-08-28完了）。Supabaseアカウントが要る |
@@ -206,7 +206,7 @@ decision番号は **D057まで使用済み**（D054はTask 018＝PR #22、D055�
 | 公開後smoke testとrollback手順がある | **達成** | `tasks/018-release-v1.md` §公開後smoke test / `docs/runbook_operations.md` §4・§7 |
 | release notesと既知制限がある | **達成** | `docs/release_notes_v1.0.md` / §7.1 |
 | release PRに独立レビューとセキュリティレビューを実施 | **未達** | `develop → main` のrelease PRはまだ作っていない。Task 018のPR（base=develop）では**独立レビュー3周（Blocker 4→3→3件）・security-reviewer 2周（4→1件）**を実施し、すべて修正した |
-| main反映後のdeploy監視とsmoke test完了 | **未達** | H6〜H8は2026-08-28完了。release PRのmerge判断（H5）と公開前項目（H9・H11等）が残る |
+| main反映後のdeploy監視とsmoke test完了 | **未達** | H6〜H8・H11は2026-08-28完了。release PRのmerge判断（H5）と公開前項目（H9等）が残る |
 | `v1.0.0` のrelease / tag作成 | **未達** | main反映後に作る |
 
 ## 7. 人間が行う必要のある操作（Blocker候補）
@@ -226,7 +226,7 @@ decision番号は **D057まで使用済み**（D054はTask 018＝PR #22、D055�
 | H8 | **Supabase Auth の Site URL を公開URLへ変更**（**Redirect URLsは追加しない**・§7.2） | Dashboardの操作 | **完了（2026-08-28）**。Site URLのみ変更・Redirect URLs追加なし |
 | H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | Supabaseアクセストークンが必要（`docs/runbook_supabase_hosted.md` §6.1） | 未実施 |
 | H10 | 本番Supabaseでの `auth.users` 削除挙動の確認 | Dashboardでの実操作が必要（`docs/operations.md` §9） | 未実施 |
-| **H11** | **公開前に Supabase Auth の Attack Protection（CAPTCHA・レート制限）を設定** | Dashboardの操作。**D030はこれをTask 011へ委ねたが、011のscopeに入っておらず実施されていない**（独立レビューで発覚） | **一部完了**。レート制限は2026-08-28設定済み（メール送信20/時＝送信元Gmailの500/日の内側。他は既定のまま）。**CAPTCHAはTask 021（D057）でアプリ側を実装**。Supabase側の有効化はTask 021のmerge後に行う（§7.2の手順） |
+| **H11** | **公開前に Supabase Auth の Attack Protection（CAPTCHA・レート制限）を設定** | Dashboardの操作。**D030はこれをTask 011へ委ねたが、011のscopeに入っておらず実施されていない**（独立レビューで発覚） | **完了（2026-08-28）**。レート制限（メール送信20/時＝送信元Gmailの500/日の内側・他は既定のまま）＋Task 021 merge後にDashboardでCAPTCHA（Turnstile）を有効化・Secret KeyはDashboardのみ。**実機でのウィジェット付きログイン確認は公開後smoke test A** |
 
 ### H6〜H8 が揃うまで `main` へmergeしない（重要）
 
@@ -253,7 +253,7 @@ Task 018のsmoke testも全滅する。
 - ビルド成果物に設定が入っているかを、**値を出さずに**確認するステップを足した
 - 鍵の種類を許可リスト（`sb_publishable_*`）で検査し、secret keyの混入を止めた
 
-残るのは **人間の操作だけ**（公開前に H9・H11。merge前の H6・H7・H8 は2026-08-28完了）。設定しないまま `main` へmergeすると、
+残るのは **人間の操作だけ**（公開前に H9。H6〜H8・H11 は2026-08-28完了）。設定しないまま `main` へmergeすると、
 検証ステップが落ちてdeployされない（**いま公開されているページはそのまま残る**）。
 
 ## 7.1 既知リスク一覧（公開前に運営者が読む）
@@ -285,7 +285,7 @@ P2 = 受容したうえで運用で見る / — = 対応済み。
 | B4 | **P2** | 運営操作は**SQL Editorから**行う（運営画面UIが無い） | 人間の操作ミスを機械的に防げない。`actor_label` の正しさは運用依存 | 手順を `docs/operations.md` に固定 |
 | B5 | **P2** | 対象人数の `0` と `1–4` を区別する（D036の残余リスク） | 小集団の在・不在が観測できる | 受容済み。preview条件数の上限と24時間固定で回数を制限 |
 | B6 | **—** | E2Eの失敗アーティファクトに入力値が残り得た | OTP・招待URLの露出 | `PLAYWRIGHT_NO_COPY_PROMPT` で停止（D051・PR #19でdevelopへmerge済み）。`test-results/` はgitignore、CIに `upload-artifact` は無い。**`toMatchAriaSnapshot` の失敗は環境変数で止まらない**ため、OTP・招待URLが出ている画面では使わない |
-| B7 | **P1** | **Auth の CAPTCHA が無効**で、Supabase既定のメール送信レート制限だけが防壁。D030は緩和策をTask 011へ委ねたが、011のscopeに入っておらず未実施 | publishable keyは公開バンドルに必ず入るため、公開後は誰でもAuth APIを直接呼べる。任意アドレスへOTPを送らせられ、(a) 新歓期間中に実在の新入生がログインできない (b) 送信元Gmailが停止する（E6と複合） | **対応中（2026-08-28）**: レート制限は強化済み（メール20/時）。CAPTCHAはアプリ側をTask 021（D057・Turnstile）で実装し、**merge後にDashboardで有効化する（H11b）。有効化するまで公開しない** |
+| B7 | **P1** | **Auth の CAPTCHA が無効**で、Supabase既定のメール送信レート制限だけが防壁。D030は緩和策をTask 011へ委ねたが、011のscopeに入っておらず未実施 | publishable keyは公開バンドルに必ず入るため、公開後は誰でもAuth APIを直接呼べる。任意アドレスへOTPを送らせられ、(a) 新歓期間中に実在の新入生がログインできない (b) 送信元Gmailが停止する（E6と複合） | **設定済み（2026-08-28）**: レート制限強化（メール20/時）＋Task 021（D057・Turnstile）をmergeし、DashboardでCAPTCHAを有効化した（H11b）。**実機でのウィジェット付きログイン往復は公開後smoke test Aで確認する**（それまで実機未検証のP1として扱う） |
 
 ### C. アクセシビリティ・UX
 
@@ -383,7 +383,7 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   - 成功判定: Authentication → URL Configuration の **Site URL が公開URLになっている**
     （OTP往復はSite URLの有無で結果が変わらないため、H8の判定には使えない）
 
-- [ ] **H11 Auth の Attack Protection を有効にする**（レート制限=完了・CAPTCHA=有効化待ち）
+- [x] **H11 Auth の Attack Protection を有効にする** — **2026-08-28完了**（H11aレート制限 + H11b CAPTCHA有効化。実機確認はsmoke test A）
   - なぜ: publishable key は公開バンドルに必ず入る。既定では CAPTCHA が無効で、
     Supabase 既定のレート制限だけが防壁（§7.1 B7・**P1**）。
     任意アドレスへ OTP を送らせられ、送信元Gmail（§7.1 E6）が止まりうる
@@ -536,11 +536,19 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   `platform_health()` 1行・Exposed schemasに`private`なしを確認）。
   残る人間の操作は H2・H4・H9〜H11 と release PR（H5） |
 
+| 2026-08-28 | Task 021完了（PR #27 `6bf1829`）。OTP送信へCAPTCHA（Turnstile・D057）。
+  独立レビュー2本（reviewer: B1=auth正本§9の許可リスト矛盾→解消確認のうえ承認 /
+  security: 承認・NB6件すべて対応）を最終SHA `a590ddf` へ承認拡張してsquash merge。
+  merge後のdry_run空撃ちでsitekey検証の通過を実地確認（deploy skip）。
+  **H11完了**: H11aレート制限（メール20/時）+ H11b DashboardでTurnstile有効化。
+  実機のウィジェット付きログイン確認は公開後smoke test Aで行う。
+  残る人間の操作は H2・H4・H9・H10 と release PR（H5） |
+
 ## 9. 次回再開時の開始点
 
 **実装側の作業は Task 020 まで完了し、ソフトウェア側のrelease blockerは解消済み。
-H1・H3・H6〜H8と空撃ち（dry_run）も2026-08-28に完了。残りは §7 の人間の操作
-（H2・H4・H9〜H11）と、段階3のrelease PR（H5）以降。**
+H1・H3・H6〜H8・H11と空撃ち（dry_run・Task 021検証込み）も2026-08-28に完了。
+残りは §7 の人間の操作（H2・H4・H9・H10）と、段階3のrelease PR（H5）以降。**
 
 ### いま止まっているもの
 
@@ -552,7 +560,7 @@ H1・H3・H6〜H8と空撃ち（dry_run）も2026-08-28に完了。残りは §7
 | H1 | ✅ **2026-08-28完了**（SQL Editor方式で全20本） | §6 の「migration・rollback確認済み」が埋まらない |
 | H2 | 大学メールでのOTP実機確認 | ログインの生存確認ができない |
 | H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | 実メールが1通も飛ばない |
-| **H11** | Auth の Attack Protection 設定（レート制限は✅済・**CAPTCHA有効化はTask 021 merge後**） | 公開後にOTP送信を濫用されうる（§7.1 B7・**P1**） |
+| H11 | ✅ **2026-08-28完了**（レート制限 + Turnstile有効化） | 公開後にOTP送信を濫用されうる（§7.1 B7・**P1**） |
 | H10 | 退会後の `auth.users` 削除の挙動確認 | 退会したのに大学メールが残る |
 
 **ソフトウェア側のrelease blocker**: Task 020（入口分離・D056）が `develop` へ
@@ -560,7 +568,7 @@ mergeされるまで公開しない（H項目ではなく実装側の条件。�
 → **解消済み（2026-08-28、PR #25のmerge `607891f`）**。
 
 H6〜H8（新規プロジェクトの場合はH3も）が揃うまで **`main` へmergeしない**
-→ **2026-08-28に充足**。**H9（送信ワーカーのデプロイ）と H11（Attack Protection）は公開前に必ず済ませる**（§7.1 E3・B7）。
+→ **2026-08-28に充足**。**H9（送信ワーカーのデプロイ）は公開前に必ず済ませる**（§7.1 E3。H11は2026-08-28完了・B7）。
 
 ### 揃ったあとの手順
 
