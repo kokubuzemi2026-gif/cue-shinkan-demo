@@ -38,6 +38,7 @@ npx supabase db push                                      # app/supabase/migrati
 - 適用後、Project Settings → Data API の **Exposed schemas に`private`が含まれていない**ことを確認する（既定の`public, graphql_public`のまま）。
 - 代替手順（直結Postgresへ到達できない実行環境向け・2026-08-24に実施）: Management APIのSQL実行エンドポイント`POST /v1/projects/{ref}/database/query`（postgres権限・HTTPS）で`app/supabase/migrations/`を番号順にそのまま実行し、あわせて`supabase_migrations.schema_migrations`へ`(version, name)`を記録するとCLIの`migration list`/`db push`と整合する。2026-08-24のstagingへは4migration（`20260824111223`〜`20260824111230`）を適用済み。
 - Task 009の4migration（`20260825054000`〜`20260825054008`）も同じ手順で番号順に適用する。適用後はschema・RLS有効・policy・テーブル/関数grant（新規公開RPCは8本のみ）を読み戻しで確認する（検証記録は`tasks/009-server-data-migration.md`）。
+  → **2026-08-28に、この0009の4本を含む未適用16本（0009〜0019）をDashboard SQL Editorから同方式で適用し、stagingは全20本になった**（各ファイル個別の`begin`〜記帳〜`commit`。詳細読み戻しの残りは同検証記録の追記を参照）。
 
 ## 5. 接続情報の配布
 
