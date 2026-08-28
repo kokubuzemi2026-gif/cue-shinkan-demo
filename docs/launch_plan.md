@@ -21,14 +21,14 @@
 | 並行テスト | **15件**（`npm run db:test:concurrency`） |
 | hookテスト | 201件 |
 | lint / build / CI | green（quality / db-tests / e2e / audit の4ジョブ） |
-| hosted staging | Supabase `cue-shinkan-staging`（`ap-northeast-1`）。**0008・0009までしか適用していない**（0010以降は未適用・H1） |
+| hosted staging | Supabase `cue-shinkan-staging`（`ap-northeast-1`）。**全20本適用済み**（2026-08-28・H1完了）。H6の決定（2026-08-28）で**このプロジェクトを公開用へ昇格**する。※本書の旧記載「0008・0009まで適用済み」は誤りで、実態は0008の4本のみだった（`tasks/009-server-data-migration.md` Phase B「未実施」が正） |
 
 Phase 2の**実装はTask 019まで完了**している。学生の登録・パスポート・オファー受信・返答、
 団体のオファー作成・送信・ファネル、メール通知、運営の確認・停止・緊急停止、
 本人によるデータ削除、同意管理、health checkまでがサーバー側
 （RLS + SECURITY DEFINER RPC）で動作する。
 
-**残るのは人間の操作だけ**（§7 H1・H6〜H11）。実装側からは進められない。
+**残るのは人間の操作だけ**（§7 H2・H4・H5・H9〜H11。H1・H3・H6〜H8は2026-08-28完了）。実装側からは進められない。
 
 ## 2. v1.0の完成像と現状のgap
 
@@ -72,7 +72,7 @@ Phase 2の**実装はTask 019まで完了**している。学生の登録・パ�
 | オファーの停止・kill switch | ✅ `admin_set_offer_stopped` / `admin_set_delivery_paused` | 013 |
 | 監査記録 | ✅ `private.admin_audit_log`（運営操作・PII無し）+ `private.deletion_audit_log`（削除の日次集計）。保持365日で剪定（D052） | 013/014/017 |
 | 障害・メール送信失敗・quota異常の把握 | ✅ `platform_health()` 14列（service_role専用・件数と時刻だけ）+ `email_outbox_health()`（D052） | 010/017 |
-| backup・復旧・rollback・incident runbook | ✅ `docs/runbook_operations.md`（環境変数・migration・rollback・backup/restore・secret rotation・公開停止5段階・定期作業・ログの方針）+ `docs/runbook_incident.md`（状況別の初手）。**ただしstagingでの実行確認は未実施**（H1） | 017 |
+| backup・復旧・rollback・incident runbook | ✅ `docs/runbook_operations.md`（環境変数・migration・rollback・backup/restore・secret rotation・公開停止5段階・定期作業・ログの方針）+ `docs/runbook_incident.md`（状況別の初手）。**migration適用は2026-08-28にstagingで実施済み（§4代替手順）。backup・restore・rollbackの実行演習は未実施** | 017 |
 | 古いデータの掃除 | ✅ 監査365日 / preview 48時間 / outbox 90日。いずれも**DB管理者のみ・手作業**（D052・D053） | 017/019 |
 | service role key・SMTP認証情報をクライアントへ出さない | ✅ 維持（010で再確認・018でビルド成果物を実測） | 010/017/018 |
 
@@ -84,8 +84,8 @@ Phase 2の**実装はTask 019まで完了**している。学生の登録・パ�
 | アクセシビリティ（キーボード・focus・label・contrast） | ⚠️ 体系的に検証し、コントラスト2件とフォーカス移動を修正。**入力欄の枠が1.4.11未達・スクリーンリーダー実機未確認**（§7.1 C1・C2） | 016 |
 | loading / empty / error / retry | ✅ 主要画面を確認 | 016 |
 | 認証・RLS・RPC・匿名性・E2Eの自動テスト | ✅ pgTAP **653件**（36ファイル）/ 並行15件 / unit 370件 / E2E | 008〜020 |
-| staging実環境検証 | ⚠️ **008のみ完了。009以降は未実施**（H1・H9） | Phase B |
-| release PRと公開後smoke test | ⚠️ 手順は用意済み（production用A・staging用Bに分割）。**実行は公開後**（H6〜H8待ち） | 018 |
+| staging実環境検証 | ⚠️ **migrationは全20本適用済み（2026-08-28）**。実機検証（`tasks/009` Phase B残り・smoke test B）とH9は未実施 | Phase B |
+| release PRと公開後smoke test | ⚠️ 手順は用意済み（production用A・staging用Bに分割）。**実行は公開後**（merge前提のH6〜H8は2026-08-28完了） | 018 |
 | P0/P1既知不具合ゼロ | ⚠️ §7.1 の28件へ重大度を付与。**P0は0件・P1は7件**（公開判断で受容が要る） | 018 |
 
 ## 3. Task一覧と依存関係
@@ -188,24 +188,24 @@ decision番号は **D056まで使用済み**（D054はTask 018＝PR #22、D055�
 
 ## 6. 完了条件（Definition of Done for v1.0）
 
-状態は2026-08-27時点。**未達の4件はすべて `docs/launch_plan.md` §7 の
-人間待ち項目（H1・H6〜H11）が原因**で、実装側からは進められない。
+状態は2026-08-28時点。**未達はすべて `docs/launch_plan.md` §7 の
+人間待ち項目（H2・H4・H5・H9〜H11）とrelease PRの作成・判断が原因**で、実装側からは進められない。
 
 | 条件 | 状態 | 根拠・残る作業 |
 |---|---|---|
-| Task 010・011・013〜018がすべて`develop`へmerge済み | **一部** | 008〜017・019がmerge済み（019は `05e2701`）。**018は本PR（#22）で未merge** |
+| Task 010・011・013〜018がすべて`develop`へmerge済み | **達成** | 008〜020がmerge済み（018は `2d4fc9f`・020は `607891f`） |
 | P0/P1の既知不具合ゼロ | **一部** | §7.1 の28件へ重大度を付与した結果、**P0は0件、P1は7件**（A1 法令未確認 / B1 auth identity残存 / B3 その削除挙動が未検証 / B7 Attack Protection未設定 / C1 WCAG 1.4.11未達 / **E3 送信ワーカー未デプロイ** / E6 SMTP上限）。**P1は公開判断で明示的に受容が要る**。2件（B6・E5）は対応済み |
 | 未解決の認証・RLS・privacy blockerゼロ | **達成** | 各タスクの独立レビュー・security-reviewerでBlocker 0 |
 | 全CI green | **達成** | quality / db-tests / e2e / audit |
-| staging E2E green | **未達** | H1・H9。Supabaseアカウントが要る |
-| migration・rollback確認済み | **一部** | ローカル**20 migration**の適用は毎回検証。hostedでの適用・切り戻しは未実施（H1） |
+| staging E2E green | **未達** | H9とsmoke test B（H1は2026-08-28完了）。Supabaseアカウントが要る |
+| migration・rollback確認済み | **一部** | ローカル**20 migration**の適用は毎回検証。**hostedへの適用は2026-08-28完了（全20本）**。hostedでの切り戻し演習は未実施 |
 | secret漏洩なし | **達成** | `VITE_*` 以外をビルドへ入れないことを実測。E2Eアーティファクトの入力値漏れも塞いだ（D051） |
 | 合成データ以外がcommitされていない | **達成** | テストデータは `demo-*@stu.kobe-u.ac.jp` の合成のみ |
 | privacy / termsのdraftがあり、要確認箇所が明示されている | **達成** | `docs/legal/`・【要確認】（D050）。**法令適合は運営者の最終確認事項** |
 | 公開後smoke testとrollback手順がある | **達成** | `tasks/018-release-v1.md` §公開後smoke test / `docs/runbook_operations.md` §4・§7 |
 | release notesと既知制限がある | **達成** | `docs/release_notes_v1.0.md` / §7.1 |
 | release PRに独立レビューとセキュリティレビューを実施 | **未達** | `develop → main` のrelease PRはまだ作っていない。Task 018のPR（base=develop）では**独立レビュー3周（Blocker 4→3→3件）・security-reviewer 2周（4→1件）**を実施し、すべて修正した |
-| main反映後のdeploy監視とsmoke test完了 | **未達** | H6〜H8が未了のためmergeしていない |
+| main反映後のdeploy監視とsmoke test完了 | **未達** | H6〜H8は2026-08-28完了。release PRのmerge判断（H5）と公開前項目（H9・H11等）が残る |
 | `v1.0.0` のrelease / tag作成 | **未達** | main反映後に作る |
 
 ## 7. 人間が行う必要のある操作（Blocker候補）
@@ -215,19 +215,22 @@ decision番号は **D056まで使用済み**（D054はTask 018＝PR #22、D055�
 
 | # | 操作 | 理由 | 状態 |
 |---|---|---|---|
-| H1 | Supabase stagingへの新規migration適用 | Supabaseアクセストークン（個人所有）が必要 | 未実施 |
+| H1 | Supabase stagingへの新規migration適用 | Supabaseアクセストークン（個人所有）が必要 | **完了（2026-08-28）**。CLI環境が無いため、Dashboard SQL Editor＝`docs/runbook_supabase_hosted.md` §4の代替手順（トークン不要）で16本を適用し全20本。記帳・`platform_health()` 1行・Exposed schemasに`private`なしを確認 |
 | H2 | 大学メールでのOTP実機確認 | 本人所有メールの受信が必要 | 未実施 |
-| H3 | SMTP認証情報のDashboard設定 | secretをチャット・リポジトリへ置かない運用 | **stagingのみ**設定済み（008・010）。**H6で新規プロジェクトを選んだ場合は未設定に戻る**（§7.2 段階1） |
+| H3 | SMTP認証情報のDashboard設定 | secretをチャット・リポジトリへ置かない運用 | **完了扱い（2026-08-28）**。H6でstaging昇格を決定したため、staging設定済み（008・010）のSMTPをそのまま使う |
 | H4 | privacy policy / 利用規約の最終承認 | 法的文書の最終判断 | 未実施 |
 | H5 | `main`へのrelease PR merge判断 | 公開範囲の変更 | 未実施 |
-| H6 | **公開用Supabaseプロジェクトの決定**（stagingを流用するか、productionを新規に作るか） | Supabaseアカウントの操作。Freeプランの範囲なら課金は発生しない | 未実施 |
-| H7 | **GitHub Actions **secrets** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` を設定** | どちらもブラウザへ出る値だが、**貼り間違いの封じ込めのためsecretへ置く**（D054。`vars.*` はログでマスクされない）。**チャットへ貼らない**。貼り間違えたら**先にSupabaseで失効**させる | 未実施 |
-| H8 | **Supabase Auth の Site URL を公開URLへ変更**（**Redirect URLsは追加しない**・§7.2） | Dashboardの操作 | 未実施 |
+| H6 | **公開用Supabaseプロジェクトの決定**（stagingを流用するか、productionを新規に作るか） | Supabaseアカウントの操作。Freeプランの範囲なら課金は発生しない | **完了（2026-08-28）**。既存 `cue-shinkan-staging` を昇格する |
+| H7 | **GitHub Actions **secrets** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY` を設定** | どちらもブラウザへ出る値だが、**貼り間違いの封じ込めのためsecretへ置く**（D054。`vars.*` はログでマスクされない）。**チャットへ貼らない**。貼り間違えたら**先にSupabaseで失効**させる | **完了（2026-08-28）**。dry_run空撃ちの1回目でURL形式検査が正しく停止（貼り間違いを検出）→修正後の2回目でbuild・検証green・deploy skip |
+| H8 | **Supabase Auth の Site URL を公開URLへ変更**（**Redirect URLsは追加しない**・§7.2） | Dashboardの操作 | **完了（2026-08-28）**。Site URLのみ変更・Redirect URLs追加なし |
 | H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | Supabaseアクセストークンが必要（`docs/runbook_supabase_hosted.md` §6.1） | 未実施 |
 | H10 | 本番Supabaseでの `auth.users` 削除挙動の確認 | Dashboardでの実操作が必要（`docs/operations.md` §9） | 未実施 |
 | **H11** | **公開前に Supabase Auth の Attack Protection（CAPTCHA・レート制限）を設定** | Dashboardの操作。**D030はこれをTask 011へ委ねたが、011のscopeに入っておらず実施されていない**（独立レビューで発覚）。publishable keyは公開バンドルに必ず入るため、公開後は誰でもAuth APIを直接呼べる | 未実施 |
 
 ### H6〜H8 が揃うまで `main` へmergeしない（重要）
+
+→ **この条件は2026-08-28に充足した**（H6: staging昇格 / H7: secrets設定＋dry_run検証 /
+H8: Site URLのみ変更。§7表・§7.2参照）。以下は判断の背景として残す。
 
 **Task 018で実装側の手当ては済んでいる。** `deploy-pages.yml` の build は
 Actions **secrets** から `VITE_SUPABASE_*` を受け取り（D054）、直後の検証ステップが
@@ -249,7 +252,7 @@ Task 018のsmoke testも全滅する。
 - ビルド成果物に設定が入っているかを、**値を出さずに**確認するステップを足した
 - 鍵の種類を許可リスト（`sb_publishable_*`）で検査し、secret keyの混入を止めた
 
-残るのは **人間の操作だけ**（merge前に H6・H7・H8、公開前に H9・H11）。設定しないまま `main` へmergeすると、
+残るのは **人間の操作だけ**（公開前に H9・H11。merge前の H6・H7・H8 は2026-08-28完了）。設定しないまま `main` へmergeすると、
 検証ステップが落ちてdeployされない（**いま公開されているページはそのまま残る**）。
 
 ## 7.1 既知リスク一覧（公開前に運営者が読む）
@@ -325,7 +328,8 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
 
 ### 段階1: 接続先を決める（mergeの前）
 
-- [ ] **H6 公開用Supabaseプロジェクトを決める**
+- [x] **H6 公開用Supabaseプロジェクトを決める** — **2026-08-28完了: 既存 `cue-shinkan-staging` を昇格**。
+  送信元は当面staging設定（個人Gmail・E6）のまま、release PR判断時にP1として受容可否を決める
   - なぜ: 接続先が決まらないと以降すべてが進まない
   - 画面: https://supabase.com/dashboard → プロジェクト一覧
   - 入力場所: 既存の `cue-shinkan-staging` を昇格するか、新規作成（Region: `ap-northeast-1`）
@@ -336,7 +340,7 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
     stagingのSMTPは**個人Gmail（1日500宛先）**の暫定構成で、本番は
     独自ドメイン＋専用プロバイダが要る。ここで決めないと H3 の作業が決まらない
 
-- [ ] **H3 メール送信（SMTP）を設定する**
+- [x] **H3 メール送信（SMTP）を設定する** — **2026-08-28完了扱い: staging昇格のため既存設定（2026-08-25移行済み）をそのまま使う。新規作業なし**
   - なぜ: **新規プロジェクトを作った場合、これが無いと新入生にOTPが1通も届かない。**
     2026-06-03以降に作成された新規Freeプロジェクトは、標準メールプロバイダのままだと
     **本文・件名を変更できず**（6桁コード形式にできない）、しかも
@@ -353,7 +357,9 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   - 成功判定: **組織メンバー以外**の大学メールアドレス宛にOTPが届き、
     本文が6桁コード形式になっている
 
-- [ ] **H7 GitHub Actions の secrets に接続設定を入れる**
+- [x] **H7 GitHub Actions の secrets に接続設定を入れる** — **2026-08-28完了**。
+  dry_run空撃ち1回目はURL形式検査が停止（Project URL以外を貼った貼り間違いを設計どおり検出）。
+  貼り直し後の2回目でbuild・検証・deploy skipまで全green（run 33135812020）
   - なぜ: 公開ビルドに接続先が埋め込まれないと「接続設定が必要です」の案内画面になる
   - 画面: リポジトリ → Settings → Secrets and variables → Actions → **Secrets** タブ
   - 入力場所: 「New repository secret」から2つ
@@ -363,7 +369,7 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   - **Variables タブではありません**（D054。variables はログでマスクされない）
   - **`sb_secret_…` を貼らないこと。** 貼った場合は設定し直す前に Dashboard で失効させる
 
-- [ ] **H8 Auth の Site URL を公開URLへ変更する**
+- [x] **H8 Auth の Site URL を公開URLへ変更する** — **2026-08-28完了**（Site URLのみ変更・Redirect URLs追加なし。Dashboard上で目視確認）
   - なぜ: いまは `http://localhost:5173/cue-shinkan-demo/` のまま（§3-3 の決定）。
     **本アプリはOTPコード方式でリンクを使わない**ため
     （`emailRedirectTo` を渡さず `verifyOtp` の6桁コード、`detectSessionInUrl: false`）、
@@ -386,8 +392,16 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
 
 ### 段階2: hosted で通す（mergeの前が望ましい）
 
-- [ ] **H1 migration を適用する**
-  - なぜ: stagingは0008・0009までしか適用しておらず、0010以降が未適用
+- [x] **H1 migration を適用する** — **2026-08-28完了**。
+  実施記録: CLI環境が無いため、Dashboard SQL Editor＝`docs/runbook_supabase_hosted.md` §4の
+  代替手順（postgres権限でSQLを番号順に実行し `schema_migrations` へ記帳）で実施。
+  適用前の実態は**0008の4本のみ**（本書の旧記載「0008・0009まで適用済み」は誤り。
+  `tasks/009` Phase B「未実施」が正）だったため、**0009×4を含む16本**を各ファイル個別の
+  `begin`〜記帳〜`commit` で適用した。検証: `schema_migrations` 20行（番号順）/
+  `platform_health()` 1行（実装に例外握りつぶしが無いため、auth系4列の権限エラーなしを含意）/
+  Exposed schemasは `public, graphql_public` のみ。切り戻し演習と手元バックアップは未実施
+  （staging実データは合成のみのため省略を受容）
+  - なぜ: stagingへ未適用のmigrationが残っていた（適用済みは0008の4本のみだった）
   - 画面: 端末（Supabaseアクセストークンが要る）
   - 入力場所: `cd app && npx supabase link --project-ref <ref> && npx supabase db push`
   - 成功判定: `npx supabase migration list` でローカルとリモートの差分が無い。
@@ -419,7 +433,8 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
 
 ### 段階3: 公開する
 
-- [ ] **deploy を1回空撃ちする（`dry_run`）**
+- [x] **deploy を1回空撃ちする（`dry_run`）** — **2026-08-28完了**（2回目のrun 33135812020で
+  build・「Verify build has Supabase config」成功・deploy skip。1回目はURL形式検査が設計どおり停止）
   - なぜ: 検証ステップは `push: main` と `workflow_dispatch` でしか走らず、
     PRのCIでは一度も実行されない。初回実行が本番deployになるのを避ける
   - 画面: Actions タブ → 「Deploy to GitHub Pages」→ Run workflow
@@ -495,18 +510,32 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
   **貼り間違えたsecret keyが公開Actionsログへ平文で出る**経路をD054で塞いだ）。
   **`develop → main` の release PR は未作成**（H6〜H8・H11 が未了） |
 
+| 2026-08-28 | Task 020完了（PR #25 `607891f`）。入口分離（新入生／団体担当者・D056）。
+  E2E flake（同一アドレス連続ログインが `max_frequency = "1s"` 境界でrateLimited）を
+  CIログの時刻から実測特定し、E2E側の有限回リトライで吸収。UX・securityの独立レビューを
+  最終SHAまで承認拡張してsquash merge。**ソフトウェア側release blocker解消** |
+
+| 2026-08-28 | 人間の操作を実施: **H6**（stagingを昇格と決定）→ **H7**（secrets設定。
+  dry_run 1回目はURL形式検査が貼り間違いを設計どおり停止、貼り直し後の2回目で全green）→
+  **H8**（Site URLのみ変更）→ **H1**（SQL Editor＝runbook §4方式で16本適用→全20本。
+  適用時に**本書の「0008・0009適用済み」が誤記**で実態は0008のみと判明し、本書を訂正。
+  `platform_health()` 1行・Exposed schemasに`private`なしを確認）。
+  残る人間の操作は H2・H4・H9〜H11 と release PR（H5） |
+
 ## 9. 次回再開時の開始点
 
-**実装側の作業は Task 019 まで完了している。次に必要なのは §7 の人間の操作。**
+**実装側の作業は Task 020 まで完了し、ソフトウェア側のrelease blockerは解消済み。
+H1・H3・H6〜H8と空撃ち（dry_run）も2026-08-28に完了。残りは §7 の人間の操作
+（H2・H4・H9〜H11）と、段階3のrelease PR（H5）以降。**
 
 ### いま止まっているもの
 
 | 番号 | 内容 | これが無いと |
 |---|---|---|
-| **H6** | 公開用Supabaseプロジェクトの作成（または staging を昇格する判断） | 接続先が決まらない |
-| **H7** | GitHub Actions **secrets** へ `VITE_SUPABASE_URL` / `VITE_SUPABASE_PUBLISHABLE_KEY`（D054） | 公開ビルドが接続設定を持てない（deployが検証ステップで止まる） |
-| **H8** | Supabase Auth の **Site URL** を公開URLへ（Redirect URLsは追加しない） | 本番でSite URLがlocalhostを指したまま残る |
-| H1 | hosted staging への migration 適用 | §6 の「migration・rollback確認済み」が埋まらない |
+| H6 | ✅ **2026-08-28完了**（stagingを昇格） | 接続先が決まらない |
+| H7 | ✅ **2026-08-28完了**（secrets設定・dry_runで検証済み・D054） | 公開ビルドが接続設定を持てない（deployが検証ステップで止まる） |
+| H8 | ✅ **2026-08-28完了**（Site URLのみ変更・Redirect URLs追加なし） | 本番でSite URLがlocalhostを指したまま残る |
+| H1 | ✅ **2026-08-28完了**（SQL Editor方式で全20本） | §6 の「migration・rollback確認済み」が埋まらない |
 | H2 | 大学メールでのOTP実機確認 | ログインの生存確認ができない |
 | H9 | 送信ワーカー（Edge Function）のデプロイとスケジュール設定 | 実メールが1通も飛ばない |
 | **H11** | **Auth の Attack Protection 設定** | 公開後にOTP送信を濫用されうる（§7.1 B7・**P1**） |
@@ -514,8 +543,10 @@ Supabaseアカウント・GitHubリポジトリ設定・本人所有の大学メ
 
 **ソフトウェア側のrelease blocker**: Task 020（入口分離・D056）が `develop` へ
 mergeされるまで公開しない（H項目ではなく実装側の条件。人間の操作は不要）。
+→ **解消済み（2026-08-28、PR #25のmerge `607891f`）**。
 
-H6〜H8（新規プロジェクトの場合はH3も）が揃うまで **`main` へmergeしない**。**H9（送信ワーカーのデプロイ）と H11（Attack Protection）は公開前に必ず済ませる**（§7.1 E3・B7）。
+H6〜H8（新規プロジェクトの場合はH3も）が揃うまで **`main` へmergeしない**
+→ **2026-08-28に充足**。**H9（送信ワーカーのデプロイ）と H11（Attack Protection）は公開前に必ず済ませる**（§7.1 E3・B7）。
 
 ### 揃ったあとの手順
 

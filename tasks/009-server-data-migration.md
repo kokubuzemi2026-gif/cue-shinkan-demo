@@ -74,6 +74,16 @@ Phase 1がlocalStorageへ保存していたデモ状態（興味パスポート�
 
 ### Phase B 検証記録
 
+**追記（2026-08-28）: migrationの適用は完了した。** 運営者がDashboard SQL Editor
+（`docs/runbook_supabase_hosted.md` §4の代替手順・トークン不要）から、本Taskの4本を含む
+未適用16本（0009〜0019）を番号順・各ファイル個別トランザクションで適用し、
+`supabase_migrations.schema_migrations` は全20本（番号順）になった。
+確認済み: `platform_health()` が1行返る（関数は例外を握りつぶさないため権限エラーなしを含意）/
+Data APIのExposed schemasは `public, graphql_public` のみ。
+未実施のまま残るもの: schema・RLS・policy・grantの詳細読み戻し確認、
+架空ユーザーでの実機確認（下記チェックリスト2〜3項目め）。
+なお2026-08-28のH6決定により、stagingはこのまま公開用プロジェクトへ昇格する。
+
 **未実施（2026-08-25時点）。実装セッションの実行環境からhosted stagingへ到達できないため。**
 
 - 事象: `supabase login`（`--no-browser`）のトークン交換が常に `failed to execute http request: Transport error (GET https://api.supabase.com/platform/cli/login/<session>?device_code=<code>)` で失敗する。ブラウザ承認は完了しており、コードもCLIへ正しく渡っている（エラーURLに device_code が載っている）
